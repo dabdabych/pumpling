@@ -1,0 +1,35 @@
+<div class="legal-dialog">
+  <header class="legal-dialog__head">
+    <h2 class="legal-dialog__title" id="legal-dialog-title">{{ title }}</h2>
+    <button class="legal-dialog__close"
+            type="button"
+            [attr.aria-label]="'Close ' + title"
+            (click)="close()">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M6 6l12 12M18 6L6 18" />
+      </svg>
+    </button>
+  </header>
+
+  <!-- tabindex makes the area scrollable from the keyboard: without it somebody
+       who does not use a mouse cannot scroll a long text. -->
+  <div #body class="legal-dialog__body" tabindex="0">
+    @switch (document) {
+      @case ('terms') {
+        <app-terms-content></app-terms-content>
+      }
+      @default {
+        <app-privacy-policy-content></app-privacy-policy-content>
+      }
+    }
+  </div>
+
+  <footer class="legal-dialog__foot">
+    <a class="legal-dialog__link" [routerLink]="page" (click)="close()">
+      Open as a page
+    </a>
+    <button class="legal-dialog__done" type="button" (click)="close()">
+      I agree
+    </button>
+  </footer>
+</div>

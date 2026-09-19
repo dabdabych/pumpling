@@ -1,0 +1,110 @@
+<!-- The three beats of the thought experiment. On desktop the beats sit stacked
+     and are switched by the story timeline; on a phone and in reduced motion they
+     go as a column: the text, then its picture. So the text and the pictures are
+     neighbours in one grid rather than two separate columns. -->
+<div class="what">
+  <!-- ------------------------------------------------ 1. the promise -->
+  <div class="what__copy" data-what-copy="1" data-story-anim>
+    <p class="what__eyebrow">A post in your feed</p>
+    <h3 class="what__title">
+      <span class="what__line" data-what-line>Would you</span>
+      <span class="what__line" data-what-line><span class="what__plate">buy first?</span></span>
+    </h3>
+    <p class="what__text" data-what-line>512 followers and a promise to buy 100&nbsp;SOL in one hour. Nothing stands behind it.</p>
+  </div>
+
+  <!-- The feed behind the post: faint neighbouring posts. Without it the post
+       hung in a void and did not read as "this is what people scroll past". -->
+  <div class="feed" data-what-feed data-story-anim aria-hidden="true">
+    <div class="feed__item"><i></i><b></b><b></b></div>
+    <div class="feed__item"><i></i><b></b><b></b></div>
+    <div class="feed__item"><i></i><b></b><b></b></div>
+  </div>
+
+  <article class="post post--anon" data-what-post="a" data-story-anim aria-hidden="true">
+    <header class="post__head">
+      <span class="post__avatar post__avatar--anon">
+        <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="#FFD36A" stroke="#020202" stroke-width="2.5"/><circle cx="14.5" cy="17.5" r="2.2" fill="#020202"/><circle cx="25.5" cy="17.5" r="2.2" fill="#020202"/><path d="M13 25.5c4 2.6 10 2.6 14-1" fill="none" stroke="#020202" stroke-width="2.5" stroke-linecap="round"/></svg>
+      </span>
+      <span class="post__who">
+        <span class="post__name">anon dev</span>
+        <span class="post__handle">@anon_dev_42 · 2m</span>
+      </span>
+      <span class="post__followers">512 followers</span>
+    </header>
+    <p class="post__body">In exactly <b>1 hour</b> I'm buying <b>100 SOL</b> of <span class="post__ticker">$MOCHI</span>. Market cap is 40&nbsp;SOL right now. Get in early.</p>
+    <footer class="post__meta">
+      <span><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/></svg>38</span>
+      <span><svg viewBox="0 0 24 24"><path d="M7 7h9l-2.5-2.5M17 17H8l2.5 2.5M16 7v5M8 17v-5"/></svg>12</span>
+      <span><svg viewBox="0 0 24 24"><path d="M5 5h14v10H10l-4 4v-4H5Z"/></svg>9</span>
+    </footer>
+    <span class="stamp" data-what-stamp="a">No proof</span>
+  </article>
+
+  <!-- ------------------------------------------------ 2. the doubt -->
+  <div class="what__copy" data-what-copy="2" data-story-anim>
+    <p class="what__eyebrow">Why most people pass</p>
+    <h3 class="what__title">
+      <span class="what__line" data-what-line>Promises</span>
+      <span class="what__line" data-what-line>are <span class="what__plate">free</span></span>
+    </h3>
+    <p class="what__text" data-what-line>Memecoin marketing runs on promises. Nothing proves the buy will ever happen, and callers get paid either way. So why would anyone trust them?</p>
+  </div>
+
+  <article class="post post--caller" data-what-post="b" data-story-anim aria-hidden="true">
+    <header class="post__head">
+      <span class="post__avatar post__avatar--caller">
+        <svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="#25BDE5" stroke="#020202" stroke-width="2.5"/><path d="M12 17h16l-8 11Z" fill="#FCFCFC" stroke="#020202" stroke-width="2.2" stroke-linejoin="round"/><path d="M12 17l3.5-4.5h9L28 17" fill="#FCFCFC" stroke="#020202" stroke-width="2.2" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="post__who">
+        <span class="post__name">GEM CALLER
+          <svg class="post__badge" viewBox="0 0 24 24"><path d="M12 2.5l2.4 2 3.1-.3.9 3 2.7 1.6-1 3 1 3-2.7 1.6-.9 3-3.1-.3-2.4 2-2.4-2-3.1.3-.9-3L2.9 15l1-3-1-3 2.7-1.6.9-3 3.1.3Z" fill="#AF8FFF" stroke="#020202" stroke-width="1.5"/><path d="M8.5 12.2l2.3 2.3 4.7-4.7" fill="none" stroke="#020202" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <span class="post__handle">@gemcaller_1337 · 6m</span>
+      </span>
+      <span class="post__followers">48.2K followers</span>
+    </header>
+    <p class="post__body">Hidden gem alert 💎 <span class="post__ticker">$MOCHI</span> has a strong community and a based dev. Don't fade this one.</p>
+    <footer class="post__meta">
+      <span><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z"/></svg>1.4K</span>
+      <span><svg viewBox="0 0 24 24"><path d="M7 7h9l-2.5-2.5M17 17H8l2.5 2.5M16 7v5M8 17v-5"/></svg>310</span>
+      <span><svg viewBox="0 0 24 24"><path d="M5 5h14v10H10l-4 4v-4H5Z"/></svg>87</span>
+    </footer>
+    <span class="stamp stamp--paid" data-what-stamp="b">Paid to post</span>
+  </article>
+
+  <!-- ------------------------------------------------ 3. the program -->
+  <div class="what__copy" data-what-copy="3" data-story-anim>
+    <p class="what__eyebrow">What pumpling does</p>
+    <h3 class="what__title">
+      <span class="what__line" data-what-line>Lock it in</span>
+      <span class="what__line" data-what-line>a <span class="what__plate">contract</span></span>
+    </h3>
+    <p class="what__text" data-what-line>The SOL sits in a pool everyone can see. Nobody can pull it back, and the buy runs on-chain.</p>
+  </div>
+
+  <article class="pool" data-what-pool data-story-anim aria-hidden="true">
+    <header class="pool__head">
+      <img class="pool__logo" src="assets/images/pumpling-mascot.png" alt="" width="32" height="32">
+      <span class="pool__name">pumpling pool</span>
+      <span class="pool__status"><i></i>Open</span>
+    </header>
+    <div class="pool__coin">
+      <span class="pool__coin-mark">
+        <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="29" fill="#FFB25F" stroke="#020202" stroke-width="4"/><circle cx="32" cy="32" r="21" fill="none" stroke="#020202" stroke-width="2.5" opacity=".28"/><circle cx="24" cy="27" r="3.5" fill="#020202"/><circle cx="40" cy="27" r="3.5" fill="#020202"/><path d="M22 37c5 6 15 6 20 0" fill="none" stroke="#020202" stroke-width="4" stroke-linecap="round"/></svg>
+      </span>
+      <span class="pool__ticker">$MOCHI</span>
+      <span class="pool__sol"><b>100</b> SOL</span>
+    </div>
+    <div class="pool__bar"><span class="pool__fill" data-what-pool-fill></span></div>
+    <div class="pool__scale"><span>0</span><span>111 SOL cap</span></div>
+    <dl class="pool__rows">
+      <div><dt>Pool closes in</dt><dd class="pool__timer" #timer>00:59:12</dd></div>
+      <div><dt>Then</dt><dd>1 hour of public buys</dd></div>
+    </dl>
+    <p class="pool__lock" data-what-lock>
+      <svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="1"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></svg>
+      SOL locked in the contract
+    </p>
+  </article>
+</div>

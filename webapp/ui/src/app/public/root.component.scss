@@ -1,0 +1,71 @@
+.logo {
+  max-width: 267px;
+  width: 100%;
+  height: auto;
+  margin-bottom: 45px;
+}
+
+.page-form {
+  max-width: 400px;
+  width: 100%;
+  margin-inline: auto;
+  min-height: 100vh;
+
+  /* The block used to be centred with position:absolute + top:48%. The
+     percentages were computed against a container with no height, so the form
+     pressed to the top and the logo plate was clipped and could not be scrolled
+     to. safe center is centring that does not cut off the top with tall content. */
+  display: flex;
+  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  justify-content: safe center;
+  padding: 40px 25px;
+}
+
+.input-box {
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.input-box .input-icon {
+  position: absolute;
+  left: 18px;
+  top: 14px;
+}
+
+.input-box input {
+  border-width: 1px;
+  height: 52px;
+  padding-left: 52px;
+  padding-top: 8px;
+  font-size: 16px;
+}
+
+.input-box input:focus,
+.input-box input:active {
+  box-shadow: none;
+  border: 1px solid #ced4da;
+}
+
+.password-suggestions {
+  margin-top: 10px;
+  margin-bottom: 5px;
+}
+
+.forgot-password-link {
+  font-size: 12px;
+  color: #2778F1;
+}
+
+.terms-of-service {
+  font-size: 14px;
+}
+
+.terms-of-service {
+  font-size: 14px;
+  color: #27313F;
+}
+
+

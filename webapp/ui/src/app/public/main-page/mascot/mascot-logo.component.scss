@@ -1,0 +1,62 @@
+:host {
+  display: inline-flex;
+}
+
+.mascot {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  /* With no size set, it takes the element the page laid out. */
+  width: 100%;
+  height: 100%;
+}
+
+/* The hop and the tilts are from the bottom centre, like a standing object. */
+.mascot__body {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 90%;
+}
+
+.mascot__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.mascot__shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.9) 50%, transparent 62%);
+  background-size: 260% 100%;
+  background-position: 160% 0;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  pointer-events: none;
+}
+
+.mascot__phone,
+.mascot__paper {
+  position: absolute;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Where the props sit depends on the drawing: where the mascot's glasses and
+   mouth are. The page overrides them with variables for its own image. */
+.mascot__phone {
+  right: var(--mascot-phone-right, -18%);
+  bottom: var(--mascot-phone-bottom, -14%);
+  width: var(--mascot-phone-width, 42%);
+  transform-origin: 50% 100%;
+}
+
+.mascot__paper {
+  left: var(--mascot-paper-left, 2%);
+  bottom: var(--mascot-paper-bottom, -16%);
+  width: var(--mascot-paper-width, 96%);
+  transform-origin: 50% 100%;
+}

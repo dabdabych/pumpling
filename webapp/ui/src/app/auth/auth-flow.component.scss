@@ -1,0 +1,331 @@
+@import "../public/membership";
+
+/* ============================================================
+   The sign-in flow. There is no border here — the dialog or the page gives one.
+   The fields, errors and checkbox are shared from membership.scss.
+   ============================================================ */
+:host {
+  display: block;
+  color: var(--qres-black);
+}
+
+.auth-flow {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The back button sits above the title: that way it does not argue with the
+   dialog's close cross in the right corner and reads at once as a step back
+   rather than as closing. */
+.auth-back {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 4px;
+  height: 32px;
+  margin: -6px 0 10px -6px;
+  padding: 0 10px 0 4px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--qres-black);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-back svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.auth-back:hover,
+.auth-back:focus-visible {
+  background: rgba(2, 2, 2, 0.06);
+}
+
+.auth-title {
+  margin: 0;
+  padding-right: 40px;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  outline: none;
+}
+
+.auth-subtitle {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  /* 70% black is 8.2:1. */
+  color: rgba(2, 2, 2, 0.7);
+}
+
+.auth-subtitle strong {
+  color: var(--qres-black);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* ---------------------------------------------------- the sign-in methods */
+.auth-methods {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.auth-method {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 54px;
+  padding: 0 14px 0 16px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.auth-method--primary {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+/* A hard shadow and a shift on hover — the same device as the cards and the chat
+   field. A purple background with black text: white on it is 2.5:1. */
+.auth-method:hover:not(:disabled),
+.auth-method:focus-visible {
+  background: var(--qres-purple);
+  color: var(--qres-black);
+  box-shadow: 3px 3px 0 var(--qres-black);
+  transform: translate(-1px, -1px);
+}
+
+.auth-method:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.auth-method__icon,
+.auth-method__arrow {
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.auth-method__icon {
+  width: 22px;
+  height: 22px;
+  stroke-width: 1.7;
+}
+
+.auth-method__label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.auth-method__arrow {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2;
+  transition: transform 0.15s ease;
+}
+
+.auth-method:hover:not(:disabled) .auth-method__arrow {
+  transform: translateX(2px);
+}
+
+/* ------------------------------------------------------------- the form */
+.auth-form {
+  margin-top: 20px;
+}
+
+/* The fields here have no icon inside: the label above already says what to enter. */
+.field__input--plain {
+  padding-left: 14px;
+}
+
+.field__control {
+  height: 50px;
+}
+
+.field__label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.field__label-row .field__label {
+  margin-bottom: 6px;
+}
+
+.field__hint {
+  /* 62% black is 6.0:1. */
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.auth-check {
+  margin-top: 4px;
+}
+
+.auth-error {
+  margin-top: 14px;
+}
+
+.auth-submit {
+  width: 100%;
+  height: 50px;
+  margin-top: 18px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-black);
+  color: var(--qres-white);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.auth-submit:hover:not(:disabled),
+.auth-submit:focus-visible {
+  background: var(--qres-purple);
+  color: var(--qres-black);
+  box-shadow: 3px 3px 0 var(--qres-black);
+  transform: translate(-1px, -1px);
+}
+
+.auth-submit:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+/* The divider before the wallet sign-in under the email form. */
+.auth-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+  font-size: 13px;
+  font-weight: 500;
+  /* 62% black is 6.0:1. */
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.auth-or::before,
+.auth-or::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: rgba(2, 2, 2, 0.18);
+}
+
+/* Under the form the wallet button is as tall as "Sign in": two equal roads. */
+.auth-or + .auth-method {
+  height: 50px;
+}
+
+/* The "check your email" screens: the button sits right under the text. */
+.auth-subtitle + .auth-submit {
+  margin-top: 22px;
+}
+
+/* ----------------------------------------------------- the bottom and the links */
+.auth-switch {
+  margin: 18px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--qres-black);
+}
+
+/* Buttons that look like links: they open nothing by address, they change the
+   step — which is why they are buttons rather than an <a> with no href. */
+.auth-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--qres-black);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.auth-link:hover,
+.auth-link:focus-visible {
+  text-decoration-color: var(--qres-black);
+}
+
+/* A button is an inline-block element, and the full stop after it used to wrap
+   onto its own line. */
+.auth-nowrap {
+  white-space: nowrap;
+}
+
+.auth-link--small {
+  font-size: 13px;
+}
+
+.auth-legal-note {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 2px solid rgba(2, 2, 2, 0.1);
+  font-size: 12.5px;
+  line-height: 1.5;
+  /* 64% black is 6.5:1. */
+  color: rgba(2, 2, 2, 0.64);
+}
+
+.auth-legal-note a,
+.auth-link--quiet {
+  color: inherit;
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: currentColor;
+  text-underline-offset: 2px;
+}
+
+.auth-legal-note a:hover,
+.auth-legal-note a:focus-visible,
+.auth-link--quiet:hover,
+.auth-link--quiet:focus-visible {
+  color: var(--qres-black);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-method,
+  .auth-submit,
+  .auth-method__arrow {
+    transition: none;
+  }
+
+  .auth-method:hover:not(:disabled),
+  .auth-method:focus-visible,
+  .auth-submit:hover:not(:disabled),
+  .auth-submit:focus-visible {
+    transform: none;
+  }
+}

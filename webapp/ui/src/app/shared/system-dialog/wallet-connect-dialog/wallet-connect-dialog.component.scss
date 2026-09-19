@@ -1,0 +1,198 @@
+/* The wallet chooser. Brought into line with the light theme of the auth pages:
+   it used to be dark, from the old design, and looked foreign on a white form.
+   The position is set in wallet.service.ts through the MatDialog config. */
+
+:host {
+  display: block;
+  font-family: inherit;
+}
+
+/* The panel and the backdrop are set in src/styles.scss. They cannot be reached
+   here: they sit in cdk-overlay-container next to the component rather than
+   inside it, and the rule `:host ::ng-deep .qres-confirm-backdrop` silently did
+   nothing — the backdrop stayed fully transparent. */
+
+.wallet-connect-dialog {
+  width: min(92vw, 380px);
+  padding: 18px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  box-shadow: 5px 5px 0 var(--qres-black);
+}
+
+.wallet-connect-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.wallet-connect-dialog__title {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--qres-black);
+}
+
+.wallet-connect-dialog__subtitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #5F5F5F;
+}
+
+.wallet-connect-dialog__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.wallet-connect-dialog__close:hover,
+.wallet-connect-dialog__close:focus-visible {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+.wallet-connect-dialog__list {
+  display: grid;
+  gap: 8px;
+}
+
+.wallet-connect-dialog__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.wallet-connect-dialog__option:hover:not(:disabled),
+.wallet-connect-dialog__option:focus-visible:not(:disabled) {
+  border-color: var(--qres-purple);
+  background: rgba(175, 143, 255, 0.12);
+}
+
+/* An unavailable wallet stays readable: it is not disabled for good, it leads to
+   the install page. */
+.wallet-connect-dialog__option--disabled,
+.wallet-connect-dialog__option:disabled {
+  cursor: default;
+  border-color: rgba(2, 2, 2, 0.25);
+  color: #6B6B6B;
+}
+
+.wallet-connect-dialog__identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.wallet-connect-dialog__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 3px;
+  border-radius: 2px;
+  background: rgba(2, 2, 2, 0.05);
+}
+
+.wallet-connect-dialog__icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.wallet-connect-dialog__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: inherit;
+}
+
+.wallet-connect-dialog__badge {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #6B6B6B;
+}
+
+.wallet-connect-dialog__badge--connect {
+  border-color: var(--qres-black);
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+.wallet-connect-dialog__badge--external {
+  border-color: var(--qres-purple);
+  color: #6B4BC4;
+}
+
+.wallet-connect-dialog__note {
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #6B6B6B;
+}
+
+/* On a phone "top right" is meaningless — there the dialog takes the bottom of
+   the screen, closer to the thumb. The width is set by the dialog config. */
+@media (max-width: 600px) {
+  .wallet-connect-dialog {
+    width: 100%;
+  }
+}
+
+/* The wallet the site is using now. Calm, with no call to action: there is no
+   reason to press it, but its state has to be visible. */
+.wallet-connect-dialog__badge--current {
+  border-color: var(--qres-green, #8FFFAF);
+  background: var(--qres-green, #8FFFAF);
+  color: var(--qres-black, #020202);
+}
+
+/* The first letter instead of an icon: an unknown wallet may not have one. */
+.wallet-connect-dialog__monogram {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 16px;
+  font-weight: 800;
+}

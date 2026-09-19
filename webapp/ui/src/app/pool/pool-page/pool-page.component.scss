@@ -1,0 +1,1531 @@
+/* The pool page. The same language as the pool card in How it works on the main
+   page: 2px borders, a hard shadow, phase chips, share bars. That card is an
+   illustration, this one is live data, and they have to look like the same thing. */
+
+:host {
+  display: block;
+  min-height: 100vh;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.pool {
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: 24px 16px 0;
+}
+
+@media (min-width: 640px) {
+  .pool {
+    padding: 40px 32px 0;
+  }
+}
+
+/* ----------------------------------------------------------- top */
+.pool-top {
+  display: grid;
+  gap: 28px;
+  align-items: start;
+}
+
+@media (min-width: 960px) {
+  .pool-top {
+    grid-template-columns: minmax(0, 1fr) minmax(22rem, 28rem);
+    gap: 56px;
+    align-items: center;
+  }
+}
+
+.pool-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  /* 62% black is 6.0:1. */
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.pool-eyebrow::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.8em;
+  height: 0.8em;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-purple);
+}
+
+.pool-title {
+  margin: 0;
+  font-size: clamp(2.25rem, 6.4vw, 4.5rem);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  text-transform: uppercase;
+}
+
+.pool-title__line {
+  display: block;
+}
+
+/* The plate under the accent: black on purple is 8.1:1, purple text on white is unreadable. */
+.pool-plate {
+  padding: 0 0.12em;
+  background: var(--qres-purple);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.pool-lede {
+  max-width: 36em;
+  margin: 18px 0 0;
+  font-size: clamp(15px, 1.35vw, 18px);
+  font-weight: 500;
+  line-height: 1.5;
+  color: rgba(2, 2, 2, 0.72);
+  text-wrap: pretty;
+}
+
+.pool-lede.pool-skeleton {
+  height: 3em;
+}
+
+.pool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  margin-top: 28px;
+}
+
+.pool-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  height: 56px;
+  padding: 0 22px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-green);
+  box-shadow: 5px 6px 0 var(--qres-purple);
+  color: var(--qres-black);
+  font: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pool-cta svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (hover: hover) {
+  .pool-cta:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 7px 8px 0 var(--qres-purple);
+  }
+}
+
+.pool-cta:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 3px 0 var(--qres-purple);
+}
+
+.pool-cta:focus-visible,
+.pool-link:focus-visible,
+.coin-row__mint:focus-visible,
+.pool-footer a:focus-visible,
+.pool-footer__link:focus-visible {
+  outline: 2px solid var(--qres-purple);
+  outline-offset: 3px;
+}
+
+.pool-cta--small {
+  height: 48px;
+  margin-top: 18px;
+  font-size: 16px;
+}
+
+.pool-link--button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.pool-link {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--qres-black);
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+/* ------------------------------------------------------- the card */
+.pool-card {
+  padding: 18px 20px 20px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 8px 8px 0 var(--qres-purple);
+}
+
+.pool-card__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--qres-black);
+}
+
+.pool-card__label {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.pool-card__clock {
+  margin: 16px 0 0;
+  font-size: clamp(2.5rem, 5vw, 3.5rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.pool-card__clock.pool-skeleton {
+  height: 3.25rem;
+}
+
+.pool-card__clock--text {
+  font-size: clamp(1.75rem, 3.4vw, 2.25rem);
+}
+
+.pool-card__note {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.pool-card__foot {
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 2px dashed rgba(2, 2, 2, 0.2);
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.72);
+}
+
+.pool-progress {
+  margin-top: 18px;
+}
+
+.pool-progress__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pool-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 0;
+}
+
+.pool-stats div {
+  padding: 10px 12px;
+  border: 2px solid var(--qres-black);
+}
+
+.pool-stats dt {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.pool-stats dd {
+  margin: 4px 0 0;
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.pool-stats small {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------- chips and bars */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 5px 10px;
+  border: 2px solid var(--qres-black);
+  /* The phase label colour travels with the rest of the card rather than blinking. */
+  transition: background-color 320ms ease, color 320ms ease;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.chip i {
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: currentColor;
+  animation: chip-blink 1.6s ease-in-out infinite;
+}
+
+@keyframes chip-blink {
+  50% { opacity: 0.25; }
+}
+
+.chip--open,
+.chip--done {
+  background: var(--qres-green);
+}
+
+.chip--locked {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+.chip--buying {
+  background: var(--qres-purple);
+}
+
+.chip--soon {
+  background: var(--qres-white);
+}
+
+.chip--zero {
+  padding: 3px 8px;
+  background: var(--qres-white);
+  font-size: 12px;
+}
+
+.bar {
+  display: block;
+  height: 14px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  overflow: hidden;
+}
+
+.bar__fill {
+  display: block;
+  height: 100%;
+  background: var(--qres-purple);
+  box-shadow: inset -2px 0 0 var(--qres-black);
+  transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ---------------------------------------------------------- the scale */
+.pool-track {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 48px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pool-track__step {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding-top: 22px;
+}
+
+/* The line between steps: from a dot to the next one. */
+.pool-track__step::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  /* A step changes by itself when the pool moves to a new phase: the colour
+     travels rather than jumping. */
+  transition: background 0.45s ease;
+  background: rgba(2, 2, 2, 0.2);
+}
+
+/* The line from a step to the next: black behind, grey from the current one on. */
+.pool-track__step.is-past::before {
+  background: var(--qres-black);
+}
+
+.pool-track__dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--qres-black);
+  transition: background 0.45s ease, box-shadow 0.45s ease;
+  background: var(--qres-white);
+}
+
+.pool-track__step.is-past .pool-track__dot {
+  background: var(--qres-black);
+}
+
+.pool-track__step.is-current .pool-track__dot {
+  background: var(--qres-purple);
+  box-shadow: 0 0 0 4px rgba(175, 143, 255, 0.35);
+}
+
+.pool-track__label {
+  transition: color 0.45s ease;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.pool-track__step.is-current .pool-track__label,
+.pool-track__step.is-past .pool-track__label {
+  color: var(--qres-black);
+}
+
+.pool-track__note {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+/* ---------------------------------------------------------- coins */
+.pool-coins {
+  margin-top: 48px;
+}
+
+.pool-coins__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid var(--qres-black);
+}
+
+.pool-coins__title {
+  margin: 0;
+  font-size: clamp(1.25rem, 2.4vw, 1.75rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+.pool-coins__count {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.coin-list {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.coin-row {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  grid-template-areas:
+    "rank coin mint"
+    "rank sol sol"
+    "rank drawn commits"
+    "rank add card";
+  align-items: center;
+  gap: 10px 14px;
+  padding: 12px 14px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+}
+
+@media (min-width: 900px) {
+  .coin-row {
+    /* The last two columns are fixed width. An `auto` column stretches to its
+       content, and the header has none of those buttons: the captions would drift. */
+    grid-template-columns: 2rem minmax(10rem, 1.1fr) minmax(7rem, auto) minmax(13rem, 1.3fr) minmax(7rem, auto) minmax(5.5rem, auto) 6.6rem 5.4rem;
+    grid-template-areas: "rank coin mint sol drawn commits add card";
+  }
+}
+
+.coin-row--zero {
+  background: rgba(2, 2, 2, 0.03);
+}
+
+/* Arrived from a link in a post: the row in question is visible at once. */
+.coin-row--highlight {
+  border-color: var(--qres-black);
+  box-shadow: 5px 5px 0 var(--qres-purple);
+}
+
+/* The row action: the only green button in the table, because it is the only
+   thing we ask anyone to do. */
+.coin-row__add {
+  grid-area: add;
+  justify-self: stretch;
+  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-green);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.coin-row__add svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+.coin-row__add:hover,
+.coin-row__add:focus-visible {
+  box-shadow: 3px 3px 0 var(--qres-black);
+  translate: -1px -1px;
+}
+
+.coin-row__card {
+  grid-area: card;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--qres-black);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+
+  svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+}
+
+@media (hover: hover) {
+  .coin-row__card:hover {
+    background: var(--qres-purple);
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 var(--qres-black);
+  }
+}
+
+@media (min-width: 900px) {
+  .coin-row__card {
+    justify-self: end;
+  }
+}
+
+.coin-row__rank {
+  grid-area: rank;
+  align-self: start;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--qres-purple);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 900px) {
+  .coin-row__rank {
+    align-self: center;
+  }
+}
+
+.coin-row__coin {
+  grid-area: coin;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.coin-row__logo {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--qres-black);
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--qres-white);
+}
+
+.coin-row__logo--fallback {
+  display: grid;
+  place-items: center;
+  background: var(--qres-green);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.coin-row__names {
+  display: grid;
+  min-width: 0;
+}
+
+.coin-row__ticker {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.coin-row__tickerline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The "my money is here" mark. Calm but noticeable: it is not an advert, it is a
+   landmark in somebody else's table. */
+.coin-row__mine {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 7px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-green);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: var(--qres-black);
+  white-space: nowrap;
+}
+
+.coin-row__mine:hover,
+.coin-row__mine:focus-visible {
+  box-shadow: 3px 3px 0 var(--qres-black);
+  translate: -1px -1px;
+}
+
+.coin-row__name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(2, 2, 2, 0.62);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coin-row__mint {
+  grid-area: mint;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.coin-row__mint svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+@media (hover: hover) {
+  .coin-row__mint:hover {
+    background: var(--qres-black);
+    color: var(--qres-white);
+  }
+}
+
+@media (min-width: 900px) {
+  .coin-row__mint {
+    justify-self: start;
+  }
+}
+
+.coin-row__sol {
+  grid-area: sol;
+  display: grid;
+  grid-template-columns: auto minmax(4rem, 1fr);
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.coin-row__value {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.coin-row__value small {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.coin-row__bar {
+  height: 12px;
+}
+
+.coin-row__share {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.coin-row__drawn {
+  grid-area: drawn;
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+}
+
+.coin-row__commits {
+  grid-area: commits;
+  justify-self: end;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.62);
+  white-space: nowrap;
+}
+
+.coin-row--skeleton {
+  display: block;
+  height: 64px;
+}
+
+.coin-row--skeleton .pool-skeleton {
+  display: block;
+  height: 100%;
+}
+
+.pool-empty {
+  margin-top: 16px;
+  padding: 28px 20px;
+  border: 2px dashed rgba(2, 2, 2, 0.35);
+  text-align: center;
+}
+
+.pool-empty__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.pool-empty__text {
+  max-width: 32em;
+  margin: 8px auto 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: rgba(2, 2, 2, 0.72);
+  text-wrap: pretty;
+}
+
+.pool-note {
+  max-width: 44em;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-left: 4px solid var(--qres-purple);
+  background: rgba(175, 143, 255, 0.12);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: rgba(2, 2, 2, 0.78);
+}
+
+/* ------------------------------------------------------------ footer */
+.pool-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  margin-top: 64px;
+  padding: 20px 0 28px;
+  border-top: 2px solid var(--qres-black);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pool-footer a,
+.pool-footer__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--qres-black);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .pool-footer a:hover,
+  .pool-footer__link:hover {
+    text-decoration: underline;
+    text-decoration-color: var(--qres-purple);
+    text-decoration-thickness: 2px;
+    text-underline-offset: 4px;
+  }
+}
+
+.pool-footer__copy {
+  margin-left: auto;
+  font-weight: 500;
+  color: rgba(2, 2, 2, 0.55);
+}
+
+/* ------------------------------------------------------------ toast */
+.pool-toast {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: min(30rem, calc(100vw - 32px));
+  padding: 14px 14px 14px 16px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  box-shadow: 5px 6px 0 var(--qres-black);
+  transform: translateX(-50%);
+  animation: toast-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+}
+
+.pool-toast__icon {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin-top: 4px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+}
+
+.pool-toast--sending .pool-toast__icon {
+  background: var(--qres-purple);
+  animation: chip-blink 1s ease-in-out infinite;
+}
+
+.pool-toast--recorded .pool-toast__icon,
+.pool-toast--confirmed .pool-toast__icon {
+  background: var(--qres-green);
+}
+
+.pool-toast--unconfirmed {
+  box-shadow: 5px 6px 0 var(--qres-purple);
+}
+
+.pool-toast__copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.pool-toast__copy b {
+  font-size: 15px;
+}
+
+.pool-toast__copy a {
+  justify-self: start;
+  font-weight: 600;
+  color: var(--qres-black);
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.pool-toast__close {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  cursor: pointer;
+}
+
+.pool-toast__close svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+/* ------------------------------------------------------- placeholders */
+.pool-skeleton {
+  background: linear-gradient(90deg, rgba(2, 2, 2, 0.06), rgba(2, 2, 2, 0.12), rgba(2, 2, 2, 0.06));
+  background-size: 200% 100%;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton {
+  to { background-position: -200% 0; }
+}
+
+.pool-toast__cta {
+  /* Inside the toast's grid column the button would otherwise stretch full width. */
+  justify-self: start;
+  align-self: start;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-purple);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--qres-black);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .pool-toast__cta:hover {
+    box-shadow: 3px 3px 0 var(--qres-black);
+    transform: translate(-1px, -1px);
+  }
+}
+
+
+/* ------------------------------------------------- the live table and phases */
+
+/* While the pool takes SOL, the main thing on the page is the list of coins
+   rather than the status card: people came to see who has money behind them. */
+.pool[data-phase="open"] .coin-row {
+  padding: 16px 18px;
+}
+
+.pool[data-phase="open"] .coin-row__value {
+  font-size: 22px;
+}
+
+.pool[data-phase="open"] .coin-row__ticker {
+  font-size: 19px;
+}
+
+.pool[data-phase="open"] .bar {
+  height: 16px;
+}
+
+/* Column captions stand once at the top rather than in every row. On a narrow
+   screen a row stops being a table row, and the caption comes back. */
+.coin-head {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .coin-head {
+    display: grid;
+    grid-template-columns: 2rem minmax(10rem, 1.1fr) minmax(7rem, auto) minmax(13rem, 1.3fr) minmax(7rem, auto) minmax(5.5rem, auto) 6.6rem 5.4rem;
+    gap: 10px 14px;
+    /* The padding matches the row: otherwise the captions drift against the columns. */
+    padding: 0 18px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(2, 2, 2, 0.5);
+  }
+
+  .coin-head__commits {
+    justify-self: end;
+  }
+
+  /* The "Card" caption sits at the left edge of its column, like the button itself. */
+  .coin-head__card {
+    justify-self: start;
+  }
+
+  .coin-head__drawn,
+  .coin-head__sol {
+    justify-self: start;
+  }
+
+  .coin-row__share--hint {
+    display: none;
+  }
+}
+
+.coin-row__drawn--expected .coin-row__value {
+  color: rgba(2, 2, 2, 0.78);
+}
+
+.coin-row__drawn--expected .coin-row__share {
+  max-width: 11rem;
+}
+
+/* The pool leader is visible at once: a thicker border, the number on purple. */
+.coin-row--lead {
+  box-shadow: 5px 5px 0 var(--qres-purple);
+}
+
+.coin-row--lead .coin-row__rank {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-purple);
+  color: var(--qres-black);
+}
+
+/* A new commit arrived — the row lights up briefly. It is the only animation in
+   the list: it marks an event rather than decorating. */
+.coin-row--fresh {
+  animation: coin-fresh 2.4s ease-out;
+}
+
+@keyframes coin-fresh {
+  0% { background: rgba(175, 143, 255, 0.55); }
+  100% { background: var(--qres-white); }
+}
+
+.pool-coins__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pool-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.pool-live i {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-green);
+  animation: live-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.7); opacity: 0.55; }
+}
+
+/* ------------------------------------------------------- the draw minute */
+
+/* The one minute when everything is decided and nobody knows the result yet. For
+   that moment the card flips to black: you can see an event happening rather than
+   a caption simply changing. */
+.pool[data-phase="locked"] .pool-card {
+  border-color: var(--qres-black);
+  background: var(--qres-black);
+  box-shadow: 10px 10px 0 var(--qres-purple);
+  color: var(--qres-white);
+}
+
+.pool[data-phase="locked"] .pool-card__head {
+  border-bottom-color: rgba(252, 252, 252, 0.35);
+}
+
+.pool[data-phase="locked"] .pool-card__label,
+.pool[data-phase="locked"] .pool-card__note,
+.pool[data-phase="locked"] .pool-stats dt {
+  color: rgba(252, 252, 252, 0.68);
+}
+
+.pool[data-phase="locked"] .pool-stats div {
+  border-color: rgba(252, 252, 252, 0.35);
+}
+
+.pool[data-phase="locked"] .pool-stats dd,
+.pool[data-phase="locked"] .pool-progress__row {
+  color: var(--qres-white);
+}
+
+.pool[data-phase="locked"] .bar {
+  border-color: rgba(252, 252, 252, 0.55);
+  background: rgba(252, 252, 252, 0.12);
+}
+
+.pool[data-phase="locked"] .chip {
+  border-color: var(--qres-white);
+  background: var(--qres-white);
+  /* The card hands its text colour out as white — on a white plate it was invisible. */
+  color: var(--qres-black);
+}
+
+/* While the draw runs, a wave goes down the list of coins: the fate of every row
+   is being decided, and the list is the main thing on screen. */
+.pool[data-phase="locked"] .coin-row {
+  animation: coin-wait 2.8s ease-in-out infinite;
+  animation-delay: calc(var(--row, 0) * 160ms);
+}
+
+@keyframes coin-wait {
+  0%, 62%, 100% { box-shadow: none; }
+  28% { box-shadow: 6px 6px 0 var(--qres-purple); }
+}
+
+.pool[data-phase="locked"] .coin-row--lead {
+  animation: none;
+  box-shadow: 5px 5px 0 var(--qres-purple);
+}
+
+.pool-card__clock--draw {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  color: var(--qres-white);
+}
+
+.pool-card__note--draw {
+  margin-top: 12px;
+}
+
+.draw-word {
+  letter-spacing: -0.01em;
+}
+
+.draw-dots {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.draw-dots i {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--qres-white);
+  background: var(--qres-purple);
+  animation: draw-dot 1.1s ease-in-out infinite;
+}
+
+.draw-dots i:nth-child(2) { animation-delay: 0.16s; }
+.draw-dots i:nth-child(3) { animation-delay: 0.32s; }
+
+@keyframes draw-dot {
+  0%, 100% { transform: translateY(0); background: var(--qres-purple); }
+  50% { transform: translateY(-7px); background: var(--qres-green); }
+}
+
+/* A bar that travels back and forth: the waiting is visible and promises nothing. */
+.draw-scan {
+  position: relative;
+  height: 10px;
+  margin-top: 14px;
+  border: 2px solid var(--qres-white);
+  overflow: hidden;
+}
+
+.draw-scan span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  background: var(--qres-purple);
+  animation: draw-scan 1.9s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+@keyframes draw-scan {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(263%); }
+}
+
+/* ------------------------------------------------------- the buying phase */
+
+/* Here the card is the main element: it shows how much has already been bought. */
+.pool[data-phase="buying"] .pool-card {
+  box-shadow: 10px 10px 0 var(--qres-green);
+}
+
+.bar__fill--bought {
+  background: var(--qres-green);
+}
+
+.coin-row__bought {
+  height: 10px;
+  margin-top: 4px;
+}
+
+/* ------------------------------------------------------- the purchase feed */
+
+.pool-buys {
+  margin-top: 46px;
+}
+
+.buy-list {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.buy-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "when coin sol"
+    "when venue tx";
+  align-items: center;
+  gap: 4px 14px;
+  padding: 10px 14px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  animation: buy-in 0.45s ease-out;
+}
+
+@media (min-width: 760px) {
+  .buy-row {
+    grid-template-columns: 7.5rem minmax(0, 1fr) auto auto auto;
+    grid-template-areas: "when coin sol venue tx";
+  }
+}
+
+@keyframes buy-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.buy-row__when {
+  grid-area: when;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.56);
+}
+
+.buy-row__coin {
+  grid-area: coin;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.buy-row__coin b {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.buy-row__coin span {
+  overflow: hidden;
+  font-size: 13px;
+  color: rgba(2, 2, 2, 0.6);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.buy-row__sol {
+  grid-area: sol;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.buy-row__sol small {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.buy-row__venue {
+  grid-area: venue;
+  justify-self: start;
+  padding: 3px 8px;
+  border: 2px solid var(--qres-black);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.buy-row__tx {
+  grid-area: tx;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--qres-black);
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.buy-row__tx svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pool-empty--slim {
+  padding: 22px 18px;
+}
+
+/* --------------------------------------------- how to check this */
+
+.pool-proof {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 22px;
+  margin-top: 34px;
+  padding: 14px 16px;
+  border: 2px dashed rgba(2, 2, 2, 0.28);
+}
+
+.pool-proof__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pool-proof__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.56);
+}
+
+.pool-proof__value {
+  padding: 4px 8px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--qres-black);
+  cursor: pointer;
+}
+
+.pool-proof__link {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--qres-black);
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+@media (hover: hover) {
+  .pool-proof__value:hover {
+    background: var(--qres-purple);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pool-track__step::before,
+  .pool-track__dot,
+  .pool-track__label {
+    transition: none;
+  }
+
+  .chip i,
+  .pool-toast--sending .pool-toast__icon,
+  .pool-skeleton,
+  .pool-toast,
+  .coin-row--fresh,
+  .pool[data-phase="locked"] .coin-row,
+  .pool-live i,
+  .draw-dots i,
+  .draw-scan span,
+  .buy-row {
+    animation: none;
+  }
+
+  .draw-scan span {
+    width: 100%;
+    opacity: 0.35;
+  }
+
+  .bar__fill {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------- the coin chart on hover */
+
+/* The tooltip hangs over the row and does not change its layout: the list must
+   not jerk while a mouse is being moved down it. */
+.coin-row {
+  position: relative;
+}
+
+.coin-chart {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  left: 3.4rem;
+  display: grid;
+  gap: 6px;
+  /* The width shrinks with the row: on a narrow screen a 13rem tooltip ran past
+     the right edge and half the chart was off frame. */
+  width: min(13rem, calc(100% - 3.4rem - 6px));
+  min-width: 0;
+  padding: 10px 12px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  box-shadow: 6px 6px 0 var(--qres-black);
+  pointer-events: none;
+  animation: coin-chart-in 0.16s ease-out;
+}
+
+@keyframes coin-chart-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.coin-chart__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+  font-size: 13px;
+
+  /* A ticker can be long, and trimming it is better than breaking the row apart. */
+  b {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.coin-chart__price {
+  min-width: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  /* A memecoin price is "$0.000000012345": one word with no spaces that runs past
+     the frame without a break. */
+  overflow-wrap: anywhere;
+}
+
+.coin-chart__change {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.coin-chart__change.is-up { color: #1c7a3c; }
+.coin-chart__change.is-down { color: #b0341d; }
+
+.coin-chart__line {
+  display: block;
+  width: 100%;
+  height: 48px;
+}
+
+.coin-chart__note {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.55);
+}
+
+/* There was no room below — the tooltip goes above the row. */
+.coin-chart--above {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coin-chart {
+    animation: none;
+  }
+}
+
+/* Round verification: the same look as the Solscan link beside it. A button
+   rather than a link, because it opens a dialog rather than an address. */
+.pool-proof__verify {
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}

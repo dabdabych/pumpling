@@ -1,0 +1,51 @@
+@import "../sign-in/sign-in.component";
+
+.confirmation-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+}
+
+.confirmation-box {
+  width: min(700px, 100%);
+  border: 2px solid var(--qres-black);
+  border-radius: 8px;
+  box-shadow: var(--qres-shadow);
+  padding: 38px;
+  color: var(--qres-black);
+  background: var(--qres-white);
+}
+
+.confirmation-box h1 {
+  margin: 0 0 18px;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.confirmation-box p {
+  margin: 0 0 16px;
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+.confirmation-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin-top: 8px;
+  padding: 0 28px;
+  border: 2px solid var(--qres-black);
+  border-radius: 8px;
+  color: var(--qres-white);
+  background: var(--qres-black);
+  text-decoration: none;
+}
+
+.confirmation-btn:hover {
+  color: var(--qres-white);
+  border-color: var(--qres-purple);
+  background: var(--qres-purple);
+}

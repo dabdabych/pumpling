@@ -1,0 +1,44 @@
+/* The layout lives in the template's Tailwind classes; only what utilities cannot
+   express is here. The marquee caret comes from src/qres-landing.css
+   (.typing-caret), shared with the main page and not worth duplicating. */
+
+:host {
+  display: block;
+}
+
+/* The chat inside the card has to fill it entirely, otherwise the inner scroll
+   collapses and the feed starts dragging the whole page with it. */
+app-chat {
+  min-height: 0;
+}
+
+/* The mascot beside the text. The page sets the size: a component with no size
+   fills its element. */
+.soon-intro {
+  gap: 12px;
+}
+
+.soon-mascot {
+  width: 4rem;
+  height: 4rem;
+  /* This mascot has its glasses at mid height and its mouth lower: the newspaper
+     covers the mouth and it looks over the top. The phone does not reach the text
+     on the right and does not drop onto the title when the mascot is above it on a phone. */
+  --mascot-paper-width: 68%;
+  --mascot-paper-left: 16%;
+  --mascot-paper-bottom: -10%;
+  --mascot-phone-width: 36%;
+  --mascot-phone-right: -8%;
+  --mascot-phone-bottom: -6%;
+}
+
+@media (min-width: 640px) {
+  .soon-intro {
+    gap: 28px;
+  }
+
+  .soon-mascot {
+    width: clamp(5.5rem, 11vw, 7.5rem);
+    height: clamp(5.5rem, 11vw, 7.5rem);
+  }
+}

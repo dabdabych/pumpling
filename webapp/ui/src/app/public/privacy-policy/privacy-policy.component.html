@@ -1,0 +1,19 @@
+<!-- The canonical version of the policy: links lead here, search engines index
+     it, and it can be printed. The dialog on the sign-in page shows this same text. -->
+<div class="legal-page">
+  <div class="legal-shell">
+    <a class="legal-brand" routerLink="/" aria-label="PUMPLING home">
+      <img class="legal-brand__mark" src="assets/images/pumpling-mascot.png"
+           alt="" aria-hidden="true">
+      <span class="legal-brand__name">PUMPLING</span>
+    </a>
+
+    <h1 class="legal-title">Privacy Policy</h1>
+
+    <app-privacy-policy-content></app-privacy-policy-content>
+
+    <div class="legal-footer">
+      <button class="legal-cta" type="button" (click)="goBack()">Back</button>
+    </div>
+  </div>
+</div>

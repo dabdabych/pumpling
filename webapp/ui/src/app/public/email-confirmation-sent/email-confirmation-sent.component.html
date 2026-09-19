@@ -1,0 +1,21 @@
+<div class="page-form confirmation-page">
+  <a class="brand-pill" routerLink="/" aria-label="PUMPLING home">
+    <img class="brand-mark" src="assets/images/pumpling-mascot.png"
+           alt="" aria-hidden="true">
+      <span class="brand-copy">
+      <span class="brand-copy__name">PUMPLING</span>
+    </span>
+  </a>
+
+  <div class="main-box"><div class="auth-card">
+    <h1 class="auth-card__title">Confirm your email</h1>
+    <p *ngIf="email; else genericMessage">
+      We sent a confirmation link to <strong>{{ email }}</strong>.
+    </p>
+    <ng-template #genericMessage>
+      <p>We sent a confirmation link to your email address.</p>
+    </ng-template>
+    <p>Your account will become active only after you open that link. The link is valid for 24 hours.</p>
+    <div class="auth-actions"><a class="auth-btn" routerLink="/sign-in">Sign In</a></div>
+  </div></div>
+</div>

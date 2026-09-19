@@ -1,0 +1,387 @@
+services:
+  postgres:
+    image: postgres:16.1
+    container_name: lottery-db
+    shm_size: 256mb
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-crypto_lottery}
+      POSTGRES_USER: ${POSTGRES_USER:-crypto_lottery}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Online123$}
+      PGDATA: ${POSTGRES_PGDATA:-/var/lib/postgresql/data/lottery}
+    volumes:
+      - ${POSTGRES_LOG_DIR:-/var/log/lottery/postgresql/}:/var/log/postgresql
+      - ${POSTGRES_DATA_DIR:-/var/lib/lottery/postgresql/}:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crypto_lottery}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./webapp/backend
+      dockerfile: Dockerfile
+    image: lottery-api:0.0.1
+    container_name: lottery-backend
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://crypto_lottery:Online123$@postgres:5432/crypto_lottery}
+      # The pool page shows the buying window: the value has to match the one the
+      # worker lives by.
+      - EXECUTION_COUNTDOWN_SECONDS=${EXECUTION_COUNTDOWN_SECONDS:-}
+      - LOTTERY_AUTOSTART_GAP_SECONDS=${LOTTERY_AUTOSTART_GAP_SECONDS:-}
+      - LOTTERY_PROGRAM_ID=${LOTTERY_PROGRAM_ID:-${PROGRAM_ID:-4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH}}
+      - LOTTERY_ADMIN_PUBKEY=${LOTTERY_ADMIN_PUBKEY:-${ADMIN_PUBKEY:-4TJdM678kP4hS6KMEoh79T3tANUNctHs7bE62MQSz72F}}
+      - LOTTERY_ADMIN_PUBKEYS=${LOTTERY_ADMIN_PUBKEYS:-${ADMIN_PUBKEYS:-4TJdM678kP4hS6KMEoh79T3tANUNctHs7bE62MQSz72F,CVsNzQNYgiebatxi2a8tBAvkFSXshg3seXgPR7DAziLq,EGDo2JhA2c3QPDQLKV9Umgfn3srkYvRKmfXPAYasDLeJ}}
+      - SWITCHBOARD_RANDOMNESS_ACCOUNT=${SWITCHBOARD_RANDOMNESS_ACCOUNT:-}
+      - VRF_SERVICE_BASE_URL=${VRF_SERVICE_BASE_URL:-http://vrf-service:8787}
+      - VRF_SERVICE_API_KEY=${VRF_SERVICE_API_KEY:-}
+      - VRF_SERVICE_TIMEOUT_SECONDS=${VRF_SERVICE_TIMEOUT_SECONDS:-20.0}
+      - NETWORK=${NETWORK:-mainnet}
+      - SOLANA_HTTP_ENDPOINT=${SOLANA_HTTP_ENDPOINT:-https://api.mainnet-beta.solana.com/}
+      - WALLET_AUTH_CHAIN=${WALLET_AUTH_CHAIN:-solana/mainnet}
+      - OFFCHAIN_API_BASE_URL=${OFFCHAIN_API_BASE_URL:-http://buyer:7657}
+      - OFFCHAIN_API_KEY=${OFFCHAIN_API_KEY:-${API_KEY:-}}
+      - OFFCHAIN_API_TIMEOUT_SECONDS=${OFFCHAIN_API_TIMEOUT_SECONDS:-60.0}
+      - VRF_REVEAL_MIN_DELAY_SECONDS=${VRF_REVEAL_MIN_DELAY_SECONDS:-60}
+      - LOTTERY_HYPE_COUNTDOWN_SECONDS=${LOTTERY_HYPE_COUNTDOWN_SECONDS:-0}
+      - HELIUS_DAS_BASE_URL=${HELIUS_DAS_BASE_URL:-https://mainnet.helius-rpc.com}
+      - HELIUS_API_KEY=${HELIUS_API_KEY:-}
+      - WALLET_AUTH_DOMAIN=${WALLET_AUTH_DOMAIN:-${APP_DOMAIN:-pumpling.xyz}}
+      - WALLET_AUTH_URI=${WALLET_AUTH_URI:-https://${APP_DOMAIN:-pumpling.xyz}}
+      - SMTP_ENABLED=${SMTP_ENABLED:-true}
+      - SMTP_HOST=${SMTP_HOST:-host.docker.internal}
+      - SMTP_PORT=${SMTP_PORT:-2525}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-noreply@qrescrypto.local}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Pumpling}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
+      - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
+      - SMTP_TIMEOUT_SECONDS=${SMTP_TIMEOUT_SECONDS:-10.0}
+      - REGISTRATION_EMAIL_SUBJECT=${REGISTRATION_EMAIL_SUBJECT:-Confirm your Pumpling account}
+      - PASSWORD_RESET_EMAIL_SUBJECT=${PASSWORD_RESET_EMAIL_SUBJECT:-Reset your Pumpling password}
+      - PUBLIC_APP_BASE_URL=${PUBLIC_APP_BASE_URL:-http://localhost:3200}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3200,https://${APP_DOMAIN:-pumpling.xyz},http://${APP_DOMAIN:-pumpling.xyz}}
+      - CHAT_MESSAGE_RATE_LIMIT_COUNT=${CHAT_MESSAGE_RATE_LIMIT_COUNT:-6}
+      - CHAT_MESSAGE_RATE_LIMIT_WINDOW_SECONDS=${CHAT_MESSAGE_RATE_LIMIT_WINDOW_SECONDS:-10}
+      - CHAT_MESSAGE_HOURLY_LIMIT_COUNT=${CHAT_MESSAGE_HOURLY_LIMIT_COUNT:-120}
+      - CHAT_DUPLICATE_MESSAGE_WINDOW_SECONDS=${CHAT_DUPLICATE_MESSAGE_WINDOW_SECONDS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      vrf-service:
+        condition: service_started
+      buyer:
+        condition: service_started
+    restart: unless-stopped
+    expose:
+      - "8000"
+    networks:
+      default:
+      frontend:
+        aliases:
+          - lottery-api
+
+  vrf-service:
+    build:
+      context: ./webapp/backend/vrf-service
+      dockerfile: Dockerfile
+    image: lottery-vrf-service:0.0.1
+    container_name: lottery-vrf-service
+    environment:
+      - PORT=${VRF_SERVICE_PORT:-8787}
+      - VRF_SERVICE_API_KEY=${VRF_SERVICE_API_KEY:-}
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-${SOLANA_HTTP_ENDPOINT:-https://api.mainnet-beta.solana.com/}}
+      - SWITCHBOARD_ON_DEMAND_PROGRAM_ID=${SWITCHBOARD_ON_DEMAND_PROGRAM_ID:-SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv}
+      - SWITCHBOARD_QUEUE=${SWITCHBOARD_QUEUE:-}
+      - SWITCHBOARD_SIGNER_KEYPAIR_JSON=${SWITCHBOARD_SIGNER_KEYPAIR_JSON?required}
+      - VRF_FALLBACK_ATTEMPTS=${VRF_FALLBACK_ATTEMPTS:-2}
+      - RANDOMNESS_ACCOUNT_READY_TIMEOUT_MS=${RANDOMNESS_ACCOUNT_READY_TIMEOUT_MS:-20000}
+      - RANDOMNESS_ACCOUNT_READY_POLL_MS=${RANDOMNESS_ACCOUNT_READY_POLL_MS:-500}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${VRF_SERVICE_HOST_PORT:-8788}:${VRF_SERVICE_PORT:-8787}"
+    expose:
+      - "${VRF_SERVICE_PORT:-8787}"
+
+  events-worker:
+    image: lottery-api:0.0.1
+    container_name: lottery-events-worker
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://crypto_lottery:Online123$@postgres:5432/crypto_lottery}
+      - PROGRAM_ID=${LOTTERY_PROGRAM_ID:-${PROGRAM_ID:-4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH}}
+      - LOTTERY_PROGRAM_ID=${LOTTERY_PROGRAM_ID:-${PROGRAM_ID:-4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH}}
+      - ADMIN_PUBKEY=${LOTTERY_ADMIN_PUBKEY:-${ADMIN_PUBKEY:-4TJdM678kP4hS6KMEoh79T3tANUNctHs7bE62MQSz72F}}
+      - ADMIN_PUBKEYS=${LOTTERY_ADMIN_PUBKEYS:-${ADMIN_PUBKEYS:-4TJdM678kP4hS6KMEoh79T3tANUNctHs7bE62MQSz72F,CVsNzQNYgiebatxi2a8tBAvkFSXshg3seXgPR7DAziLq,EGDo2JhA2c3QPDQLKV9Umgfn3srkYvRKmfXPAYasDLeJ}}
+      - PROGRAM_IDL_PATH=${PROGRAM_IDL_PATH:-/app/idl/lottery.json}
+      - SOLANA_WS_ENDPOINT=${SOLANA_WS_ENDPOINT:-wss://api.mainnet-beta.solana.com/}
+      - SOLANA_HTTP_ENDPOINT=${SOLANA_HTTP_ENDPOINT:-https://api.mainnet-beta.solana.com/}
+      - WORKER_LOG_LEVEL=${WORKER_LOG_LEVEL:-INFO}
+      - WORKER_RECONNECT_DELAY_SECONDS=${WORKER_RECONNECT_DELAY_SECONDS:-3.0}
+      - WORKER_POLL_INTERVAL_SECONDS=${WORKER_POLL_INTERVAL_SECONDS:-10.0}
+      - WORKER_RAW_LOG_DEBUG=${WORKER_RAW_LOG_DEBUG:-false}
+      - PYTHONPATH=/app/webapp/backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./workers:/app
+      - ./webapp/backend:/app/webapp/backend
+    command: ["python", "-m", "events_worker"]
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
+  backfill-worker:
+    build:
+      context: ./workers
+      dockerfile: Dockerfile.backfill
+    container_name: lottery-backfill-worker
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://crypto_lottery:Online123$@postgres:5432/crypto_lottery}
+      - PROGRAM_ID=${LOTTERY_PROGRAM_ID:-${PROGRAM_ID:-4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH}}
+      - LOTTERY_PROGRAM_ID=${LOTTERY_PROGRAM_ID:-${PROGRAM_ID:-4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH}}
+      - PROGRAM_IDL_PATH=${PROGRAM_IDL_PATH:-/app/idl/lottery.json}
+      - SOLANA_HTTP_ENDPOINT=${SOLANA_HTTP_ENDPOINT:-https://api.mainnet-beta.solana.com/}
+      - BACKFILL_LOG_LEVEL=${BACKFILL_LOG_LEVEL:-INFO}
+      - BACKFILL_INTERVAL_SECONDS=${BACKFILL_INTERVAL_SECONDS:-60.0}
+      - BACKFILL_BATCH_LIMIT=${BACKFILL_BATCH_LIMIT:-100}
+      - BACKFILL_MAX_SIGNATURES=${BACKFILL_MAX_SIGNATURES:-500}
+      - BACKFILL_STATE_ID=${BACKFILL_STATE_ID:-}
+      - PYTHONPATH=/app:/app/webapp/backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./workers:/app
+      - ./webapp/backend:/app/webapp/backend
+    restart: unless-stopped
+
+  bet-finalizer-worker:
+    build:
+      context: ./workers
+      dockerfile: Dockerfile.backfill
+    container_name: lottery-bet-finalizer-worker
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://crypto_lottery:Online123$@postgres:5432/crypto_lottery}
+      - SOLANA_HTTP_ENDPOINT=${SOLANA_HTTP_ENDPOINT:-https://api.mainnet-beta.solana.com/}
+      - BET_FINALIZER_LOG_LEVEL=${BET_FINALIZER_LOG_LEVEL:-INFO}
+      - BET_FINALIZER_POLL_INTERVAL_SECONDS=${BET_FINALIZER_POLL_INTERVAL_SECONDS:-5.0}
+      - BET_FINALIZER_BATCH_SIZE=${BET_FINALIZER_BATCH_SIZE:-100}
+      - BET_FINALIZER_ORPHAN_AFTER_SECONDS=${BET_FINALIZER_ORPHAN_AFTER_SECONDS:-300}
+      - PYTHONPATH=/app:/app/webapp/backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./workers:/app
+      - ./webapp/backend:/app/webapp/backend
+    command: ["python", "-m", "bet_finalizer_worker"]
+    restart: unless-stopped
+
+  lottery-phase-worker:
+    build:
+      context: ./workers
+      dockerfile: Dockerfile.backfill
+    container_name: lottery-phase-worker
+    environment:
+      - NETWORK=${NETWORK:-mainnet}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://crypto_lottery:Online123$@postgres:5432/crypto_lottery}
+      - LOTTERY_PROGRAM_ID=${LOTTERY_PROGRAM_ID:-${PROGRAM_ID:-4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH}}
+      - LOTTERY_ADMIN_PUBKEY=${LOTTERY_ADMIN_PUBKEY:-${ADMIN_PUBKEY:-4TJdM678kP4hS6KMEoh79T3tANUNctHs7bE62MQSz72F}}
+      - LOTTERY_ADMIN_PUBKEYS=${LOTTERY_ADMIN_PUBKEYS:-${ADMIN_PUBKEYS:-4TJdM678kP4hS6KMEoh79T3tANUNctHs7bE62MQSz72F,CVsNzQNYgiebatxi2a8tBAvkFSXshg3seXgPR7DAziLq,EGDo2JhA2c3QPDQLKV9Umgfn3srkYvRKmfXPAYasDLeJ}}
+      - PROGRAM_IDL_PATH=${PROGRAM_IDL_PATH:-/app/idl/lottery.json}
+      - SOLANA_HTTP_ENDPOINT=${SOLANA_HTTP_ENDPOINT:-https://api.mainnet-beta.solana.com/}
+      - SWITCHBOARD_ON_DEMAND_PROGRAM_ID=${SWITCHBOARD_ON_DEMAND_PROGRAM_ID:-SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv}
+      - VRF_SERVICE_BASE_URL=${VRF_SERVICE_BASE_URL:-http://vrf-service:8787}
+      - VRF_SERVICE_API_KEY=${VRF_SERVICE_API_KEY:-}
+      - VRF_SERVICE_TIMEOUT_SECONDS=${VRF_SERVICE_TIMEOUT_SECONDS:-20.0}
+      - OFFCHAIN_API_BASE_URL=${OFFCHAIN_API_BASE_URL:-http://buyer:7657}
+      - OFFCHAIN_API_KEY=${OFFCHAIN_API_KEY:-${API_KEY:-}}
+      - OFFCHAIN_API_TIMEOUT_SECONDS=${PHASE_WORKER_OFFCHAIN_API_TIMEOUT_SECONDS:-10.0}
+      - PHASE2_AUTOMATION_ENABLED=${PHASE2_AUTOMATION_ENABLED:-true}
+      - PHASE2_POLL_INTERVAL_SECONDS=${PHASE2_POLL_INTERVAL_SECONDS:-1.0}
+      - PHASE2_CAP_THRESHOLD_SOL=${PHASE2_CAP_THRESHOLD_SOL:-110.95}
+      - PHASE2_INITIAL_WAIT_SECONDS=${PHASE2_INITIAL_WAIT_SECONDS:-60}
+      - PHASE2_REQUEST_RETRY_INTERVAL_SECONDS=${PHASE2_REQUEST_RETRY_INTERVAL_SECONDS:-1.0}
+      - PHASE2_REQUEST_RETRY_BACKOFF_MAX_SECONDS=${PHASE2_REQUEST_RETRY_BACKOFF_MAX_SECONDS:-8.0}
+      - PHASE2_INITIAL_FULFILL_WINDOW_SECONDS=${PHASE2_INITIAL_FULFILL_WINDOW_SECONDS:-10}
+      - PHASE2_INITIAL_FULFILL_ATTEMPTS=${PHASE2_INITIAL_FULFILL_ATTEMPTS:-5}
+      - PHASE2_RETRY_WINDOW_SECONDS=${PHASE2_RETRY_WINDOW_SECONDS:-20}
+      - PHASE2_WORKER_LOG_LEVEL=${PHASE2_WORKER_LOG_LEVEL:-INFO}
+      - LOTTERY_ADMIN_SIGNER_KEYPAIR_JSON=${LOTTERY_ADMIN_SIGNER_KEYPAIR_JSON:-}
+      - LOTTERY_ADMIN_SIGNER_KEYPAIR_PATH=${LOTTERY_ADMIN_SIGNER_KEYPAIR_PATH:-}
+      - LOTTERY_ADMIN_SIGNER_KEYPAIRS_JSON=${LOTTERY_ADMIN_SIGNER_KEYPAIRS_JSON:-}
+      - LOTTERY_ADMIN_SIGNER_KEYPAIR_PATHS=${LOTTERY_ADMIN_SIGNER_KEYPAIR_PATHS:-}
+      - LOTTERY_ADMIN_VRF_CONFIG_JSON=${LOTTERY_ADMIN_VRF_CONFIG_JSON:-}
+      - LOTTERY_AUTOSTART_ENABLED=${LOTTERY_AUTOSTART_ENABLED:-true}
+      - LOTTERY_AUTOSTART_FEE_WALLET=${LOTTERY_AUTOSTART_FEE_WALLET:-EGDo2JhA2c3QPDQLKV9Umgfn3srkYvRKmfXPAYasDLeJ}
+      - LOTTERY_AUTOSTART_KEEPER_WALLET=${LOTTERY_AUTOSTART_KEEPER_WALLET:-6iBJFCS4jMKD8xTj78axawb6r8UASRJaDBz6cKSXx1a9}
+      - LOTTERY_AUTOSTART_MAX_TOTAL_SOL=${LOTTERY_AUTOSTART_MAX_TOTAL_SOL:-111}
+      # The phase durations. Without these lines the worker took its defaults and
+      # the cycle configured in the env file silently did not apply.
+      - LOTTERY_AUTOSTART_PREDICTION_SECONDS=${LOTTERY_AUTOSTART_PREDICTION_SECONDS:-}
+      - LOTTERY_AUTOSTART_GAP_SECONDS=${LOTTERY_AUTOSTART_GAP_SECONDS:-}
+      - EXECUTION_COUNTDOWN_SECONDS=${EXECUTION_COUNTDOWN_SECONDS:-}
+      - CLOSE_LOTTERY_BUFFER_SECONDS=${CLOSE_LOTTERY_BUFFER_SECONDS:-}
+      - START_PURCHASES_DELAY_SECONDS=${START_PURCHASES_DELAY_SECONDS:-}
+      - LOTTERY_HYPE_COUNTDOWN_SECONDS=${LOTTERY_HYPE_COUNTDOWN_SECONDS:-0}
+      - LOTTERY_AUTOSTART_FEE_BPS=${LOTTERY_AUTOSTART_FEE_BPS:-300}
+      - LOTTERY_AUTOSTART_VRF_ALGORITHM_HASH=${LOTTERY_AUTOSTART_VRF_ALGORITHM_HASH:-0x2ec9c530fcd55efd0838bd79245e2543e24f41cd3c2d660eaff43c0387629929}
+      - TELEGRAM_ERROR_BOT_TOKEN=${TELEGRAM_ERROR_BOT_TOKEN:-}
+      - TELEGRAM_ERROR_CHAT_ID=${TELEGRAM_ERROR_CHAT_ID:-}
+      - TELEGRAM_NOTIFICATION_LOG_LEVEL=${TELEGRAM_NOTIFICATION_LOG_LEVEL:-INFO}
+      - TELEGRAM_API_BASE_URL=${TELEGRAM_API_BASE_URL:-https://api.telegram.org}
+      - PYTHONPATH=/app:/app/webapp/backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+      vrf-service:
+        condition: service_started
+      buyer:
+        condition: service_started
+    volumes:
+      - ./workers:/app
+      - ./webapp/backend:/app/webapp/backend
+    command: ["python", "-m", "lottery_phase_worker"]
+    restart: unless-stopped
+    # Logs go to Loki: the "round stuck" and "worker silent" alerts run on them.
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://localhost:3100/loki/api/v1/push"
+        loki-batch-size: "100"
+        loki-retries: "2"
+
+  ui:
+    build:
+      context: ./webapp/ui
+      dockerfile: Dockerfile
+    image: lottery-ui:0.0.1
+    container_name: lottery-ui
+    environment:
+      - APP_DOMAIN=${APP_DOMAIN:-pumpling.xyz}
+      - APP_DOMAIN_ALIASES=${APP_DOMAIN_ALIASES-www.pumpling.xyz}
+      # The cluster for Solscan links: empty means mainnet, `?cluster=devnet` a stand.
+      - SOLANA_EXPLORER_QUERY=${SOLANA_EXPLORER_QUERY-}
+      # Where the "how to check this yourself" link in the verification dialog leads.
+      - VERIFY_DOCS_URL=${VERIFY_DOCS_URL:-https://github.com/qres-crypto/public-docs}
+      - NGINX_ENVSUBST_FILTER=^(APP_DOMAIN|APP_DOMAIN_ALIASES|SOLANA_EXPLORER_QUERY|VERIFY_DOCS_URL)
+      - NGINX_CERT_RELOAD_INTERVAL=${NGINX_CERT_RELOAD_INTERVAL:-12h}
+    ports:
+      - "${UI_HTTP_PORT:-80}:80"
+      - "${UI_HTTPS_PORT:-443}:443"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - certbot_challenges:/var/www/certbot:ro
+    networks:
+      - frontend
+
+  certbot-renew:
+    image: certbot/certbot:v2.7.4
+    container_name: certbot-renew
+    restart: unless-stopped
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /var/lib/letsencrypt:/var/lib/letsencrypt
+      - certbot_challenges:/var/www/certbot
+    entrypoint: >
+      sh -c "trap exit TERM;
+      while :; do
+        echo 'Checking certificate renewal...';
+        certbot renew --quiet --webroot --webroot-path /var/www/certbot || true;
+        echo 'Next check in 12 hours';
+        sleep 12h &
+        wait $$!;
+      done"
+
+  buyer:
+    build:
+      context: .
+      dockerfile: offchain/api/Dockerfile
+    container_name: lottery-buyer
+    environment:
+      - API_PORT=${BUYER_API_PORT:-7657}
+      - API_KEY=${API_KEY:-${OFFCHAIN_API_KEY:-}}
+      - KEEPER_SECRET_KEY=${KEEPER_SECRET_KEY?required}
+      - NETWORK=${NETWORK:-mainnet}
+      - RPC_DEVNET=${RPC_DEVNET:-https://api.devnet.solana.com}
+      - RPC_MAINNET=${RPC_MAINNET:-https://api.mainnet-beta.solana.com}
+      - JUPITER_BASE_URL=${JUPITER_BASE_URL:-https://lite-api.jup.ag}
+      - SLIPPAGE_BPS=${SLIPPAGE_BPS:-300}
+      - PRIORITIZATION_FEE_LAMPORTS=${PRIORITIZATION_FEE_LAMPORTS:-5000}
+      - JUPITER_MAX_ACCOUNTS=${JUPITER_MAX_ACCOUNTS:-64}
+      - JUPITER_ONLY_DIRECT_ROUTES=${JUPITER_ONLY_DIRECT_ROUTES:-0}
+      - SEND_TX_RATE_LIMIT=${SEND_TX_RATE_LIMIT:-4}
+      # Below are the knobs for devnet runs. In production they are unset and the
+      # buyer works with the original numbers: an hour of buying, ten delivery passes.
+      - BUY_WINDOW_MINUTES=${BUY_WINDOW_MINUTES:-}
+      - SEND_ROUNDS=${SEND_ROUNDS:-}
+      - OVERRIDE_N=${OVERRIDE_N:-}
+      - OVERRIDE_SEND_N=${OVERRIDE_SEND_N:-}
+    volumes:
+      - ./logs:/app/logs
+    expose:
+      - "${BUYER_API_PORT:-7657}"
+    restart: unless-stopped
+    stop_grace_period: 60m
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://localhost:3100/loki/api/v1/push"
+        loki-batch-size: "100"
+        loki-retries: "2"
+        loki-timeout: "10s"
+
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: lottery-loki
+    volumes:
+      - ./infra/loki-config.yml:/etc/loki/config.yml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/config.yml
+    ports:
+      - "127.0.0.1:3100:3100"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: lottery-grafana
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      # The alert channel: the same bot as the phase worker (provisioning/alerting).
+      - TELEGRAM_ERROR_BOT_TOKEN=${TELEGRAM_ERROR_BOT_TOKEN:-}
+      - TELEGRAM_ERROR_CHAT_ID=${TELEGRAM_ERROR_CHAT_ID:-}
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  loki_data:
+  grafana_data:
+  certbot_challenges:
+
+networks:
+  frontend:
+    driver: bridge

@@ -1,0 +1,440 @@
+<!-- overflow-x-clip rather than overflow-hidden: the latter makes the element a
+     scroll container, and `position: sticky` on the header inside stops working
+     — checked in a browser, the header travelled away with the page and the
+     section strip was only visible at the very top. `clip` clips the same way
+     without creating a scroll container. -->
+<main #root class="qres-root overflow-x-clip bg-[var(--qres-white)] text-[var(--qres-black)]">
+  <!-- ============================ HEADER ============================ -->
+  <header #siteHeader class="qres-site-header sticky top-0 z-30 px-[16px] sm:px-8">
+    <div class="relative mx-auto w-full max-w-7xl">
+      <div class="qres-header-bar absolute inset-0 translate-x-1 translate-y-1 rounded-sm bg-[var(--qres-black)]"
+           [class.qres-header-bar--hidden]="headerHidden"></div>
+      <div class="qres-header-bar relative flex h-16 items-center justify-between rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)] px-3 sm:px-5"
+           [class.qres-header-bar--hidden]="headerHidden">
+        <a routerLink="/" aria-label="pumpling home" (mouseenter)="logoMascot.onHover()"
+           class="flex shrink-0 items-center gap-3 text-[var(--qres-black)] transition-colors hover:text-[var(--qres-purple)]">
+          <!-- The mark in the header only hops on hover. The mascot by the title
+               comes alive on its own: there it is part of the scene, while here
+               it would distract from the menu. -->
+          <app-mascot-logo #logoMascot [size]="40" data-splash-target></app-mascot-logo>
+          <!-- On narrow screens the wordmark gives way to the actions: the
+               mascot mark is enough to recognise us by. -->
+          <span class="hidden text-base font-semibold leading-none min-[560px]:inline">pumpling</span>
+        </a>
+
+        <!-- my-0 is mandatory: Tailwind is loaded without preflight, so <p>
+             keeps the bootstrap margin-bottom: 1rem. Flexbox centres the box
+             together with that margin, and the line sits 8px above the middle of
+             the header while the logo on the left is exactly centred. -->
+        <p class="my-0 hidden shrink-0 items-center whitespace-nowrap text-lg font-bold leading-none text-[var(--qres-black)] sm:flex lg:text-2xl">
+          <!-- An invisible twin reserves the width of the longest phrase, so the
+               line does not twitch left and right while the characters change. -->
+          <span class="relative inline-block">
+            <span class="invisible" aria-hidden="true">{{ widestPhrase }}</span>
+            <span class="absolute inset-0 flex items-center justify-center">
+              <span>{{ headlineText }}</span>
+              <span class="typing-caret" [class.is-paused]="headlinePhase === 'hold'" aria-hidden="true"></span>
+            </span>
+          </span>
+        </p>
+
+        <div class="flex items-center gap-2 text-sm font-semibold">
+          <nav aria-label="Social links" class="flex items-center gap-2">
+            <a href="https://x.com/pumplingxyz" target="_blank" rel="noreferrer"
+               class="qres-social-link qres-x-link relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-sm border-2 border-[var(--qres-black)] leading-none transition-colors duration-200">
+              <span class="qres-x-layer qres-x-layer-steady"><svg viewBox="0 0 24 24" class="h-4 w-4"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M18.9 2h3.68l-8.04 9.19L24 22h-7.41l-5.8-7.59L4.15 22H.47l8.6-9.84L0 2h7.59l5.24 6.93L18.9 2Zm-1.29 18.1h2.04L6.48 3.8H4.29l13.32 16.3Z"/></svg></span>
+              <span class="qres-x-layer qres-x-layer-main-left"><svg viewBox="0 0 24 24" class="h-4 w-4"><path fill="currentColor" d="M0 2h7.59L24 22h-7.41L0 2Z"/></svg></span>
+              <span class="qres-x-layer qres-x-layer-main-right"><svg viewBox="0 0 24 24" class="h-4 w-4"><path fill="currentColor" d="M18.9 2h3.68L4.15 22H.47L18.9 2Z"/></svg></span>
+              <span class="qres-x-layer qres-x-layer-entry-left"><svg viewBox="0 0 24 24" class="h-4 w-4"><path fill="currentColor" d="M0 2h7.59L24 22h-7.41L0 2Z"/></svg></span>
+              <span class="qres-x-layer qres-x-layer-entry-right"><svg viewBox="0 0 24 24" class="h-4 w-4"><path fill="currentColor" d="M18.9 2h3.68L4.15 22H.47L18.9 2Z"/></svg></span>
+              <span class="sr-only">X</span>
+            </a>
+          </nav>
+          <button type="button" (click)="handleAuthButtonClick()"
+                  class="flex h-10 items-center justify-center rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-black)] px-3 leading-none text-[var(--qres-white)] sm:px-4 transition-colors duration-200 hover:border-[var(--qres-purple)] hover:bg-[var(--qres-purple)]">
+            {{ walletButtonLabel() }}
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- The story steps.
+         The shape repeats the titles of the sections themselves inside the page
+         — a dot, a name, a line — so it reads as part of the page rather than a
+         second title bar under the first.
+         Deliberately moved OUT of the header container: a black backdrop
+         `absolute inset-0` lives there, and inside the container it stretched
+         over the strip too and stuck out from under it. -->
+    <nav aria-label="Page sections" class="qres-section-nav mx-auto hidden w-full max-w-7xl px-1 md:block">
+      <!-- The section names. Their widths differ, so the slider is not tied to
+           them: the indicator below is a continuous track rather than a jump
+           between marks. Forcing "every mark the same width" is the commonest
+           way to break a menu like this, and the first long label breaks it. -->
+      <div class="flex items-center justify-between gap-4">
+        <!-- Back to the hero screen. On the hero itself the button is disabled:
+             there is no point taking somebody where they already are. -->
+        <!-- Grey on the inactive ones is 60% black, 5.6:1. The old 42% gave 2.99:1.
+             On hover the text goes black rather than purple: purple on white is
+             2.5:1, and the "you can go here" signal comes from the changed image. -->
+        <button #navItem type="button" data-nav-label="hero"
+                (click)="goToSection('hero')"
+                [disabled]="activeSection === 'hero'"
+                [attr.aria-current]="activeSection === 'hero' ? 'true' : null"
+                class="qres-nav-item flex items-center gap-2 border-0 bg-transparent p-0 text-xs font-semibold lowercase leading-none tracking-wide transition-colors duration-200 sm:text-sm"
+                [class.is-current]="currentNavSection === 'hero'"
+                [ngClass]="currentNavSection === 'hero'
+                  ? 'cursor-default text-[var(--qres-black)]'
+                  : 'text-[rgba(2,2,2,0.6)] hover:text-[var(--qres-black)]'">
+          <span class="qres-nav-icon" aria-hidden="true">
+            <img ngSrc="assets/images/nav-pumpling.png" width="34" height="34" alt="" class="qres-nav-icon__img">
+            <img ngSrc="assets/images/nav-pumpling-active.png" width="34" height="34" alt="" class="qres-nav-icon__img qres-nav-icon__img--active">
+          </span>
+          pumpling
+        </button>
+
+        <button *ngFor="let section of storySections"
+                #navItem type="button" [attr.data-nav-label]="section.label"
+                (click)="goToSection(section.label)"
+                [disabled]="activeSection === section.label"
+                [attr.aria-current]="activeSection === section.label ? 'true' : null"
+                class="qres-nav-item flex items-center gap-2 border-0 bg-transparent p-0 text-xs font-semibold uppercase leading-none tracking-wide transition-colors duration-200 sm:text-sm"
+                [class.is-current]="currentNavSection === section.label"
+                [ngClass]="currentNavSection === section.label
+                  ? 'cursor-default text-[var(--qres-black)]'
+                  : 'text-[rgba(2,2,2,0.6)] hover:text-[var(--qres-black)]'">
+          <!-- Each section has its own mark, in two forms: ordinary and active.
+               The files are taken by the section label, so the list and the
+               images cannot drift apart when edited. -->
+          <span class="qres-nav-icon" aria-hidden="true">
+            <img [ngSrc]="'assets/images/nav-' + section.label + '.png'" width="34" height="34" alt="" class="qres-nav-icon__img">
+            <img [ngSrc]="'assets/images/nav-' + section.label + '-active.png'" width="34" height="34" alt="" class="qres-nav-icon__img qres-nav-icon__img--active">
+          </span>
+          {{ section.title }}
+        </button>
+      </div>
+
+      <!-- The purple stroke is "you are here": it sits under the item of the
+           current section and takes its width. On a menu transition it goes
+           straight to the target without stopping at the sections the story
+           scrolls through. -->
+      <div #navTrack class="relative mt-2.5 h-[2px] w-full bg-[rgba(2,2,2,0.15)]">
+        <span #navMarker
+              class="qres-nav-marker absolute left-0 top-[-1px] h-[4px] rounded-full bg-[var(--qres-purple)]"
+              [class.qres-nav-marker--animated]="navMarkerAnimated"
+              [style.width.px]="navMarkerBox.width"
+              [style.transform]="'translateX(' + navMarkerBox.x + 'px)'"
+              [style.opacity]="navMarkerBox.width ? 1 : 0"
+              aria-hidden="true"></span>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ============================ HERO (pinned) ============================ -->
+  <!-- The first screen is exactly the window minus the header, from md. The
+       header height is measured by the component (`--qres-header-h`): it depends
+       on the window height, and the hardcoded 174/112 disagreed with it. Inside
+       is a column: the title, the cards and room for the scroll button. The
+       cards take everything left, but no more than 440px and no less than 220px. -->
+  <section #hero id="qres-hero" class="qres-hero relative flex w-full flex-col items-center justify-center bg-[var(--qres-white)] px-[20px] sm:px-8">
+    <!-- The title is the key positioning phrase: a program replaces the person
+         who promises to buy. Under it, the mechanic in one line for anyone
+         seeing the product for the first time. Not a word about the draw here:
+         it is not a reason to come, it is a detail of the machinery.
+         The accent sits on a plate: purple text on white gives 2.5:1, black on
+         purple 8.1:1. The `#heroHeadline` reference hangs on the wrapper so the
+         mascot and the text leave and return as one movement. -->
+    <div #heroHeadline class="qres-hero-headline flex w-full max-w-6xl flex-col items-center justify-center sm:flex-row">
+      <!-- The mascot comes alive now and then: a hop, a glint on the glasses, a phone, a newspaper. -->
+      <app-mascot-logo src="assets/images/hero-mascot.png" [idle]="true"
+                       aria-hidden="true" class="qres-hero-mascot shrink-0"></app-mascot-logo>
+      <div class="qres-hero-text">
+        <h1 class="qres-hero-title m-0 font-semibold">
+          <span class="block">We replace the caller</span>
+          <span class="block">with a <span class="qres-hero-accent">smart contract</span></span>
+        </h1>
+        <p class="qres-hero-lede">
+          Name any Solana memecoin and add SOL. When the pool closes, the SOL goes
+          into public on-chain buys of the participating coins over the next hour.
+        </p>
+      </div>
+    </div>
+
+    <div class="qres-hero-cards grid w-full max-w-7xl grid-cols-1 gap-10 md:grid-cols-2 lg:gap-20">
+      <a #firstCard routerLink="/pool"
+         class="qres-hero-card group relative flex flex-col items-center justify-center overflow-hidden rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)] font-semibold leading-none text-[var(--qres-black)] transition-colors duration-300 hover:border-[var(--qres-purple)] hover:bg-[var(--qres-purple)]">
+        <!-- Candles in the background, coins over them. Brand colours with no
+             transparency and a dark outline on the body: semi-transparent green
+             on white is almost invisible (1.2:1). On hover the card turns purple
+             and purple candles on it would disappear, so they go white. -->
+        <span class="pointer-events-none absolute inset-0 z-0
+                     [--pump-line:rgba(2,2,2,0.3)]
+                     [--pump-bull:#8FFFAF]
+                     [--pump-bear:#AF8FFF]
+                     [--pump-outline:rgba(2,2,2,0.5)]
+                     group-hover:[--pump-bear:#FCFCFC]">
+          <app-pump-card-animation></app-pump-card-animation>
+        </span>
+        <span class="pointer-events-none absolute inset-0 z-10"><app-dex-card-animation></app-dex-card-animation></span>
+        <!-- Smaller than the page title: a card is an action, not a statement.
+             The text stays black on hover too: white on purple gives 2.5:1. -->
+        <span class="relative z-20 text-center text-[clamp(1.5rem,2.9vw,2.5rem)]">Commit SOL</span>
+        <!-- What the pool is doing right now — the same phase as on the pool page (PoolService). -->
+        @if (poolCard$ | async; as card) {
+          @if (card.line) {
+            <span class="relative z-20 mt-4 text-sm font-semibold uppercase tracking-wide opacity-70"
+                  [@lineSwap]="card.phase">{{ card.line }}</span>
+          }
+        }
+      </a>
+
+      <div #secondCard class="qres-hero-card qres-chat-card relative flex overflow-hidden rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)]">
+        <app-chat class="block h-full w-full" [embedded]="true"></app-chat>
+      </div>
+    </div>
+
+    <!-- The scroll hint. The first screen is filled with cards to full height,
+         and without it there is no sign that an explanation lies below. It fades
+         at the start of the timeline: the hero is pinned for the whole story,
+         otherwise the hint would hang over its screens. -->
+    <!-- We remove the border explicitly: Tailwind is loaded without preflight, so
+         <button> keeps the browser's default border — the other buttons on the
+         page set their own and therefore look deliberate, while this one does
+         not. The wobble lives on the inner wrapper: the element itself is moved
+         by GSAP during the story, and two sources of transform on one node would fight. -->
+    <button #scrollCue type="button" (click)="scrollToStory()"
+            aria-label="Scroll to what is it"
+            class="qres-scroll-cue absolute left-1/2 z-30 -translate-x-1/2 border-0 bg-transparent p-2 text-[var(--qres-black)]">
+      <span class="qres-scroll-cue__inner flex items-center justify-center rounded-full border-2 border-[var(--qres-black)]">
+        <!-- A double chevron: one reads as "down", the second adds the direction
+             of movement without needing a caption. -->
+        <svg class="qres-scroll-cue__chevron" viewBox="0 0 32 32"
+             aria-hidden="true" focusable="false">
+          <path d="M8 11l8 8 8-8" fill="none" stroke="currentColor"
+                stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+          <path class="qres-scroll-cue__chevron-trail" d="M8 19l8 8 8-8" fill="none" stroke="currentColor"
+                stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </span>
+    </button>
+
+    <!-- overlay 1: WHAT IS IT -->
+    <section #nextScreen class="pointer-events-none absolute bottom-0 left-0 right-0 top-[-6rem] mx-auto flex w-full max-w-7xl flex-col qres-story-section px-[20px] pb-10 pt-[20px] sm:px-8 sm:pt-6" aria-label="what is it?">
+      <div #sectionHeader class="flex items-center gap-4">
+        <span #sectionDot class="h-3 w-3 shrink-0 rounded-full bg-[var(--qres-black)] sm:h-4 sm:w-4" aria-hidden="true"></span>
+        <span class="block overflow-hidden">
+          <h2 #sectionTitle class="shrink-0 text-2xl font-semibold leading-none sm:text-4xl">WHAT IS IT?</h2>
+        </span>
+        <div #sectionLine class="h-[2px] flex-1 bg-[var(--qres-black)]" aria-hidden="true"></div>
+      </div>
+
+      <!-- A thought experiment: the promise, the doubt, the program. -->
+      <div #sectionCopy class="qres-story-body">
+        <app-story-what></app-story-what>
+      </div>
+
+      <div data-qres-primary-marquee data-story-anim class="qres-marquee mt-auto overflow-hidden border-y-2 border-[var(--qres-black)] py-3 text-sm font-semibold uppercase leading-none sm:text-base" aria-hidden="true">
+        <div class="qres-marquee-track flex w-max items-center gap-7 whitespace-nowrap pr-7">
+          <span *ngFor="let item of marqueeItems" class="flex items-center gap-7">
+            <span>{{ item }}</span>
+            <span class="h-2 w-2 rounded-full bg-[var(--qres-purple)]"></span>
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- overlay 2: HOW IT WORKS -->
+    <section data-qres-copy-section class="pointer-events-none absolute bottom-0 left-0 right-0 top-[-6rem] mx-auto flex w-full max-w-7xl flex-col qres-story-section px-[20px] pb-10 pt-[20px] sm:px-8 sm:pt-6" aria-label="how it works">
+      <div class="flex items-center gap-4">
+        <span data-qres-copy-section-dot class="h-3 w-3 shrink-0 rounded-full bg-[var(--qres-black)] sm:h-4 sm:w-4" aria-hidden="true"></span>
+        <span class="block overflow-hidden">
+          <h2 data-qres-copy-section-title class="shrink-0 text-2xl font-semibold leading-none sm:text-4xl">HOW IT WORKS</h2>
+        </span>
+        <div data-qres-copy-section-line class="h-[2px] flex-1 bg-[var(--qres-black)]" aria-hidden="true"></div>
+      </div>
+
+      <!-- One round through five phases: the scale on top, the phase under it. -->
+      <div class="qres-story-body">
+        <app-story-how [activeStep]="howStep"></app-story-how>
+      </div>
+    </section>
+
+    <!-- overlay 3: QUICK START -->
+    <section data-qres-quick-start class="qres-quick-section pointer-events-none absolute bottom-0 left-0 right-0 top-[-6rem] mx-auto flex w-full max-w-7xl flex-col qres-story-section px-[20px] pb-10 pt-[20px] sm:px-8 sm:pt-6" aria-label="quick start">
+      <div class="flex items-center gap-4">
+        <span data-qres-quick-dot class="h-3 w-3 shrink-0 rounded-full bg-[var(--qres-black)] sm:h-4 sm:w-4" aria-hidden="true"></span>
+        <span class="block overflow-hidden">
+          <h2 data-qres-quick-title class="shrink-0 text-2xl font-semibold uppercase leading-none sm:text-4xl">QUICK START</h2>
+        </span>
+        <div data-qres-quick-line class="h-[2px] flex-1 bg-[var(--qres-black)]" aria-hidden="true"></div>
+      </div>
+
+      <!-- Five steps. The rows share the screen height evenly and the list ends
+           exactly at the bottom of the screen — straight after it, when the story
+           releases the page, comes the black footer. To the right of each step is
+           one line of explanation. -->
+      <div class="qres-quick-list divide-y-2 divide-[var(--qres-black)] border-y-2 border-[var(--qres-black)]">
+        <!-- 01 any coin (falling coins + the ANY cursor) -->
+        <article data-qres-quick-item
+                 data-qres-cursor="any"
+                 class="qres-coin-hover group/qres-memecoin pointer-events-auto relative grid gap-[20px] overflow-hidden qres-quick-row sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-baseline">
+          <span *ngFor="let coin of quickCoins" class="qres-falling-coin" [ngStyle]="coin.ngStyle" aria-hidden="true" [innerHTML]="coin.svg"></span>
+          <div class="qres-quick-num relative z-10 font-semibold leading-none text-[var(--qres-purple)]">01</div>
+          <h3 class="qres-quick-title relative z-10 font-semibold uppercase leading-none">
+            <span class="relative block overflow-hidden py-1">
+              <span class="block transition-transform duration-300 ease-out group-hover/qres-memecoin:-translate-y-[115%]">Pick any memecoin</span>
+            </span>
+          </h3>
+          <p class="qres-quick-desc relative z-10">Any Solana coin, still on the pump.fun curve or already trading on a DEX.</p>
+        </article>
+
+        <!-- 02 add SOL (COMMIT SOL on hover) -->
+        <article #solCommitRow data-qres-quick-item data-qres-sol-commit-row
+                 class="qres-commit-sol-row group/qres-prediction pointer-events-auto relative grid gap-[20px] overflow-hidden qres-quick-row sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-baseline">
+          <div class="qres-quick-num relative z-10 font-semibold leading-none text-[var(--qres-purple)]">02</div>
+          <h3 class="qres-quick-title relative z-10 font-semibold uppercase leading-none">
+            <span class="relative block overflow-hidden py-2">
+              <span class="block transition-transform duration-300 ease-out group-hover/qres-prediction:-translate-y-[120%]">Add SOL</span>
+              <span class="absolute inset-0 z-10 flex translate-y-[120%] items-center gap-4 text-[var(--qres-white)] transition-transform duration-300 ease-out group-hover/qres-prediction:translate-y-0" aria-hidden="true">
+                <span>COMMIT</span><span class="text-[var(--qres-green)]">SOL</span>
+              </span>
+              <span class="qres-commit-sol-fill" aria-hidden="true"></span>
+              <span class="qres-commit-sol-stage" data-qres-sol-commit-stage aria-hidden="true">
+                <svg viewBox="-24 -14 288 100" class="h-full w-full overflow-visible">
+                  <g data-qres-sol-symbol>
+                    <circle data-qres-sol-circle cx="58" cy="36" r="31" fill="none" stroke="var(--qres-white)" stroke-width="3"/>
+                    <path data-qres-sol-bar d="M33 17h58l-10 11H23z" fill="#8FFFAF" stroke="var(--qres-black)" stroke-linejoin="round" stroke-width="2"/>
+                    <path data-qres-sol-bar d="M23 31h58l10 11H33z" fill="#7DE7FF" stroke="var(--qres-black)" stroke-linejoin="round" stroke-width="2"/>
+                    <path data-qres-sol-bar d="M33 45h58L81 56H23z" fill="#AF8FFF" stroke="var(--qres-black)" stroke-linejoin="round" stroke-width="2"/>
+                  </g>
+                </svg>
+              </span>
+            </span>
+          </h3>
+          <p class="qres-quick-desc relative z-10">Commit SOL while the pool is open. It can't be taken back.</p>
+        </article>
+
+        <!-- 03 tell your people (Post it on X on hover) -->
+        <article data-qres-quick-item class="group/qres-share pointer-events-auto relative grid gap-[20px] overflow-hidden qres-quick-row sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-baseline">
+          <div class="qres-quick-num relative z-10 font-semibold leading-none text-[var(--qres-purple)]">03</div>
+          <h3 class="qres-quick-title relative z-10 font-semibold uppercase leading-none">
+            <span class="relative block overflow-hidden py-1">
+              <span class="block transition-transform duration-300 ease-out group-hover/qres-share:-translate-y-[115%]">Share the <span class="text-[var(--qres-purple)]">pool</span></span>
+              <span class="absolute inset-0 flex translate-y-[115%] items-center gap-[0.3em] transition-transform duration-300 ease-out group-hover/qres-share:translate-y-0" aria-hidden="true">
+                Post it on
+                <svg class="qres-quick-x" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M18.9 2h3.68l-8.04 9.19L24 22h-7.41l-5.8-7.59L4.15 22H.47l8.6-9.84L0 2h7.59l5.24 6.93L18.9 2Zm-1.29 18.1h2.04L6.48 3.8H4.29l13.32 16.3Z"/></svg>
+              </span>
+            </span>
+          </h3>
+          <p class="qres-quick-desc relative z-10">Post it. People see the buy coming before it starts.</p>
+        </article>
+
+        <!-- 04 watch the buying (a clock) -->
+        <article data-qres-quick-item class="qres-draw-hover-row group/qres-winner pointer-events-auto relative grid gap-[20px] overflow-hidden qres-quick-row sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-baseline">
+          <div class="qres-quick-num relative z-10 font-semibold leading-none text-[var(--qres-purple)]">04</div>
+          <h3 class="qres-quick-title relative z-10 font-semibold uppercase leading-none">
+            <span class="inline-flex items-center transition-transform duration-300 ease-out group-hover/qres-winner:translate-x-3">
+              <span class="qres-draw-timer-slot relative inline-flex items-center">
+                <span class="qres-draw-timer-word">Watch the <span class="text-[var(--qres-purple)]">buys</span></span>
+                <span class="qres-draw-timer-icon" aria-hidden="true">
+                  <svg viewBox="0 0 64 64" class="h-full w-full">
+                    <circle cx="32" cy="32" r="25" fill="var(--qres-white)" stroke="var(--qres-black)" stroke-width="4"/>
+                    <circle cx="32" cy="32" r="4" fill="var(--qres-purple)"/>
+                    <path class="qres-draw-timer-hand" d="M32 32V16" fill="none" stroke="var(--qres-purple)" stroke-linecap="round" stroke-width="5"/>
+                    <path class="qres-draw-timer-hand qres-draw-timer-hand-secondary" d="M32 32h13" fill="none" stroke="var(--qres-black)" stroke-linecap="round" stroke-width="4"/>
+                  </svg>
+                </span>
+              </span>
+            </span>
+          </h3>
+          <p class="qres-quick-desc relative z-10">One hour of public buys, every one of them on-chain.</p>
+        </article>
+
+        <!-- 05 get tokens (the Let's go cursor): a click leads to the first screen -->
+        <article data-qres-quick-item
+                 class="group/qres-execution pointer-events-auto relative grid gap-[20px] overflow-hidden qres-quick-row transition-[background-color,box-shadow,transform] duration-300 hover:bg-[var(--qres-black)] hover:shadow-[6px_7px_0_var(--qres-purple)] sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-baseline"
+                 role="button" tabindex="0"
+                 data-qres-cursor="go"
+                 (click)="goToSection('hero')"
+                 (keydown.enter)="goToSection('hero')"
+                 (keydown.space)="$event.preventDefault(); goToSection('hero')">
+          <div class="qres-quick-num relative z-10 font-semibold leading-none text-[var(--qres-purple)] transition-colors duration-300 group-hover/qres-execution:text-[var(--qres-green)]">05</div>
+          <h3 class="qres-quick-title relative z-10 font-semibold uppercase leading-none">
+            <span class="relative block overflow-hidden py-1">
+              <span class="relative z-10 block transition-colors duration-300 ease-out group-hover/qres-execution:text-[var(--qres-white)]">
+                Get your <span class="text-[var(--qres-purple)] transition-colors duration-300 ease-out group-hover/qres-execution:text-[var(--qres-green)]">tokens</span>
+              </span>
+              <span class="absolute inset-y-1 left-0 w-full -translate-x-full bg-[var(--qres-black)] transition-transform duration-300 ease-out group-hover/qres-execution:translate-x-0" aria-hidden="true"></span>
+            </span>
+          </h3>
+          <p class="qres-quick-desc qres-quick-desc--last relative z-10">Tokens bought for your coin land in your wallet.</p>
+        </article>
+      </div>
+    </section>
+  </section>
+
+  <!-- ============================ FOOTER ============================ -->
+  <!-- The footer is the last call to action and the links that can be checked.
+       Program ID and GitHub are set in the component (programId, githubUrl);
+       while they are empty, a dash. -->
+  <footer class="qres-footer bg-[var(--qres-black)] text-[var(--qres-white)]">
+    <div class="qres-footer__inner">
+      <div class="qres-footer__top">
+        <a routerLink="/" aria-label="pumpling home" class="qres-footer__brand">
+          <img src="assets/images/pumpling-mascot.png" width="44" height="44" loading="lazy" alt="">
+          <span>pumpling</span>
+        </a>
+        <a href="https://x.com/pumplingxyz" target="_blank" rel="noreferrer" class="qres-footer__x" aria-label="pumpling on X">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M18.9 2h3.68l-8.04 9.19L24 22h-7.41l-5.8-7.59L4.15 22H.47l8.6-9.84L0 2h7.59l5.24 6.93L18.9 2Zm-1.29 18.1h2.04L6.48 3.8H4.29l13.32 16.3Z"/></svg>
+        </a>
+      </div>
+
+      <div class="qres-footer__cta">
+        <p class="qres-footer__headline">Got a coin?<br><span class="qres-footer__plate">Put a pool behind it.</span></p>
+        <a routerLink="/pool" class="qres-footer__button">
+          Commit SOL
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+        </a>
+      </div>
+
+      <dl class="qres-footer__verify">
+        <div>
+          <dt>Program ID</dt>
+          <dd>
+            @if (programId) {
+              <a [href]="'https://solscan.io/account/' + programId + explorerQuery" target="_blank" rel="noreferrer">{{ programId }}</a>
+            } @else {
+              <span class="qres-footer__empty">—</span>
+            }
+          </dd>
+        </div>
+        <div>
+          <dt>GitHub</dt>
+          <dd>
+            @if (githubUrl) {
+              <a [href]="githubUrl" target="_blank" rel="noreferrer">{{ githubUrl.replace('https://', '') }}</a>
+            } @else {
+              <span class="qres-footer__empty">—</span>
+            }
+          </dd>
+        </div>
+      </dl>
+
+      <div class="qres-footer__bottom">
+        <nav aria-label="Footer navigation" class="qres-footer__links">
+          <a routerLink="/archive">Past pools</a>
+          <a routerLink="/privacy-policy">Privacy Policy</a>
+          <a routerLink="/terms">Terms of Use</a>
+        </nav>
+        <span class="qres-footer__copy">© 2026 pumpling · built on Solana</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Plates instead of a cursor over rows 01 and 05 of Quick start. They are
+       driven by quick-start-pointer.ts: mouse only, positioned on entry. -->
+  <div data-qres-cursor-bubble="any" class="qres-cursor-bubble rounded-sm bg-[var(--qres-purple)] px-5 py-3 text-2xl font-semibold uppercase leading-none text-[var(--qres-white)] shadow-[4px_5px_0_var(--qres-black)]"
+       aria-hidden="true">ANY</div>
+  <div data-qres-cursor-bubble="go" class="qres-cursor-bubble rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-green)] px-6 py-4 text-2xl font-semibold leading-none text-[var(--qres-black)] shadow-[5px_6px_0_var(--qres-purple)]"
+       aria-hidden="true">Let's go</div>
+</main>

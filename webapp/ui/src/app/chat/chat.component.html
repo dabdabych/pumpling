@@ -1,0 +1,105 @@
+<main class="chat-page" [class.chat-page--embedded]="embedded" aria-label="General chat">
+  <section class="chat-card">
+    <header class="chat-header">
+      <div>
+        <p class="eyebrow">COMMUNITY</p>
+        <h1>{{ chat?.title || 'Chat' }}</h1>
+      </div>
+      <span class="connection-status" [class.online]="isConnected">
+        <span class="status-dot"></span>
+        {{ isConnected ? 'Online' : 'Connecting…' }}
+      </span>
+    </header>
+
+    <div #scrollContainer class="messages" (scroll)="onScroll()">
+      <div *ngIf="isLoading" class="messages-state">Loading messages…</div>
+      <button *ngIf="isLoadingOlder" class="load-status" type="button" disabled>Loading older messages…</button>
+      <!-- We show the loading error here rather than only in the composer: the
+           composer is hidden from unauthenticated visitors, and without this a
+           guest would see "no messages" instead of "the chat did not load". -->
+      <div *ngIf="!isLoading && loadFailed" class="messages-state messages-state-error" role="alert">
+        Unable to load the chat. Refresh the page and try again.
+      </div>
+      <div *ngIf="!isLoading && !loadFailed && !messages.length" class="messages-state">
+        No messages yet. Start the conversation.
+      </div>
+
+      <article
+        *ngFor="let message of messages; trackBy: trackById"
+        class="message"
+        [class.message-highlighted]="message.id === highlightedMessageId"
+        [attr.data-message-id]="message.id">
+        <div class="message-avatar" aria-hidden="true">{{ message.author.name.slice(0, 1).toUpperCase() }}</div>
+        <div class="message-body">
+          <div class="message-meta">
+            <span class="message-author">{{ message.author.name }}</span>
+            <time>{{ formatTime(message.created_at) }}</time>
+            <button *ngIf="isAuthenticated" type="button" class="reply-button" (click)="selectReply(message)">Reply</button>
+          </div>
+          <button *ngIf="message.reply_to" type="button" class="reply-preview" (click)="jumpToReplyTarget(message)">
+            <strong>{{ message.reply_to.author_name }}</strong>
+            <span>{{ message.reply_to.content }}</span>
+          </button>
+          <p class="message-content">{{ message.content }}</p>
+          <img *ngIf="message.attachmentUrl" class="gif-attachment" [src]="message.attachmentUrl" alt="Image attachment">
+        </div>
+      </article>
+    </div>
+
+    <footer *ngIf="isAuthenticated; else signInComposer" class="composer">
+      <div *ngIf="replyTo" class="composer-reply">
+        <span>Reply to <strong>{{ replyTo.author.name }}</strong></span>
+        <span class="composer-reply-text">{{ replyTo.content }}</span>
+        <button type="button" aria-label="Cancel reply" (click)="cancelReply()">×</button>
+      </div>
+      <p *ngIf="pendingMessageCount" class="delivery-status">Sending {{ pendingMessageCount }} message{{ pendingMessageCount === 1 ? '' : 's' }}…</p>
+      <p *ngIf="isUploadingGif" class="delivery-status">Uploading image…</p>
+      <p *ngIf="errorMessage" class="chat-error" role="alert">{{ errorMessage }}</p>
+      <p *ngIf="failedMessage" class="chat-error" role="alert">
+        Message was not sent.
+        <button type="button" class="retry-button" [disabled]="!isConnected" (click)="retryFailedMessage()">Retry</button>
+      </p>
+      <div class="composer-row">
+        <div class="emoji-control">
+          <button type="button" class="emoji-button" aria-label="Insert emoji" [disabled]="isUploadingGif" (click)="emojiPickerOpen = !emojiPickerOpen">☺</button>
+          <div *ngIf="emojiPickerOpen" class="emoji-picker" role="menu">
+            <button *ngFor="let emoji of emojis" type="button" (click)="addEmoji(emoji)">{{ emoji }}</button>
+          </div>
+        </div>
+        <textarea
+          #messageInput
+          [(ngModel)]="draft"
+          [attr.maxlength]="maxMessageLength"
+          [disabled]="!isConnected || isUploadingGif"
+          rows="1"
+          placeholder="Write a message…"
+          aria-label="New message"
+          (paste)="onPaste($event)"
+          (keydown)="onKeyDown($event)"></textarea>
+        <button
+          type="button"
+          class="send-button"
+          [disabled]="!draft.trim() || draft.trim().length > maxMessageLength || !isConnected || isUploadingGif"
+          (click)="sendMessage()">Send</button>
+      </div>
+      <div class="composer-hint">
+        <span>Enter to send · Shift + Enter for a new line</span>
+        <span>{{ draft.length }}/{{ maxMessageLength }}</span>
+      </div>
+    </footer>
+    <ng-template #signInComposer>
+      <!-- Not a separate "Sign in" button but a disabled input: a guest sees
+           where they would write, and a click opens the same sign-in dialog as the
+           header. The conversation stays put and nobody has to leave the page. -->
+      <footer class="composer composer-sign-in">
+        <button
+          type="button"
+          class="composer-locked"
+          (click)="openSignIn()">
+          <span class="composer-locked-text">Sign in to join the chat</span>
+          <span class="composer-locked-action" aria-hidden="true">Enter</span>
+        </button>
+      </footer>
+    </ng-template>
+  </section>
+</main>

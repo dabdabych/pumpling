@@ -1,0 +1,49 @@
+<div class="grid-page">
+  <div class="grid-header">
+    <h2>Smart Contract Events</h2>
+    <button mat-raised-button color="primary" (click)="refresh()">Refresh</button>
+  </div>
+
+  <div class="grid-wrapper">
+    <table mat-table [dataSource]="dataSource" class="mat-elevation-z1">
+
+      <ng-container matColumnDef="id">
+        <th mat-header-cell *matHeaderCellDef> ID </th>
+        <td mat-cell *matCellDef="let event"> {{event.id}} </td>
+      </ng-container>
+
+      <ng-container matColumnDef="event_name">
+        <th mat-header-cell *matHeaderCellDef> Event </th>
+        <td mat-cell *matCellDef="let event"> {{event.event_name}} </td>
+      </ng-container>
+
+      <ng-container matColumnDef="signature">
+        <th mat-header-cell *matHeaderCellDef> Signature </th>
+        <td mat-cell *matCellDef="let event">
+          <span class="mono">{{event.signature || 'n/a'}}</span>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="data">
+        <th mat-header-cell *matHeaderCellDef> Data </th>
+        <td mat-cell *matCellDef="let event">
+          <pre class="data-cell">{{ event.data | json }}</pre>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="created_at">
+        <th mat-header-cell *matHeaderCellDef> Created </th>
+        <td mat-cell *matCellDef="let event"> {{event.created_at | date:'short'}} </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+    </table>
+  </div>
+
+  <mat-paginator
+    [length]="dataSource.totalCount"
+    [pageSize]="10"
+    [pageSizeOptions]="[5,10,25,50]">
+  </mat-paginator>
+</div>

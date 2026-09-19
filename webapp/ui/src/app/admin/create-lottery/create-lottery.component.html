@@ -1,0 +1,159 @@
+<div class="category-title">
+  <span>Create New Lottery</span>
+</div>
+
+<mat-card>
+  <mat-card-content>
+    <form [formGroup]="lotteryForm" (ngSubmit)="onSubmit()">
+      <div class="form-container">
+        <div class="init-lottery-section">
+          <div class="init-lottery-title">Generate Lottery Timestamp Id</div>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Lottery Name</mat-label>
+            <input matInput
+                   formControlName="name"
+                   placeholder="Enter lottery name"
+                   [disabled]="hasGeneratedLotteryId()"
+                   required>
+            <mat-error *ngIf="lotteryForm.get('name')?.hasError('required')">
+              Lottery name is required
+            </mat-error>
+            <mat-error *ngIf="lotteryForm.get('name')?.hasError('minlength')">
+              Lottery name must be at least 3 characters
+            </mat-error>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Lottery Type</mat-label>
+            <mat-select
+              formControlName="lottery_type"
+              [disabled]="hasGeneratedLotteryId()"
+              (selectionChange)="onLotteryTypeChange()"
+            >
+              <mat-option value="pumpfun">Pump.fun</mat-option>
+              <mat-option value="dex">DEX</mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <div class="end-date-row">
+            <mat-form-field appearance="outline" class="full-width">
+              <mat-label>End Date (Optional)</mat-label>
+              <input matInput
+                     [matDatepicker]="endDatePicker"
+                     [formControl]="endDateControl"
+                     [disabled]="hasGeneratedLotteryId()"
+                     placeholder="Select end date">
+              <mat-datepicker-toggle matSuffix [for]="endDatePicker" [disabled]="hasGeneratedLotteryId()"></mat-datepicker-toggle>
+              <mat-datepicker #endDatePicker></mat-datepicker>
+            </mat-form-field>
+
+            <mat-form-field appearance="outline" class="time-field">
+              <mat-label>End Time</mat-label>
+              <input matInput
+                     [matTimepicker]="endTimePicker"
+                     [formControl]="endTimeControl"
+                     [disabled]="hasGeneratedLotteryId() || !endDateControl.value"
+                     placeholder="Select time">
+              <mat-timepicker-toggle matSuffix [for]="endTimePicker" [disabled]="hasGeneratedLotteryId()"></mat-timepicker-toggle>
+              <mat-timepicker #endTimePicker></mat-timepicker>
+            </mat-form-field>
+          </div>
+          <mat-hint class="end-date-hint">Leave empty for no end date</mat-hint>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Total Limit (SOL)</mat-label>
+            <input matInput
+                   type="number"
+                   formControlName="max_total"
+                   [disabled]="hasGeneratedLotteryId()"
+                   placeholder="Max total deposits in SOL">
+          </mat-form-field>
+
+          <div class="button-group init-lottery-actions">
+            <button mat-raised-button
+                    color="accent"
+                    type="button"
+                    (click)="generateLotteryId()"
+                    [disabled]="isGeneratingLotteryId || hasGeneratedLotteryId() || isBlockedByOpenLottery()">
+              {{ isGeneratingLotteryId ? 'Generating...' : 'Generate New Timestamp Id' }}
+            </button>
+          </div>
+
+          <div *ngIf="isBlockedByOpenLottery()" class="anchor-error">
+            Open {{ (openLotteryType || lotteryForm.get('lottery_type')?.value || 'pumpfun') | uppercase }} lottery already exists (ID: {{ openLotteryId }}, status: {{ openLotteryStatus }}). New ID generation is disabled.
+          </div>
+
+          <div *ngIf="generateError" class="anchor-error">
+            {{ generateError }}
+          </div>
+        </div>
+
+        <div class="init-lottery-section">
+          <div class="init-lottery-title">Initialize Lottery (On-chain)</div>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Lottery Timestamp Id</mat-label>
+            <input matInput
+                   formControlName="lottery_id"
+                   placeholder="Lottery id"
+                   readonly>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Fee Wallet Address</mat-label>
+            <input matInput
+                   formControlName="wallet_fee"
+                   placeholder="Enter fee wallet address"
+                   [disabled]="!lotteryForm.get('lottery_id')?.value">
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Keeper Wallet Address</mat-label>
+            <input matInput
+                   formControlName="wallet_keeper"
+                   placeholder="Enter keeper wallet address"
+                   [disabled]="!lotteryForm.get('lottery_id')?.value">
+          </mat-form-field>
+
+          <div class="wallet-info" *ngIf="connectedWalletAddress">
+            Connected wallet: <span class="monospace">{{ connectedWalletAddress }}</span>
+          </div>
+
+          <div class="button-group init-lottery-actions">
+            <button mat-raised-button
+                    color="accent"
+                    type="button"
+                    (click)="initializeLottery()"
+                    *ngIf="!createdLotteryId"
+                    [disabled]="isInitializingLottery || !lotteryForm.get('lottery_id')?.value || isBlockedByOpenLottery()">
+              {{ isInitializingLottery ? 'Creating...' : 'Create Lottery' }}
+            </button>
+            <button mat-raised-button
+                    color="primary"
+                    type="button"
+                    *ngIf="createdLotteryId"
+                    (click)="goToCreatedLottery()">
+              Go to Lottery
+            </button>
+          </div>
+
+          <div *ngIf="initializeError" class="anchor-error">
+            {{ initializeError }}
+          </div>
+          <pre *ngIf="initializeErrorDetails" class="anchor-error error-details">
+{{ initializeErrorDetails }}
+          </pre>
+          <pre *ngIf="initializeDebug" class="anchor-debug">
+{{ initializeDebug }}
+          </pre>
+
+          <div *ngIf="initializeSuccess" class="anchor-success">
+            {{ initializeSuccess }}
+          </div>
+        </div>
+
+      </div>
+    </form>
+  </mat-card-content>
+</mat-card>

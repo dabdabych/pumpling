@@ -1,0 +1,112 @@
+<section class="verify">
+  <header class="verify__head">
+    <div>
+      <h2 class="verify__title" id="verify-dialog-title">Verify this pool</h2>
+      <p class="verify__lede">Everything the draw stands on. Nothing here asks for trust.</p>
+    </div>
+    <button type="button" class="verify__close" (click)="close()" aria-label="Close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+    </button>
+  </header>
+
+  @if (loading) {
+    <p class="verify__state" role="status">Loading the proof…</p>
+  } @else if (failed || !data) {
+    <p class="verify__state verify__state--bad" role="alert">
+      Could not load the proof right now. The pool account is on Solscan either way.
+    </p>
+  } @else {
+    <!-- 1. What was pinned before the draw -->
+    <div class="verify__row">
+      <p class="verify__label">Committed before the draw</p>
+      @if (data.weights_match === true) {
+        <p class="verify__verdict verify__verdict--ok">The pool account holds the hash of the numbers below</p>
+      } @else if (data.weights_match === false) {
+        <p class="verify__verdict verify__verdict--bad">The hash on chain does not match these numbers</p>
+      } @else {
+        <p class="verify__verdict">Nothing committed yet: the pool is still open</p>
+      }
+      @if (data.weights_payload) {
+        <pre class="verify__code">{{ data.weights_payload }}</pre>
+        <div class="verify__actions">
+          <button type="button" class="verify__copy" (click)="copy(data.weights_payload, 'payload')">
+            {{ copied === 'payload' ? 'Copied' : 'Copy the numbers' }}
+          </button>
+          <button type="button" class="verify__copy" (click)="copy(data.weights_hash_onchain, 'hash')">
+            {{ copied === 'hash' ? 'Copied' : 'Copy the hash' }}
+          </button>
+        </div>
+      }
+    </div>
+
+    <!-- 2. Where the randomness came from -->
+    <div class="verify__row">
+      <p class="verify__label">Randomness</p>
+      @if (data.randomness_source === 'vrf') {
+        <p class="verify__verdict verify__verdict--ok">Drawn from the on-chain randomness account</p>
+      } @else if (data.randomness_source === 'emergency') {
+        <!-- This is the only case where we rolled the dice. It must not be hidden. -->
+        <p class="verify__verdict verify__verdict--bad">
+          The oracle did not answer, so this pool was drawn with the operator's seed
+        </p>
+      } @else {
+        <p class="verify__verdict">Not drawn yet</p>
+      }
+      <dl class="verify__facts">
+        @if (data.vrf_seed) {
+          <div>
+            <dt>Seed</dt>
+            <dd>
+              <button type="button" class="verify__value" (click)="copy(data.vrf_seed, 'seed')">
+                {{ copied === 'seed' ? 'Copied' : short(data.vrf_seed) }}
+              </button>
+            </dd>
+          </div>
+        }
+        @if (data.randomness_account) {
+          <div>
+            <dt>Randomness account</dt>
+            <dd>
+              <button type="button" class="verify__value" (click)="copy(data.randomness_account, 'randomness')">
+                {{ copied === 'randomness' ? 'Copied' : short(data.randomness_account) }}
+              </button>
+            </dd>
+          </div>
+        }
+      </dl>
+    </div>
+
+    <!-- 3. Which algorithm computed the shares -->
+    <div class="verify__row">
+      <p class="verify__label">Shares algorithm</p>
+      <p class="verify__verdict">
+        The pool account carries the fingerprint of the code that turns the seed into shares
+      </p>
+      <dl class="verify__facts">
+        @if (data.vrf_algorithm_hash) {
+          <div>
+            <dt>Algorithm hash</dt>
+            <dd>
+              <button type="button" class="verify__value" (click)="copy(data.vrf_algorithm_hash, 'algo')">
+                {{ copied === 'algo' ? 'Copied' : short(data.vrf_algorithm_hash) }}
+              </button>
+            </dd>
+          </div>
+        }
+        <div>
+          <dt>Pool account</dt>
+          <dd>
+            <button type="button" class="verify__value" (click)="copy(data.lottery_account, 'pool')">
+              {{ copied === 'pool' ? 'Copied' : short(data.lottery_account) }}
+            </button>
+          </dd>
+        </div>
+      </dl>
+    </div>
+
+    <footer class="verify__foot">
+      <a class="verify__link" [href]="docsUrl" target="_blank" rel="noreferrer">How to check this yourself</a>
+      <a class="verify__link" [href]="jsonUrl" target="_blank" rel="noreferrer">Raw data</a>
+    </footer>
+  }
+</section>

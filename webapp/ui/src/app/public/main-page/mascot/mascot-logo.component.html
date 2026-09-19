@@ -1,0 +1,28 @@
+<span #root class="mascot" [style.width.px]="size" [style.height.px]="size" (mouseenter)="onHover()">
+  <span #body class="mascot__body">
+    <img class="mascot__img" [src]="src" [attr.width]="size ?? 256" [attr.height]="size ?? 256" alt="">
+    <!-- The glint runs only over the mascot's silhouette: the mask is the image itself. -->
+    <span #shine class="mascot__shine" aria-hidden="true"
+          [style.-webkit-mask-image]="'url(' + src + ')'"
+          [style.mask-image]="'url(' + src + ')'"></span>
+  </span>
+
+  <!-- The phone: a black body, a green screen, the chart going up. -->
+  <svg #phone class="mascot__phone" viewBox="0 0 24 36" aria-hidden="true">
+    <rect x="1.5" y="1.5" width="21" height="33" rx="3.5" fill="#020202" stroke="#020202" stroke-width="2"/>
+    <rect x="4" y="5" width="16" height="23" rx="1.2" fill="#8FFFAF"/>
+    <path d="M6 23l4-5 3 3 5-7" fill="none" stroke="#020202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M15 14h3v3" fill="none" stroke="#020202" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="9" y="30.5" width="6" height="1.8" rx="0.9" fill="#FCFCFC"/>
+  </svg>
+
+  <!-- The newspaper: a headline, columns of text and a purple plate with a dollar. -->
+  <svg #paper class="mascot__paper" viewBox="0 0 44 30" aria-hidden="true">
+    <path d="M2 3h40v24H2z" fill="#FCFCFC" stroke="#020202" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M22 3v24" stroke="#020202" stroke-width="1.2" opacity=".35"/>
+    <rect x="5" y="6" width="14" height="4" fill="#020202"/>
+    <path d="M5 13.5h14M5 17h14M5 20.5h10M25 17.5h14M25 21h14M25 24h9" stroke="#020202" stroke-width="1.6" stroke-linecap="round" opacity=".7"/>
+    <rect x="25" y="6" width="14" height="8" fill="#AF8FFF" stroke="#020202" stroke-width="1.4"/>
+    <path d="M32 7.2v5.6M33.8 8.6c-.3-.6-1-.9-1.8-.9-1 0-1.8.5-1.8 1.2 0 1.6 3.7.9 3.7 2.5 0 .7-.8 1.2-1.9 1.2-.8 0-1.6-.3-1.9-.9" fill="none" stroke="#020202" stroke-width="1.1" stroke-linecap="round"/>
+  </svg>
+</span>

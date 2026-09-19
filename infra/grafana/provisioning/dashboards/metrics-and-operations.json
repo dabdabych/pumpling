@@ -1,0 +1,2036 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "panels": [
+    {
+      "id": 100,
+      "title": "Lottery overview",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 1,
+      "title": "Lottery activity",
+      "description": "Running = a round started and has not finished yet (a proxy over a 70 minute window, which covers the typical ~50 minute length). For rare events (2 rounds in 12 hours) a timeline reads far better than a rate-based time series. Venue (PUMP/DEX) is not split out yet: lottery.start events carry no venue/pool field. We will add it when they do.",
+      "type": "state-timeline",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 80
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "idle",
+                  "color": "gray",
+                  "index": 0
+                },
+                "1": {
+                  "text": "running",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "gray",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "auto",
+        "rowHeight": 0.9,
+        "alignValue": "center",
+        "legend": {
+          "displayMode": "hidden",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "expr": "((sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"lottery.start\" [70m])) or vector(0)) - (sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"lottery.complete\" [70m])) or vector(0)) - (sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"api.lottery_failed\" [70m])) or vector(0))) > bool 0",
+          "legendFormat": "lottery",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Token buy outcomes / min",
+      "description": "The fate of individual tokens inside rounds: bought, threw an exception, skipped (zero budget).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 1
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "complete"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "skipped (budget=0)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"lottery.token_buy_complete\" [5m]))",
+          "legendFormat": "complete",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"lottery.token_buy_failed\" [5m]))",
+          "legendFormat": "failed",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"lottery.token_skipped_zero_budget\" [5m]))",
+          "legendFormat": "skipped (budget=0)",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Lotteries started (24h)",
+      "description": "How many rounds started over 24 hours.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 9
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"lottery.start\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Lotteries successful (24h)",
+      "description": "Rounds that reached lottery.complete over 24 hours (the successful path, not to be confused with failed). Failed rounds are counted through api.lottery_failed — see Lottery success %.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 9
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"lottery.complete\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Token buys completed (24h)",
+      "description": "How many tokens were bought successfully (lottery.token_buy_complete) over 24 hours.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 9
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"lottery.token_buy_complete\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Token buys failed (24h)",
+      "description": "How many tokens threw an exception in batchBuy over 24 hours.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 9
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"lottery.token_buy_failed\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Tokens skipped — budget=0 (24h)",
+      "description": "Tokens skipped because of a zero budget after the reserves were subtracted. An informational metric, not an error.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 9
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"lottery.token_skipped_zero_budget\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Lottery success %",
+      "description": "The share of successful rounds among FINISHED ones (complete + failed) over 24 hours. In-progress rounds are not in the denominator.",
+      "type": "gauge",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 9
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.8
+              },
+              {
+                "color": "green",
+                "value": 0.95
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"api.lottery_completed\" [24h])) / sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=~\"api.lottery_(completed|failed)\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 101,
+      "title": "Purchase success",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      }
+    },
+    {
+      "id": 9,
+      "title": "Purchase outcomes / min",
+      "description": "Purchases per minute: completed vs abandoned (all causes). The main health indicator for buying.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "completed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "abandoned"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"purchase.completed\" [5m]))",
+          "legendFormat": "completed",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=~\"purchase.abandoned.*\" [5m]))",
+          "legendFormat": "abandoned",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Slippage retry / min",
+      "description": "The instant retry on a slippage error: fired and failed. If slippage_retry_failed is rising, the configured slippage is too low.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "retry triggered"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "retry failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"purchase.slippage_retry\" [5m]))",
+          "legendFormat": "retry triggered",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"purchase.slippage_retry_failed\" [5m]))",
+          "legendFormat": "retry failed",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Purchases completed (24h)",
+      "description": "Total successful purchases over 24 hours.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 22
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.completed\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Purchases abandoned (24h)",
+      "description": "Total purchases that gave up (every abandoned_* cause).",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 22
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=~\"purchase.abandoned.*\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Purchase success %",
+      "description": "The share of completed out of completed + abandoned over 24 hours. The main health indicator for buying. Below 95% is worth digging into.",
+      "type": "gauge",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 22
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.9
+              },
+              {
+                "color": "green",
+                "value": 0.98
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.completed\" [24h])) / sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=~\"purchase.completed|purchase.abandoned.*\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "Pending confirmed (24h)",
+      "description": "Transactions where PostSendError turned out to be a false alarm: the tx did go through. No money was lost.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 22
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.pending_confirmed\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "title": "Venue routing",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      }
+    },
+    {
+      "id": 15,
+      "title": "Venue distribution (24h)",
+      "description": "The share of purchases by venue: pumpfun (bonding curve), dex (Jupiter directly), fallback (pumpfun failed and it switched to dex).",
+      "type": "piechart",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 27
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "pieType": "donut"
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.completed\" | venue=\"pumpfun\" | fallback!=\"true\" [24h]))",
+          "legendFormat": "pumpfun",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.completed\" | venue=\"dex\" | fallback!=\"true\" [24h]))",
+          "legendFormat": "dex",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.completed\" | fallback=\"true\" [24h]))",
+          "legendFormat": "fallback (pf→dex)",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "Venue purchases / min",
+      "description": "The rate of purchases by venue in real time. When pumpfun drops, dex rises (the fallback).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 8,
+        "y": 27
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"purchase.completed\" | venue=\"pumpfun\" | fallback!=\"true\" [5m]))",
+          "legendFormat": "pumpfun",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"purchase.completed\" | venue=\"dex\" | fallback!=\"true\" [5m]))",
+          "legendFormat": "dex",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"purchase.completed\" | fallback=\"true\" [5m]))",
+          "legendFormat": "fallback",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Pumpfun completed (24h)",
+      "description": "Direct purchases on the pump.fun bonding curve over 24 hours.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 35
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.completed\" | venue=\"pumpfun\" | fallback!=\"true\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "title": "DEX completed (24h)",
+      "description": "Direct purchases through Jupiter (the token has already graduated) over 24 hours.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 35
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "purple"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.completed\" | venue=\"dex\" | fallback!=\"true\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "title": "Fallback pf→dex (24h)",
+      "description": "Purchases where pumpfun failed before sending and the system switched to Jupiter. Yellow at 3+, red at 10+.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 35
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"buy.fallback.pumpfun_to_dex\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "title": "Fallback rate %",
+      "description": "The share of purchases that finished through the fallback, out of all completed. A high percentage means pumpfun fails often.",
+      "type": "gauge",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 35
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.3
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "(sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"buy.fallback.pumpfun_to_dex\" [24h])) or vector(0)) / sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.completed\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "title": "Retry & recovery",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      }
+    },
+    {
+      "id": 21,
+      "title": "Retry phase activity / min",
+      "description": "The retry phase: how many attempts started, how many succeeded, how many failed. High attempts with low success means RPC or liquidity has degraded.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "attempt"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "success"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"purchase.retry_attempt\" [5m]))",
+          "legendFormat": "attempt",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"purchase.retry_success\" [5m]))",
+          "legendFormat": "success",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"purchase.retry_failed\" [5m]))",
+          "legendFormat": "failed",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "Deferred & window expired / min",
+      "description": "deferred_to_retry means the purchase went into the retry buffer. window_expired means the retry window ran out and the purchase was given up. A rise in the second means the retry buffer is too short.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "deferred"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "window expired"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"purchase.deferred_to_retry\" [5m]))",
+          "legendFormat": "deferred",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"purchase.abandoned_window_expired\" [5m]))",
+          "legendFormat": "window expired",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "title": "Retry attempts (24h)",
+      "description": "Total retry attempts over 24 hours.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 48
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.retry_attempt\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "title": "Retry succeeded (24h)",
+      "description": "Retry attempts that saved a purchase.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 48
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.retry_success\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "title": "Retry success %",
+      "description": "The share of successful retries among FINISHED retry attempts (success + failed). In-flight attempts are not in the denominator. A low value means retries are not helping and the problem is systemic.",
+      "type": "gauge",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 48
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "green",
+                "value": 0.8
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.retry_success\" [24h])) / sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=~\"purchase.retry_(success|failed)\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "title": "Slippage retries triggered (24h)",
+      "description": "How many times the instant retry fired on a slippage error over 24 hours.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 48
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              }
+            ]
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"purchase.slippage_retry\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "title": "Send operations",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      }
+    },
+    {
+      "id": 27,
+      "title": "Send rounds / min",
+      "description": "Token deliveries to recipients: successful batches, failed batches, empty rounds (nothing to send).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 53
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "completed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "empty round"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"send.batch_completed\" [5m]))",
+          "legendFormat": "completed",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"send.batch_failed\" [5m]))",
+          "legendFormat": "failed",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"send.round_empty\" [5m]))",
+          "legendFormat": "empty round",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "title": "Send edge cases / min",
+      "description": "Special cases: compute limit split (the batch was too large), carry-forward (balance=0, postponed), last-round retry success (saved in the final round).",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 53
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"send.compute_limit_split\" [5m]))",
+          "legendFormat": "compute split",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"send.carry_forward\" [5m]))",
+          "legendFormat": "carry forward",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"send.last_round_retry_success\" [5m]))",
+          "legendFormat": "last-round retry ok",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "title": "Sends completed (24h)",
+      "description": "Successful batch deliveries over 24 hours.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 61
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"send.batch_completed\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "title": "Sends failed (24h)",
+      "description": "Failed batch deliveries over 24 hours. Any value > 0 means some recipients did not get their tokens.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 61
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"send.batch_failed\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "title": "Send success %",
+      "description": "The share of successful batch deliveries. A critical metric: whether the tokens reach the people who backed a coin depends on it.",
+      "type": "gauge",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 61
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.95
+              },
+              {
+                "color": "green",
+                "value": 0.99
+              }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"send.batch_completed\" [24h])) / sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=~\"send.batch_(completed|failed)\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "title": "Carry-forward (24h)",
+      "description": "A send was postponed because balance=0 (the buying is still running). Normal for early rounds; a rise towards the end of a round is a problem.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 61
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"send.carry_forward\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "title": "Last-round retry ok (24h)",
+      "description": "A last-chance retry in the final round saved a delivery. Every value is one delivery rescued.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 61
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"send.last_round_retry_success\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "title": "Compute limit splits (24h)",
+      "description": "A batch exceeded the compute limit and was split into smaller parts. Up to 5 a day is normal; more means the default batch size should go up.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 61
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              }
+            ]
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"send.compute_limit_split\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 105,
+      "title": "Service & batch lifecycle",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 65
+      }
+    },
+    {
+      "id": 35,
+      "title": "Batch lifecycle / min",
+      "description": "batch.init (start), batch.retry_start (the retry window opening), batch.complete (finish). The gap between init and complete is the batch duration.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 66
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          }
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"batch.init\" [5m]))",
+          "legendFormat": "init",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"batch.retry_start\" [5m]))",
+          "legendFormat": "retry start",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"batch.complete\" [5m]))",
+          "legendFormat": "complete",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "title": "API events / min",
+      "description": "The API layer: finished and failed /execute calls, plus internal endpoint errors.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 66
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "lottery completed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "lottery failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "execute error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"api.lottery_completed\" [5m]))",
+          "legendFormat": "lottery completed",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"api.lottery_failed\" [5m]))",
+          "legendFormat": "lottery failed",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate({container_name=\"lottery-buyer\"} | json | event=\"api.execute_error\" [5m]))",
+          "legendFormat": "execute error",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 37,
+      "title": "Batches started (24h)",
+      "description": "batch.init — how many batch purchases started over 24 hours (one per token per round).",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 74
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"batch.init\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 38,
+      "title": "Batches completed (24h)",
+      "description": "batch.complete — how many batch purchases reached the finish.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 74
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"batch.complete\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 39,
+      "title": "API lotteries completed (24h)",
+      "description": "Fire-and-forget rounds that the backend marked finished through the API.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 74
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "green"
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=\"api.lottery_completed\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "title": "API errors (24h)",
+      "description": "api.lottery_failed + api.execute_error + api.state_read_error. Anything > 0 is a problem with the API integration.",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 74
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "0"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container_name=\"lottery-buyer\"} | json | event=~\"api.lottery_failed|api.execute_error|api.state_read_error\" [24h]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 106,
+      "title": "Info logs",
+      "type": "row",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 78
+      }
+    },
+    {
+      "id": 41,
+      "title": "Info & debug logs",
+      "description": "Every info and debug log line from the buyer. Filter by event for a particular event type, and by lotteryId for a particular round.",
+      "type": "logs",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 79
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "targets": [
+        {
+          "expr": "{container_name=\"lottery-buyer\"} | json | level=~\"info|debug\"",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "wrapLogMessage": true,
+        "dedupStrategy": "none"
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "buyer",
+    "solana",
+    "metrics"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Metrics & Operations",
+  "uid": "buyer-metrics",
+  "version": 1
+}

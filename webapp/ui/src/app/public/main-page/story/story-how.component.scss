@@ -1,0 +1,704 @@
+/* ============================================================
+   How it works: the round scale on top, five phases under it.
+
+   The phases sit stacked in one cell and are switched by the story timeline.
+   The card on the right is the same pumpling pool card in different phases: that
+   shows it is one round rather than five different screens.
+   ============================================================ */
+:host {
+  display: block;
+  height: 100%;
+}
+
+.how {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ------------------------------------------------------ the round scale */
+.track {
+  position: relative;
+  flex: 0 0 auto;
+  height: 64px;
+  margin: clamp(10px, 2.6vh, 28px) 10px 0;
+}
+
+.track__line {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: rgba(2, 2, 2, 0.12);
+}
+
+.track__fill {
+  position: absolute;
+  inset: 0;
+  background: var(--qres-purple);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+}
+
+.track__nodes {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.track__node {
+  position: absolute;
+  top: 26px;
+  translate: -50% 0;
+}
+
+.track__dot {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+}
+
+.track__label {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  translate: -50% 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  /* Future phases are 60% black, 5.6:1. The current and past ones are black. */
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.track__label b {
+  margin-right: 3px;
+  font-weight: 700;
+}
+
+.track__node:first-child .track__label {
+  left: 0;
+  translate: none;
+}
+
+.track__node:last-child .track__label {
+  left: auto;
+  right: 0;
+  translate: none;
+}
+
+.track__ticks {
+  position: absolute;
+  top: 48px;
+  left: 0;
+  right: 0;
+}
+
+.track__ticks span {
+  position: absolute;
+  translate: -50% 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.track__ticks span:first-child {
+  translate: 0 0;
+}
+
+.track__ticks span:last-child {
+  translate: -100% 0;
+}
+
+/* Captions for the scale segments — only in the column layout. */
+.track__segments {
+  position: absolute;
+  top: 42px;
+  left: 0;
+  right: 0;
+  display: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Two hours out of three: the pool is open for 125 minutes, then an hour of buying. */
+.track__segments span:first-child {
+  width: 66.667%;
+}
+
+.track__segments span:last-child {
+  width: 33.333%;
+  text-align: right;
+}
+
+/* -------------------------------------------------------------- the phases */
+.how__stage {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.scene {
+  grid-area: 1 / 1;
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  align-items: center;
+  column-gap: clamp(24px, 4vw, 72px);
+  min-height: 0;
+  font-size: clamp(11px, min(1.15vw, 2.05vh), 17px);
+}
+
+.scene__copy {
+  max-width: 34rem;
+}
+
+.scene__title {
+  margin: 0;
+  font-size: clamp(1.75rem, min(3.7vw, 6.2vh), 3.6rem);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+.scene__plate {
+  padding: 0 0.1em;
+  background: var(--qres-purple);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.scene__text {
+  max-width: 30em;
+  margin: clamp(10px, 2.2vh, 20px) 0 0;
+  font-size: clamp(15px, min(1.3vw, 2.3vh), 19px);
+  font-weight: 500;
+  line-height: 1.45;
+  /* 72% black is 8.9:1. */
+  color: rgba(2, 2, 2, 0.72);
+}
+
+.scene__note {
+  max-width: 34em;
+  margin: clamp(10px, 2vh, 18px) 0 0;
+  padding: 10px 14px;
+  border-left: 4px solid var(--qres-purple);
+  background: rgba(175, 143, 255, 0.12);
+  font-size: clamp(13px, min(1.05vw, 1.9vh), 15px);
+  line-height: 1.5;
+  color: rgba(2, 2, 2, 0.78);
+}
+
+/* ------------------------------------------------------ the pool card */
+.pcard {
+  justify-self: center;
+  width: min(30em, 100%);
+  padding: 1.1em 1.25em 1.2em;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 0.6em 0.6em 0 var(--qres-purple);
+  color: var(--qres-black);
+}
+
+.pcard__head {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding-bottom: 0.75em;
+  border-bottom: 2px solid var(--qres-black);
+}
+
+.pcard__id {
+  font-size: 1.05em;
+  font-weight: 700;
+}
+
+.pcard__meta {
+  margin-left: auto;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.pcard__meta b {
+  color: var(--qres-black);
+}
+
+.pcard__big {
+  margin: 0.7em 0 0.6em;
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.pcard__big b {
+  margin-right: 0.15em;
+  font-size: 2.1em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.pcard__label {
+  margin: 0.9em 0 0.5em;
+  font-size: 0.78em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.pcard__foot {
+  margin: 0.9em 0 0;
+  padding-top: 0.7em;
+  border-top: 2px dashed rgba(2, 2, 2, 0.2);
+  font-size: 0.88em;
+  font-weight: 600;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.28em 0.6em;
+  border: 2px solid var(--qres-black);
+  font-size: 0.75em;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.chip i {
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chip svg {
+  width: 1.15em;
+  height: 1.15em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chip--open,
+.chip--sent {
+  background: var(--qres-green);
+  color: var(--qres-black);
+}
+
+.chip--locked {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+.chip--buying {
+  background: var(--qres-purple);
+  color: var(--qres-black);
+}
+
+.coin {
+  flex: 0 0 auto;
+  width: 1.9em;
+  height: 1.9em;
+}
+
+/* ------------------------------------------------------------- rows */
+.hrows {
+  display: grid;
+  gap: 0.5em;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hrow {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  min-width: 0;
+  padding: 0.5em 0.7em;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  font-size: 0.95em;
+}
+
+.hrow__amount {
+  min-width: 5.4em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hrow__ticker {
+  font-weight: 700;
+}
+
+.hrow__wallet {
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.hrow--bar .hrow__ticker {
+  min-width: 4.4em;
+}
+
+.bar {
+  flex: 1 1 auto;
+  min-width: 3em;
+  height: 0.85em;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  overflow: hidden;
+}
+
+.bar__fill {
+  display: block;
+  height: 100%;
+  background: var(--qres-purple);
+  box-shadow: inset -2px 0 0 var(--qres-black);
+  transform-origin: 0 50%;
+}
+
+.bar__fill--green {
+  background: var(--qres-green);
+}
+
+.hrow__sol {
+  min-width: 5.8em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.hrow__sol s {
+  margin-right: 0.3em;
+  font-weight: 500;
+  color: rgba(2, 2, 2, 0.55);
+}
+
+/* ------------------------------------------------ the price before buying */
+.spark {
+  margin-top: 0.9em;
+  padding: 0.6em 0.7em 0.4em;
+  border: 2px dashed rgba(2, 2, 2, 0.25);
+}
+
+.spark__head {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  margin-bottom: 0.35em;
+}
+
+.spark__label {
+  font-size: 0.85em;
+  font-weight: 700;
+}
+
+.spark__price {
+  /* The price number must not jump in width while the digits change. */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.spark__chart {
+  display: block;
+  width: 100%;
+  height: 4.2em;
+  overflow: hidden;
+}
+
+.spark__note {
+  margin-left: auto;
+  padding: 0.15em 0.4em;
+  background: var(--qres-purple);
+  font-size: 0.75em;
+  font-weight: 700;
+}
+
+/* --------------------------------------------------------- purchases */
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 254 / 64;
+  margin-top: 0.8em;
+}
+
+.buyprog {
+  display: grid;
+  gap: 0.4em;
+  margin-top: 0.6em;
+}
+
+.buyprog__text {
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+.buyprog__text b {
+  font-size: 1.15em;
+}
+
+.buyprog .bar {
+  flex: none;
+  height: 1em;
+}
+
+.hrows--tx {
+  margin-top: 0.8em;
+  gap: 0.4em;
+}
+
+.hrow--tx {
+  padding: 0.4em 0.6em;
+  font-size: 0.88em;
+}
+
+.hrow__buy {
+  padding: 0.15em 0.45em;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-green);
+  font-size: 0.78em;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.hrow__time {
+  min-width: 3em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+/* --------------------------------------------------------- delivery */
+.hrow--payout .hrow__wallet--strong {
+  margin-left: 0;
+  min-width: 5.2em;
+  font-weight: 600;
+  color: var(--qres-black);
+}
+
+.hrow__put {
+  min-width: 3.6em;
+  font-size: 0.85em;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.hrow__tokens {
+  min-width: 3.6em;
+  text-align: right;
+}
+
+/* ------------------------------------- as a column: phone, reduced motion */
+:host-context(.qres-story--static) {
+  height: auto;
+}
+
+:host-context(.qres-story--static) .how {
+  height: auto;
+}
+
+:host-context(.qres-story--static) .track__fill {
+  transform: scaleX(1);
+}
+
+:host-context(.qres-story--static) .track__dot {
+  background: var(--qres-black);
+}
+
+:host-context(.qres-story--static) .track__label {
+  color: var(--qres-black);
+}
+
+/* On a phone five captions overlapped on the narrow scale: three nodes sit in
+   the last third. We keep the dots and the times, and give the meaning of the
+   scale — "open for 2 hours, an hour of buying" — as segment captions. */
+:host-context(.qres-story--static) .track__label {
+  display: none;
+}
+
+:host-context(.qres-story--static) .track {
+  height: 58px;
+  margin-top: 8px;
+}
+
+:host-context(.qres-story--static) .track__line {
+  top: 10px;
+}
+
+:host-context(.qres-story--static) .track__node {
+  top: 4px;
+}
+
+:host-context(.qres-story--static) .track__ticks {
+  top: 28px;
+}
+
+:host-context(.qres-story--static) .track__segments {
+  display: flex;
+}
+
+:host-context(.qres-story--static) .how__stage {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  margin-top: 16px;
+}
+
+:host-context(.qres-story--static) .scene {
+  grid-template-columns: minmax(0, 1fr);
+  hrow-gap: 20px;
+  font-size: clamp(12px, 3.6vw, 15px);
+}
+
+:host-context(.qres-story--static) .pcard {
+  justify-self: start;
+  width: min(30em, calc(100% - 0.6em));
+}
+
+:host-context(.qres-story--static) .scene__title {
+  font-size: clamp(1.625rem, 7.4vw, 2.25rem);
+}
+
+/* --------------------------------------------- the live scenes */
+
+/* A thin pool fill bar under the large total. */
+/* The pool fill bar goes on its own row rather than inside a coin row: `.bar`
+   stretches for a flex row and in a block it grew to the full height. */
+.bar--slim {
+  display: block;
+  flex: none;
+  width: 100%;
+  height: 0.7em;
+  margin: 0.6em 0 0.2em;
+}
+
+/* The commit feed and the purchase feed.
+   A new row does not appear with a jerk: it unrolls at the top, so the
+   neighbouring rows do not jump but slide down with it. The list holds one row
+   more than is visible and the bottom one travels past the edge — otherwise
+   something would visibly vanish at the bottom each time.
+   The row height comes from the component (`--row-h`): it depends on the card's
+   scale and cannot be computed in styles. */
+.hrows--feed,
+.hrows--tx {
+  --row-gap: 0.5em;
+  display: block;
+  /* Exactly three rows: two full steps plus the height of the last. */
+  height: calc(2 * var(--row-step, 2.65em) + var(--row-h, 2.15em));
+  overflow: hidden;
+}
+
+.hrows--feed .hrow,
+.hrows--tx .hrow {
+  margin-bottom: var(--row-gap);
+  overflow: hidden;
+}
+
+.hrows--feed .hrow:first-child,
+.hrows--tx .hrow:first-child {
+  /* Acceleration and braking rather than a jerk at the start: at its peak a row
+     moves five times slower than with ease-out and the feed reads as a stream. */
+  animation: feed-in 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes feed-in {
+  from {
+    height: 0;
+    margin-bottom: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--row-h);
+    margin-bottom: var(--row-gap);
+    opacity: 1;
+  }
+}
+
+.chip--locked-soft {
+  background: var(--qres-purple);
+}
+
+/* The candles accumulate one by one, like purchases over the hour. */
+[data-how-candle] {
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+[data-how-candle].is-shown {
+  opacity: 1;
+}
+
+/* A row whose tokens have already been sent. */
+.hrow--payout.is-sent .hrow__tokens {
+  color: var(--qres-black);
+}
+
+.hrow--payout .bar__fill {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hrow--feed,
+  [data-how-candle],
+  .hrow--tx,
+  .hrows--feed .hrow:first-child,
+  .hrows--tx .hrow:first-child {
+    animation: none;
+    transition: none;
+    opacity: 1;
+  }
+}
+
+/* The buying card header: the round's three coins stand side by side, so it is
+   clear we are not buying just one. */
+.pcard__coins {
+  display: inline-flex;
+  align-items: center;
+}
+
+.pcard__coins .coin {
+  margin-right: -0.45em;
+  border-radius: 50%;
+  background: var(--qres-white);
+}
+
+.pcard__coins .coin:last-child {
+  margin-right: 0.2em;
+}
+
+.pcard__label--chart {
+  margin-bottom: 0.2em;
+}
+
+/* Which coin was bought in this row. */
+.hrow__coin {
+  padding: 0.1em 0.35em;
+  border: 2px solid var(--qres-black);
+  font-size: 0.72em;
+  font-weight: 700;
+  white-space: nowrap;
+}

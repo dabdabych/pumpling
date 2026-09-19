@@ -1,0 +1,18 @@
+<div class="page-form confirmation-page">
+  <a class="brand-pill" routerLink="/" aria-label="PUMPLING home">
+    <img class="brand-mark" src="assets/images/pumpling-mascot.png"
+           alt="" aria-hidden="true">
+      <span class="brand-copy">
+      <span class="brand-copy__name">PUMPLING</span>
+    </span>
+  </a>
+
+  <div class="main-box"><div class="auth-card" [class.confirmation-box--error]="status === 'error'">
+    <h1 class="auth-card__title">{{ status === 'success' ? 'Email confirmed' : status === 'error' ? 'Confirmation failed' : 'Confirming email' }}</h1>
+    <p>{{ message }}</p>
+    <div class="auth-actions" *ngIf="status === 'success' || status === 'error'">
+      <a *ngIf="status === 'success'" class="auth-btn" routerLink="/sign-in">Sign in</a>
+      <a *ngIf="status === 'error'" class="auth-btn" routerLink="/sign-up">Create account</a>
+    </div>
+  </div></div>
+</div>

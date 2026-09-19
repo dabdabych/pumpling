@@ -1,0 +1,28 @@
+<div class="qres-confirm">
+  <button class="qres-confirm__close" type="button" [mat-dialog-close]="false" aria-label="Close">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" /></svg>
+  </button>
+
+  <h2 class="qres-confirm__title" id="qres-confirm-title">{{ data.title || 'Are you sure?' }}</h2>
+
+  <div class="qres-confirm__message">
+    <span *ngIf="isString(data.message)" [innerHTML]="data.message"></span>
+    <ng-container *ngIf="!isString(data.message)"
+                  [ngTemplateOutlet]="data.message"
+                  [ngTemplateOutletContext]="data"></ng-container>
+  </div>
+
+  <div class="qres-confirm__actions">
+    <!-- Focus on cancel first: Enter out of habit must not perform an action
+         somebody has not read yet. -->
+    <button class="qres-confirm__btn" type="button" [mat-dialog-close]="false" cdkFocusInitial>
+      {{ data.cancel.title }}
+    </button>
+    <button class="qres-confirm__btn qres-confirm__btn--primary"
+            [class.qres-confirm__btn--danger]="data.confirm.color === 'warn'"
+            type="button"
+            [mat-dialog-close]="true">
+      {{ data.confirm.title }}
+    </button>
+  </div>
+</div>

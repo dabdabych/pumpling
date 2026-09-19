@@ -1,0 +1,27 @@
+.grid-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.grid-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.grid-wrapper {
+  overflow: auto;
+}
+
+.data-cell {
+  margin: 0;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mono {
+  font-family: monospace;
+  font-size: 12px;
+}

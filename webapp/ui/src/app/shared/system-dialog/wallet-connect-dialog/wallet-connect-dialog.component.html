@@ -1,0 +1,49 @@
+<div class="wallet-connect-dialog">
+  <div class="wallet-connect-dialog__header">
+    <div>
+      <h1 class="wallet-connect-dialog__title">Connect Wallet</h1>
+      <p class="wallet-connect-dialog__subtitle">Choose a Solana wallet to continue.</p>
+    </div>
+    <button
+      class="wallet-connect-dialog__close"
+      type="button"
+      [mat-dialog-close]="undefined"
+      aria-label="Close wallet selection">
+      ×
+    </button>
+  </div>
+
+  <div class="wallet-connect-dialog__list">
+    <button
+      *ngFor="let wallet of data.wallets; trackBy: trackWallet"
+      class="wallet-connect-dialog__option"
+      [class.wallet-connect-dialog__option--disabled]="!wallet.interactive || pending(wallet)"
+      type="button"
+      [disabled]="!wallet.interactive || pending(wallet)"
+      (click)="selectWallet(wallet)">
+      <div class="wallet-connect-dialog__identity">
+        <span class="wallet-connect-dialog__icon">
+          @if (wallet.iconPath) {
+            <img [src]="wallet.iconPath" [alt]="wallet.name + ' icon'" />
+          } @else {
+            <!-- A Wallet Standard wallet with no icon of its own: the first letter. -->
+            <span class="wallet-connect-dialog__monogram" aria-hidden="true">{{ wallet.monogram }}</span>
+          }
+        </span>
+        <span class="wallet-connect-dialog__name">{{ wallet.name }}</span>
+      </div>
+
+      <span
+        class="wallet-connect-dialog__badge"
+        [class.wallet-connect-dialog__badge--connect]="!pending(wallet) && wallet.actionLabel === 'Connect' && !wallet.connected"
+        [class.wallet-connect-dialog__badge--current]="!pending(wallet) && wallet.connected"
+        [class.wallet-connect-dialog__badge--external]="!pending(wallet) && wallet.actionLabel === 'Open App'">
+        {{ label(wallet) }}
+      </span>
+    </button>
+  </div>
+
+  <p class="wallet-connect-dialog__note">
+    Desktop uses wallet extensions. On mobile, connect with a supported wallet app.
+  </p>
+</div>

@@ -1,0 +1,629 @@
+@import "../../public/membership";
+
+/* The commit dialog. The body is like the sign-in dialog: a 2px border, a hard
+   shadow, a bottom sheet on a phone. The fields and messages are shared from membership.scss. */
+
+:host {
+  display: block;
+  color: var(--qres-black);
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.commit {
+  position: relative;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 26px 28px 22px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 6px 6px 0 var(--qres-purple);
+}
+
+.commit__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  cursor: pointer;
+}
+
+.commit__close svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.commit__close:hover:not(:disabled),
+.commit__close:focus-visible {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+.commit__close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.commit__title {
+  margin: 0;
+  padding-right: 48px;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.commit__sub {
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.commit__clock {
+  font-weight: 700;
+  color: var(--qres-black);
+  font-variant-numeric: tabular-nums;
+}
+
+.commit__closed {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-black);
+  color: var(--qres-white);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.commit__form {
+  margin-top: 20px;
+}
+
+/* Fields with no icon inside: the label above the field already says what to enter. */
+.commit__input {
+  padding-left: 14px;
+}
+
+.commit__input--amount {
+  padding-right: 56px;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.commit__unit {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(2, 2, 2, 0.62);
+  pointer-events: none;
+}
+
+.commit__spinner {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  border: 2px solid rgba(2, 2, 2, 0.2);
+  border-top-color: var(--qres-black);
+  border-radius: 50%;
+  animation: commit-spin 0.8s linear infinite;
+}
+
+@keyframes commit-spin {
+  to { transform: rotate(360deg); }
+}
+
+.field__hint {
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.commit-coin {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 2px solid var(--qres-black);
+  background: rgba(143, 255, 175, 0.18);
+}
+
+.commit-coin__logo {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border: 2px solid var(--qres-black);
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--qres-white);
+}
+
+.commit-coin__logo--fallback {
+  display: grid;
+  place-items: center;
+  background: var(--qres-green);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.commit-coin__names {
+  display: grid;
+  min-width: 0;
+}
+
+.commit-coin__names b {
+  font-size: 16px;
+}
+
+.commit-coin__names span {
+  overflow: hidden;
+  font-size: 13px;
+  color: rgba(2, 2, 2, 0.62);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 4px 8px;
+  border: 2px solid var(--qres-black);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chip--ok {
+  background: var(--qres-green);
+}
+
+/* Where the coin trades. This is a fact rather than an alarm, so the line is
+   quiet: no border, no backdrop, small and grey. */
+.commit__venue {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.5);
+}
+
+.commit__presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.commit__preset {
+  min-width: 52px;
+  height: 36px;
+  padding: 0 12px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .commit__preset:hover:not(:disabled) {
+    background: var(--qres-purple);
+  }
+}
+
+.commit__preset.is-active {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+.commit__preset:focus-visible,
+.commit__submit:focus-visible,
+.commit__link:focus-visible {
+  outline: 2px solid var(--qres-purple);
+  outline-offset: 2px;
+}
+
+.commit__preset:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.commit__facts {
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 2px dashed rgba(2, 2, 2, 0.3);
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: rgba(2, 2, 2, 0.78);
+}
+
+.commit__facts p {
+  margin: 0;
+}
+
+.commit__facts p + p {
+  margin-top: 6px;
+}
+
+.commit__summary {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--qres-black);
+}
+
+.commit__error {
+  margin-top: 14px;
+}
+
+.commit__submit {
+  width: 100%;
+  height: 54px;
+  margin-top: 16px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-green);
+  box-shadow: 4px 5px 0 var(--qres-black);
+  color: var(--qres-black);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+@media (hover: hover) {
+  .commit__submit:hover:not(:disabled) {
+    transform: translate(-1px, -1px);
+    box-shadow: 5px 6px 0 var(--qres-black);
+    background: var(--qres-purple);
+  }
+}
+
+.commit__submit:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.commit__legal {
+  margin: 14px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.commit__link {
+  /* A link inside a sentence: we widen the tap target with padding and subtract
+     it back with a negative margin, so the line does not come apart. A 19-point
+     tall target is hard to hit with a thumb, and breaking the paragraph for a
+     button is not on. */
+  padding: 6px 2px;
+  margin: -6px -2px;
+  border: 0;
+  background: none;
+  color: var(--qres-black);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+@media (max-width: 599px) {
+  .commit {
+    max-height: calc(100dvh - 32px);
+    padding: 22px 18px calc(18px + env(safe-area-inset-bottom));
+    border-width: 2px 0 0;
+    box-shadow: none;
+  }
+
+  .commit__close {
+    top: 14px;
+    right: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .commit__spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+/* The coin's market card: price, market cap, liquidity. The numbers are
+   external, so exactly the ones that arrived are shown. */
+.commit-market {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.commit-market > div {
+  padding: 8px 10px;
+  border: 2px solid rgba(2, 2, 2, 0.16);
+}
+
+.commit-market dt {
+  margin: 0 0 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.55);
+}
+
+.commit-market dd {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.commit-market__change {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.commit-market__change.is-up {
+  color: #1c7a3c;
+}
+
+.commit-market__change.is-down {
+  color: #b0341d;
+}
+
+.commit-market__link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--qres-black);
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* A quick pick of a coin already in the pool. The first step has to be a tap
+   rather than hunting for an address in the clipboard. */
+.commit-pick {
+  margin: 0 0 10px;
+}
+
+.commit-pick__label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.commit-pick__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.commit-pick__coin {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.commit-pick__coin:hover:not(:disabled),
+.commit-pick__coin:focus-visible {
+  background: var(--qres-purple);
+}
+
+.commit-pick__coin:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.commit-pick__logo {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--qres-black);
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--qres-white);
+}
+
+.commit-pick__logo--fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.commit-pick__sol {
+  font-variant-numeric: tabular-nums;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.commit__expect {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--qres-black);
+}
+
+.commit__next {
+  margin: 10px 0 0;
+}
+
+.commit__risk {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: rgba(2, 2, 2, 0.66);
+}
+
+/* On a phone the dialog is a bottom sheet, and after a coin is picked the market
+   card pushes the button off screen. The button stays in view: the dialog's only
+   action must not require scrolling. */
+@media (max-width: 599px) {
+  .commit {
+    padding-bottom: 0;
+  }
+
+  .commit__submit {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin-bottom: 2px;
+  }
+
+  .commit__legal {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin: 0;
+    padding: 8px 0 14px;
+    background: var(--qres-white);
+  }
+
+  /* The coin's market in two columns: four rows in a row take half the screen. */
+  .commit-market {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* The pool's last minutes: the timer comes out of grey. There is nothing left to
+   wait for, and a person has to see that rather than work it out. */
+.commit__clock--soon {
+  padding: 1px 6px;
+  background: var(--qres-purple);
+  color: var(--qres-black);
+}
+
+/* ------------------------------------------------ priority on the network */
+
+.commit__priority {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.commit__priority-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.commit__priority-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.commit__priority-hint {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.5);
+}
+
+/* Three equal shares: on a narrow screen the buttons must not break the line. */
+.commit__priority-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.commit__priority-option {
+  display: grid;
+  gap: 2px;
+  padding: 8px 6px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  color: var(--qres-black);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.commit__priority-option:hover:not(:disabled) {
+  background: rgba(175, 143, 255, 0.18);
+}
+
+.commit__priority-option.is-active {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+.commit__priority-option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.commit__priority-name {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.commit__priority-cost {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+  /* "+0.0000006 SOL" is one word with no spaces; on a narrow screen we break it. */
+  overflow-wrap: anywhere;
+}
+
+/* What will sign the commit. A quiet line: it is reassurance, not a call to action. */
+.commit__wallet {
+  margin: 12px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.6);
+  overflow-wrap: anywhere;
+}
+
+.commit__wallet b {
+  color: var(--qres-black);
+}
+
+.commit__wallet-change {
+  margin-left: 6px;
+}

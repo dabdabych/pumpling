@@ -1,0 +1,101 @@
+<app-site-header></app-site-header>
+
+<main class="mine">
+  <header class="mine__head">
+    <p class="mine__eyebrow">Your commits</p>
+    <h1 class="mine__title">What you <span class="mine__plate">put behind coins</span></h1>
+    @if (commits?.totalSol) {
+      <p class="mine__total"><b>{{ commits!.totalSol | number: '1.0-2' }}</b> SOL committed across {{ commits!.rounds.length }} {{ commits!.rounds.length === 1 ? 'pool' : 'pools' }}</p>
+    }
+  </header>
+
+  @if (loading) {
+    <div class="mine__state" role="status">Loading your commits…</div>
+  } @else if (failed) {
+    <div class="mine__state mine__state--bad" role="alert">
+      Could not load your commits right now. Refresh the page in a moment.
+    </div>
+  } @else if (commits?.signedOut) {
+    <div class="mine__state">
+      <p class="mine__state-title">Sign in to see your commits</p>
+      <p>Your commits are tied to your account, so we need to know who you are.</p>
+      <button type="button" class="mine__cta" (click)="signIn()">Sign in</button>
+    </div>
+  } @else if (!commits?.rounds?.length) {
+    <div class="mine__state">
+      <p class="mine__state-title">Nothing here yet</p>
+      <p>Put SOL behind a coin and this page will show it, along with what the pool did next.</p>
+      <a routerLink="/pool" class="mine__cta">Open the live pool</a>
+    </div>
+  } @else {
+    <ul class="mine__list">
+      @for (round of commits!.rounds; track trackRound($index, round)) {
+        <li class="mround">
+          <header class="mround__head">
+            <b class="mround__id">Pool #{{ round.lotteryId }}</b>
+            @if (isLive(round)) {
+              <span class="chip chip--live"><i aria-hidden="true"></i>running</span>
+            } @else {
+              <span class="mround__when">{{ roundDate(round) }}</span>
+            }
+            <span class="mround__mine"><b>{{ round.mySol | number: '1.0-2' }}</b> SOL yours</span>
+          </header>
+
+          <ul class="mround__coins">
+            @for (coin of round.coins; track trackCoin($index, coin)) {
+              <li class="mcoin">
+                <span class="mcoin__names">
+                  <b>${{ coin.ticker }}</b>
+                  <span class="mcoin__name">{{ coin.name }}</span>
+                </span>
+
+                <span class="mcoin__mine">
+                  {{ coin.mySol | number: '1.0-2' }} <small>SOL</small>
+                  <span class="mcoin__share">{{ sharePct(coin.mySol, coin.poolSol) | number: '1.0-1' }}% of {{ coin.poolSol | number: '1.0-2' }} SOL behind it</span>
+                </span>
+
+                <span class="mcoin__drawn">
+                  @if (coin.drawnSol === null) {
+                    <span class="mcoin__hint">{{ isLive(round) ? 'draw is ahead' : 'no draw' }}</span>
+                  } @else if (coin.drawnSol > 0) {
+                    {{ coin.drawnSol | number: '1.0-2' }} <small>SOL of buys</small>
+                  } @else {
+                    <span class="mcoin__hint">drawn to zero</span>
+                  }
+                </span>
+
+                <span class="mcoin__links">
+                  @for (signature of coin.signatures; track signature) {
+                    <a [href]="'https://solscan.io/tx/' + signature + explorerQuery" target="_blank" rel="noreferrer">{{ short(signature) }}</a>
+                  }
+                </span>
+              </li>
+            }
+          </ul>
+
+          <footer class="mround__foot">
+            <span class="mround__wallets">
+              Tokens go to
+              @for (wallet of round.wallets; track wallet) {
+                <a [href]="'https://solscan.io/account/' + wallet + explorerQuery" target="_blank" rel="noreferrer">{{ short(wallet) }}</a>
+              }
+            </span>
+            <a class="mround__link" routerLink="/pool">Open the live pool</a>
+          </footer>
+        </li>
+      }
+    </ul>
+
+    <p class="mine__note">
+      Bought tokens land in your wallet on their own. We show what the pool did; what arrived is on Solscan,
+      and that is the only source worth trusting.
+    </p>
+  }
+
+  <footer class="mine__footer">
+    <a routerLink="/pool">Live pool</a>
+    <a routerLink="/archive">Past pools</a>
+    <a routerLink="/privacy-policy">Privacy Policy</a>
+    <span class="mine__copy">© 2026 pumpling · built on Solana</span>
+  </footer>
+</main>

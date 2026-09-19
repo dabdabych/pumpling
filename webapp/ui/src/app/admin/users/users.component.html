@@ -1,0 +1,81 @@
+<div class="category-title">
+  <span>
+      Users
+  </span>
+</div>
+
+<div class="mat-elevation-z8">
+  <table mat-table
+         [dataSource]="dataSource"
+         matSort
+         matSortActive="id"
+         matSortDirection="asc"
+         matSortDisableClear>
+
+    <ng-container matColumnDef="id">
+      <th mat-header-cell *matHeaderCellDef mat-sort-header>User ID</th>
+      <td mat-cell *matCellDef="let row">{{row.id}}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="username">
+      <th mat-header-cell *matHeaderCellDef mat-sort-header>Username</th>
+      <td mat-cell *matCellDef="let row">{{row.username}}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="email">
+      <th mat-header-cell *matHeaderCellDef mat-sort-header>Email</th>
+      <td mat-cell *matCellDef="let row">{{row.email}}</td>
+    </ng-container>
+
+    <ng-container matColumnDef="role">
+      <th mat-header-cell *matHeaderCellDef mat-sort-header>Role</th>
+      <td mat-cell *matCellDef="let row">
+        <span class="role-badge" [ngClass]="'role-' + row.role">{{row.role}}</span>
+      </td>
+    </ng-container>
+
+    <ng-container matColumnDef="action">
+      <th mat-header-cell *matHeaderCellDef>Actions</th>
+      <td mat-cell *matCellDef="let row">
+        <button mat-icon-button
+                [matMenuTriggerFor]="rowOptions"
+                [matMenuTriggerData]="{data: row}">
+          <mat-icon>more_vert</mat-icon>
+        </button>
+      </td>
+    </ng-container>
+
+    <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+    <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+
+    <tr class="mat-row" *matNoDataRow>
+      <td class="mat-cell" [attr.colspan]="displayedColumns.length">
+        No users found
+      </td>
+    </tr>
+  </table>
+
+  <mat-paginator
+    [length]="dataSource.totalCount"
+    [pageSize]="10"
+    [pageSizeOptions]="[10, 25, 50, 100]"
+    showFirstLastButtons>
+  </mat-paginator>
+
+  <mat-menu #rowOptions="matMenu">
+    <ng-template matMenuContent let-user="data">
+      <button mat-menu-item>
+        <mat-icon>edit</mat-icon>
+        <span>Edit User</span>
+      </button>
+      <button mat-menu-item>
+        <mat-icon>block</mat-icon>
+        <span>Block User</span>
+      </button>
+      <button mat-menu-item>
+        <mat-icon>delete</mat-icon>
+        <span>Delete User</span>
+      </button>
+    </ng-template>
+  </mat-menu>
+</div>

@@ -1,0 +1,305 @@
+.category-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.category-title span {
+  font-size: 24px;
+  font-weight: 500;
+}
+
+button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+table {
+  width: 100%;
+}
+
+.cycle-controls-section {
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.cycle-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.cycle-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.cycle-card-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cycle-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.cycle-status {
+  width: fit-content;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cycle-status-stopped {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.cycle-error {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mat-elevation-z8 {
+  box-shadow: 0px 5px 5px -3px rgba(0, 0, 0, 0.2),
+              0px 8px 10px 1px rgba(0, 0, 0, 0.14),
+              0px 3px 14px 2px rgba(0, 0, 0, 0.12);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 999px;
+  background-color: #334155;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+.status-badge[class*="active" i],
+.status-badge[class*="created" i] {
+  background-color: #2563eb;
+  color: #ffffff;
+}
+
+.status-badge[class*="id_generated" i],
+.status-badge[class*="idgenerated" i] {
+  background-color: #475569;
+  color: #ffffff;
+}
+
+.status-badge[class*="finished" i] {
+  background-color: #64748b;
+  color: #ffffff;
+}
+
+.status-badge[class*="phase2started" i],
+.status-badge[class*="pending_vrf" i],
+.status-badge[class*="pendingvrf" i] {
+  background-color: #c2410c;
+  color: #ffffff;
+}
+
+.status-badge[class*="vrf_binded" i],
+.status-badge[class*="vrfbinded" i] {
+  background-color: #7c3aed;
+  color: #ffffff;
+}
+
+.status-badge[class*="vrf_fulfilled" i],
+.status-badge[class*="vrffulfilled" i] {
+  background-color: #047857;
+  color: #ffffff;
+}
+
+.status-badge[class*="proceeding_purchases" i],
+.status-badge[class*="proceedingpurchases" i] {
+  background-color: #0f766e;
+  color: #ffffff;
+}
+
+.status-badge[class*="closed" i] {
+  background-color: #dc2626;
+  color: #ffffff;
+}
+
+.mat-cell, .mat-header-cell {
+  padding: 0 8px;
+}
+
+.mat-row:hover {
+  background-color: #f5f5f5;
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+mat-paginator {
+  border-top: 1px solid #e0e0e0;
+}
+
+// Deposits Section Styles
+.deposits-section {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 32px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+
+  h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #333;
+  }
+}
+
+.contract-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  .label {
+    font-size: 12px;
+    color: #6b7280;
+    font-weight: 500;
+    text-transform: uppercase;
+  }
+
+  .value {
+    font-size: 16px;
+    color: #111827;
+    font-weight: 600;
+
+    &.monospace {
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      word-break: break-all;
+    }
+
+    &.highlight {
+      color: #9945FF;
+      font-size: 20px;
+    }
+  }
+}
+
+.loading-state,
+.error-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  gap: 16px;
+
+  mat-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: #9ca3af;
+  }
+
+  p {
+    margin: 0;
+    color: #6b7280;
+    font-size: 14px;
+  }
+}
+
+.error-state {
+  mat-icon {
+    color: #ef4444;
+  }
+
+  p {
+    color: #991b1b;
+  }
+}
+
+.deposits-table-container {
+  overflow-x: auto;
+}
+
+.deposits-table {
+  width: 100%;
+
+  .monospace {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+  }
+
+  .amount-value {
+    font-weight: 600;
+    color: #059669;
+  }
+
+  th {
+    background: #f9fafb;
+    font-weight: 600;
+    color: #374151;
+  }
+
+  td, th {
+    padding: 12px 16px;
+  }
+
+  tr:hover {
+    background: #f9fafb;
+  }
+}
+
+.new-lottery-btn {
+  min-width: 206px;
+}

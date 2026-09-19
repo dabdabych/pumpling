@@ -1,0 +1,444 @@
+<app-site-header></app-site-header>
+
+@if (model$ | async; as model) {
+  <main class="pool" [attr.data-phase]="model.view.phase" [attr.aria-busy]="model.view.phase === 'loading'">
+    <!-- ------------------------------------------------ the phase and the timer -->
+    <section class="pool-top">
+      <div class="pool-top__copy">
+        <p class="pool-eyebrow">
+          @if (model.snapshot.poolId !== null) {
+            Pool #{{ model.snapshot.poolId }}
+          } @else {
+            pumpling pool
+          }
+        </p>
+        <h1 class="pool-title" [@phaseSwap]="{ value: model.view.phase, params: { delay: '0ms' } }">
+          <!-- The space between the lines is for screen readers: without it the title sounds like "poolis". -->
+          <span class="pool-title__line">{{ model.view.title.lead }}</span>{{ ' ' }}<span class="pool-title__line"><span class="pool-plate">{{ model.view.title.plate }}</span></span>
+        </h1>
+        @if (model.view.lede) {
+          <p class="pool-lede" [@phaseSwap]="{ value: model.view.phase, params: { delay: '70ms' } }">{{ model.view.lede }}</p>
+        } @else {
+          <p class="pool-lede pool-skeleton" aria-hidden="true"></p>
+        }
+
+        <div class="pool-actions">
+          @if (model.view.canCommit) {
+            <button type="button" class="pool-cta" (click)="openCommit()">
+              Commit SOL
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+            </button>
+          }
+          <!-- An in-app navigation. There used to be an ordinary link here and a
+               click reloaded the whole app: the splash, building the story, a
+               second and a half on a fast machine and noticeably longer on a real
+               network. The main page can land on the right section without a
+               reload: it waits for the layout to stop moving and only then jumps. -->
+          <a class="pool-link" routerLink="/" fragment="how">How it works</a>
+          <!-- An empty pool is nothing to boast about: the card appears once it has SOL. -->
+          @if (model.snapshot.poolId !== null && model.snapshot.totalSol > 0) {
+            <button type="button" class="pool-link pool-link--button" (click)="openShare('pool')">Share the pool</button>
+          }
+        </div>
+      </div>
+
+      <aside class="pool-card" aria-label="Pool status">
+        <div class="pool-card__state" [@cardSwap]="model.view.phase">
+        <header class="pool-card__head">
+          <span class="chip" [class]="'chip chip--' + model.view.chip.tone">
+            @if (model.view.chip.tone === 'open') { <i aria-hidden="true"></i> }
+            {{ model.view.chip.label }}
+          </span>
+          @if (model.view.timer.label) {
+            <span class="pool-card__label">{{ model.view.timer.label }}</span>
+          }
+        </header>
+
+        @if (model.view.phase === 'loading') {
+          <div class="pool-card__clock pool-skeleton" aria-hidden="true"></div>
+        } @else if (model.view.phase === 'locked') {
+          <!-- The draw minute: the one place where waiting is more interesting
+               than looking at a number. -->
+          <p class="pool-card__clock pool-card__clock--draw">
+            <span class="draw-word">{{ model.view.timer.value }}</span>
+            <span class="draw-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          </p>
+          <p class="pool-card__note pool-card__note--draw">Switchboard is picking each coin's share right now.</p>
+        } @else {
+          <p class="pool-card__clock" [class.pool-card__clock--text]="!model.view.timer.ticking">{{ model.view.timer.value }}</p>
+        }
+        @if (model.view.timer.note) {
+          <p class="pool-card__note">{{ model.view.timer.note }}</p>
+        }
+
+        @if (model.view.progress; as progress) {
+          <div class="pool-progress">
+            <div class="pool-progress__row">
+              <span>{{ progress.label }}</span>
+              @if (progress.showPct) {
+                <b>{{ progress.pct | number: '1.0-0' }}%</b>
+              }
+            </div>
+            <div class="bar" role="progressbar" [attr.aria-valuenow]="progress.pct | number: '1.0-0'" aria-valuemin="0" aria-valuemax="100" [attr.aria-label]="progress.label">
+              <span class="bar__fill" [style.width.%]="progress.fillPct"></span>
+            </div>
+          </div>
+        }
+
+        </div>
+
+        @if (model.snapshot.poolId !== null && model.view.phase !== 'done') {
+          <dl class="pool-stats">
+            <div>
+              <dt>In the pool</dt>
+              <dd>{{ formatSol(model.snapshot.totalSol) }} <small>SOL</small></dd>
+            </div>
+            @if (model.view.phase === 'buying' && model.feed.available) {
+              <div>
+                <dt>Bought</dt>
+                <dd>{{ formatSol(model.feed.boughtSol) }} <small>SOL</small></dd>
+              </div>
+            } @else {
+              <div>
+                <dt>Goes into buys</dt>
+                <dd>{{ formatSol(model.snapshot.buyBudgetSol) }} <small>SOL</small></dd>
+              </div>
+            }
+            <div>
+              <dt>Cap</dt>
+              <dd>{{ formatSol(model.snapshot.capSol) }} <small>SOL</small></dd>
+            </div>
+            <div>
+              <dt>Coins</dt>
+              <dd>{{ model.snapshot.coins.length }}</dd>
+            </div>
+          </dl>
+        }
+      </aside>
+    </section>
+
+    <!-- ------------------------------------------------ the round scale -->
+    @if (model.view.step !== null) {
+      <ol class="pool-track" aria-label="Pool steps">
+        @for (item of track; track item.label; let index = $index) {
+          <li class="pool-track__step"
+              [class.is-past]="index < model.view.step!"
+              [class.is-current]="index === model.view.step"
+              [attr.aria-current]="index === model.view.step ? 'step' : null">
+            <span class="pool-track__dot" aria-hidden="true"></span>
+            <span class="pool-track__label">{{ item.label }}</span>
+            <span class="pool-track__note">{{ item.note }}</span>
+          </li>
+        }
+      </ol>
+    }
+
+    <!-- ------------------------------------------------ the coins -->
+    <section class="pool-coins" aria-labelledby="pool-coins-title">
+      <div class="pool-coins__head">
+        <h2 class="pool-coins__title" id="pool-coins-title">
+          @if (model.snapshot.draw === 'ready') {
+            Share of the buy after the draw
+          } @else {
+            Coins in this pool
+          }
+        </h2>
+        <span class="pool-coins__meta">
+          @if (model.view.phase === 'open') {
+            <span class="pool-live"><i aria-hidden="true"></i>updates live</span>
+          }
+          @if (model.snapshot.coins.length > 0) {
+            <span class="pool-coins__count">{{ model.snapshot.coins.length }} {{ model.snapshot.coins.length === 1 ? 'coin' : 'coins' }}</span>
+          }
+        </span>
+      </div>
+
+      @if (model.view.phase === 'loading') {
+        <ul class="coin-list" aria-hidden="true">
+          @for (row of [1, 2, 3]; track row) {
+            <li class="coin-row coin-row--skeleton"><span class="pool-skeleton"></span></li>
+          }
+        </ul>
+      } @else if (model.snapshot.coins.length === 0) {
+        <div class="pool-empty">
+          @switch (model.view.phase) {
+            @case ('open') {
+              <p class="pool-empty__title">No coins yet</p>
+              <p class="pool-empty__text">Be the first. Paste any Solana memecoin, add SOL, and everyone will see the buy coming.</p>
+              <button type="button" class="pool-cta pool-cta--small" (click)="openCommit()">Commit SOL</button>
+            }
+            @case ('launch') {
+              <p class="pool-empty__title">Nothing here yet</p>
+              <p class="pool-empty__text">Coins show up here once the first pool opens and people start adding SOL.</p>
+            }
+            @case ('opening') {
+              <p class="pool-empty__title">Nothing here yet</p>
+              <p class="pool-empty__text">Coins show up here as soon as the pool opens and people start adding SOL.</p>
+            }
+            @case ('locked') {
+              <p class="pool-empty__title">No SOL in this pool</p>
+              <p class="pool-empty__text">Nobody added SOL before it closed, so there is nothing to buy this time.</p>
+            }
+            @case ('buying') {
+              <p class="pool-empty__title">No SOL in this pool</p>
+              <p class="pool-empty__text">Nobody added SOL before it closed, so there is nothing to buy this time.</p>
+            }
+            @default {
+              <p class="pool-empty__title">No coins to show</p>
+              <p class="pool-empty__text">Coins show up here while a pool is running. A new one opens every three hours.</p>
+            }
+          }
+        </div>
+      } @else {
+        <div class="coin-head" aria-hidden="true">
+          <span class="coin-head__rank">#</span>
+          <span class="coin-head__coin">Coin</span>
+          <span class="coin-head__mint">Address</span>
+          <span class="coin-head__sol">In the pool</span>
+          <span class="coin-head__drawn">
+            @if (model.snapshot.draw === 'ready') { Goes into buys } @else { If it closed now }
+          </span>
+          <span class="coin-head__commits">Commits</span>
+          <span></span>
+          <span class="coin-head__card">Card</span>
+        </div>
+        <ul class="coin-list" [@drawReveal]="model.snapshot.draw">
+          @for (coin of model.snapshot.coins; track trackCoin($index, coin); let index = $index) {
+            <li class="coin-row"
+                [style.--row]="index"
+                [class.coin-row--zero]="coin.drawnSol === 0"
+                [class.coin-row--lead]="index === 0 && coin.sol > 0"
+                [class.coin-row--fresh]="model.fresh.has(coin.mint)"
+                [class.coin-row--highlight]="coin.mint === highlightMint"
+                (mouseenter)="onCoinHover(coin, $event.currentTarget)"
+                (mouseleave)="onCoinLeave(coin)">
+              <span class="coin-row__rank">{{ index + 1 }}</span>
+
+              <span class="coin-row__coin">
+                @if (showLogo(coin)) {
+                  <img class="coin-row__logo" [src]="coin.logoUrl" alt="" width="36" height="36" loading="lazy" (error)="onLogoError(coin)">
+                } @else {
+                  <span class="coin-row__logo coin-row__logo--fallback" aria-hidden="true">{{ initials(coin) }}</span>
+                }
+                <span class="coin-row__names">
+                  <span class="coin-row__tickerline">
+                    <b class="coin-row__ticker">${{ coin.ticker }}</b>
+                    <!-- Your own commit is visible right in the row: otherwise a
+                         person looks at a shared pool and cannot find themselves. -->
+                    @if (mySol(model, coin.mint); as mine) {
+                      <a class="coin-row__mine" routerLink="/me" [attr.aria-label]="'Your ' + mine + ' SOL behind $' + coin.ticker">
+                        you · {{ mine | number: '1.0-2' }} SOL
+                      </a>
+                    }
+                  </span>
+                  <span class="coin-row__name">{{ coin.name }}</span>
+                </span>
+              </span>
+
+              <button type="button" class="coin-row__mint" (click)="copyMint(coin.mint)" [attr.aria-label]="'Copy address of ' + coin.ticker">
+                <span>{{ copiedMint === coin.mint ? 'Copied' : shortMint(coin.mint) }}</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="1" /><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" /></svg>
+              </button>
+
+              <span class="coin-row__sol">
+                <span class="coin-row__value">{{ formatSol(coin.sol) }} <small>SOL</small></span>
+                <span class="bar coin-row__bar" aria-hidden="true"><span class="bar__fill" [style.width.%]="coin.poolShare * 100"></span></span>
+                <span class="coin-row__share">{{ coin.poolShare | percent: '1.0-1' }} of the pool</span>
+              </span>
+
+              @if (coin.drawnSol === null && coin.sol > 0 && model.snapshot.buyBudgetSol > 0) {
+                <!-- The share before the draw: how much buying would go to the
+                     coin if the pool closed now. This is an expectation rather
+                     than a promise, hence the "≈" and the plain caveat under it. -->
+                <span class="coin-row__drawn coin-row__drawn--expected">
+                  <span class="coin-row__value">≈ {{ formatSol(coin.poolShare * model.snapshot.buyBudgetSol) }} <small>SOL</small></span>
+                  <span class="coin-row__share coin-row__share--hint">of buys if it closed now</span>
+                </span>
+              }
+              @if (coin.drawnSol !== null) {
+                <span class="coin-row__drawn">
+                  @if (coin.drawnSol > 0) {
+                    <span class="coin-row__value">{{ formatSol(coin.drawnSol) }} <small>SOL</small></span>
+                    @if (boughtShare(model.boughtByMint.get(coin.mint)); as share) {
+                      <span class="bar coin-row__bought" aria-hidden="true"><span class="bar__fill bar__fill--bought" [style.width.%]="share * 100"></span></span>
+                      <span class="coin-row__share">{{ formatSol(model.boughtByMint.get(coin.mint)!.boughtSol) }} bought</span>
+                    } @else {
+                      <span class="coin-row__share">to buy</span>
+                    }
+                  } @else {
+                    <span class="chip chip--zero">Zero</span>
+                    <span class="coin-row__share">no buy this time</span>
+                  }
+                </span>
+              }
+
+              <span class="coin-row__commits">{{ coin.commits }} {{ coin.commits === 1 ? 'commit' : 'commits' }}</span>
+
+              <!-- What the price is doing right now: the tooltip appears on
+                   hover and the data loads once per coin. -->
+              @if (hoveredMint === coin.mint) {
+                <div class="coin-chart" [class.coin-chart--above]="hoveredAbove" role="status">
+                  @if (hoveredChart?.available) {
+                    <div class="coin-chart__head">
+                      <b>${{ coin.ticker }}</b>
+                      @if (hoveredChart!.priceUsd !== null) {
+                        <span class="coin-chart__price">{{ usd(hoveredChart!.priceUsd!) }}</span>
+                      }
+                      @if (chartChange(hoveredChart!); as change) {
+                        <span class="coin-chart__change" [class.is-up]="change > 0" [class.is-down]="change < 0">
+                          {{ change > 0 ? '+' : '' }}{{ change | number: '1.0-1' }}%
+                        </span>
+                      }
+                    </div>
+                    <svg class="coin-chart__line" viewBox="0 0 176 48" preserveAspectRatio="none" aria-hidden="true">
+                      <path [attr.d]="chartPath(hoveredChart!)" fill="none" stroke="#020202" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+                    </svg>
+                    <span class="coin-chart__note">{{ chartWindowLabel(hoveredChart!) }}@if (hoveredChart!.venue) { · {{ hoveredChart!.venue }} }</span>
+                  } @else if (hoveredLoading) {
+                    <span class="coin-chart__note">Loading the chart…</span>
+                  } @else {
+                    <span class="coin-chart__note">No chart yet. This coin has not traded enough.</span>
+                  }
+                </div>
+              }
+
+              <!-- A commit straight from the row: the person has already picked
+                   the coin with their eyes, there is no reason to make them find
+                   an address and paste it into a dialog. -->
+              @if (model.view.phase === 'open') {
+                <button type="button"
+                        class="coin-row__add"
+                        (click)="openCommit(coin.mint)"
+                        [attr.aria-label]="'Add SOL behind $' + coin.ticker">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+                  <span>Add SOL</span>
+                </button>
+              }
+
+              <button type="button"
+                      class="coin-row__card"
+                      (click)="openShare('coin', coin.mint)"
+                      [attr.aria-label]="'Make a card about $' + coin.ticker">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" /></svg>
+                <span>Card</span>
+              </button>
+            </li>
+          }
+        </ul>
+      }
+
+      @if (model.view.phase === 'open' || model.view.phase === 'locked') {
+        <p class="pool-note">
+          The draw sets the final shares. The more SOL behind a coin, the steadier its share.
+          Small stakes swing the most, sometimes down to zero.
+        </p>
+      }
+    </section>
+
+    <!-- ------------------------------------------------ the purchase feed -->
+    @if (model.view.phase === 'buying' || (model.view.phase === 'done' && model.feed.purchases.length > 0)) {
+      <section class="pool-buys" aria-labelledby="pool-buys-title" @sectionEnter>
+        <div class="pool-coins__head">
+          <h2 class="pool-coins__title" id="pool-buys-title">Buys on Solana</h2>
+          <span class="pool-coins__meta">
+            @if (model.feed.available && !model.feed.finished) {
+              <span class="pool-live"><i aria-hidden="true"></i>live</span>
+            }
+            @if (model.feed.completed > 0) {
+              <span class="pool-coins__count">{{ model.feed.completed }} of {{ model.feed.planned }} buys</span>
+            }
+          </span>
+        </div>
+
+        @if (model.feed.purchases.length > 0) {
+          <ul class="buy-list">
+            @for (item of model.feed.purchases; track trackPurchase($index, item)) {
+              <li class="buy-row">
+                <span class="buy-row__when">{{ timeAgo(item.atMs) }}</span>
+                <span class="buy-row__coin">
+                  <b>${{ item.symbol }}</b>
+                  <span>{{ item.name }}</span>
+                </span>
+                <span class="buy-row__sol">{{ formatSol(item.sol) }} <small>SOL</small></span>
+                @if (item.venue) {
+                  <span class="buy-row__venue">{{ item.venue }}</span>
+                }
+                <a class="buy-row__tx" [href]="explorerUrl(item.signature)" target="_blank" rel="noreferrer">
+                  {{ shortMint(item.signature) }}
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" /></svg>
+                </a>
+              </li>
+            }
+          </ul>
+        } @else {
+          <div class="pool-empty pool-empty--slim">
+            <p class="pool-empty__title">First buys are on the way</p>
+            <p class="pool-empty__text">They go out in small batches across the hour. Every one of them shows up here with its transaction.</p>
+          </div>
+        }
+      </section>
+    }
+
+    <!-- ------------------------------------------------ how to check this -->
+    @if (model.snapshot.poolId !== null) {
+      <section class="pool-proof" aria-label="On-chain accounts">
+        <div class="pool-proof__item">
+          <span class="pool-proof__label">Program ID</span>
+          <button type="button" class="pool-proof__value" (click)="copyMint(programId)" [attr.aria-label]="'Copy program id'">
+            {{ copiedMint === programId ? 'Copied' : shortMint(programId) }}
+          </button>
+        </div>
+        @if (model.snapshot.accounts?.lotteryPda; as pda) {
+          <div class="pool-proof__item">
+            <span class="pool-proof__label">Pool account</span>
+            <button type="button" class="pool-proof__value" (click)="copyMint(pda)" [attr.aria-label]="'Copy pool account'">
+              {{ copiedMint === pda ? 'Copied' : shortMint(pda) }}
+            </button>
+          </div>
+        }
+        @if (model.snapshot.accounts?.vaultPda; as vault) {
+          <div class="pool-proof__item">
+            <span class="pool-proof__label">Vault</span>
+            <button type="button" class="pool-proof__value" (click)="copyMint(vault)" [attr.aria-label]="'Copy vault account'">
+              {{ copiedMint === vault ? 'Copied' : shortMint(vault) }}
+            </button>
+          </div>
+        }
+        <a class="pool-proof__link" [href]="'https://solscan.io/account/' + programId + explorerQuery" target="_blank" rel="noreferrer">Open on Solscan</a>
+        <!-- For anyone who doubts. It appears once there is something to check:
+             the commitment is pinned and the draw has run. -->
+        @if ((model.view.phase === 'buying' || model.view.phase === 'done') && model.snapshot.poolId !== null) {
+          <button type="button" class="pool-proof__link pool-proof__verify" (click)="openVerify(model.snapshot.poolId!)">
+            Verify this pool
+          </button>
+        }
+      </section>
+    }
+
+    <footer class="pool-footer">
+      <a routerLink="/archive">Past pools</a>
+      <a routerLink="/privacy-policy">Privacy Policy</a>
+      <button type="button" class="pool-footer__link" (click)="openTerms()">Terms of Use</button>
+      <span class="pool-footer__copy">© 2026 pumpling · built on Solana</span>
+    </footer>
+  </main>
+}
+
+@if (toast; as current) {
+  <div class="pool-toast" [class]="'pool-toast pool-toast--' + current.state" role="status" aria-live="polite">
+    <span class="pool-toast__icon" aria-hidden="true"></span>
+    <span class="pool-toast__copy">
+      <b>{{ current.title }}</b>
+      <span>{{ current.message }}</span>
+      <a [href]="explorerUrl(current.signature)" target="_blank" rel="noreferrer">View on Solscan</a>
+      @if (current.share; as share) {
+        <button type="button" class="pool-toast__cta" (click)="openShare('commit', share.mint, share.sol)">
+          Get your card
+        </button>
+      }
+    </span>
+    <button type="button" class="pool-toast__close" aria-label="Dismiss" (click)="dismissToast()">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+    </button>
+  </div>
+}

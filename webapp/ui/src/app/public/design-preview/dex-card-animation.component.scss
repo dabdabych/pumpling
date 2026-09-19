@@ -1,0 +1,120 @@
+// A size container: the coin is measured from both the width and the height of
+// the card. It used to be the width only, and the card height now depends on the
+// window height — on a short screen the coins stayed the same and ran into the
+// text. `32cqh - 22px` on a 440px card gives the old ~119px, and below that it
+// shrinks the coin faster than the height: the text does not shrink with the card,
+// and with a simple proportion the gap to "hype" fell to 8px at 1280×720, here it is 15.
+:host {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+  z-index: 0;
+  container-type: size;
+}
+
+.dex-card-animation {
+  position: absolute;
+  inset: 0;
+}
+
+.dex-card-animation__token {
+  position: absolute;
+  width: calc(clamp(4.2rem, min(20cqw, 32cqh - 22px), 7.5rem) * var(--dex-scale));
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  // A hard shadow in the page's style instead of a blurred glow. It hangs here
+  // rather than on the coin: a filter is drawn before the element's transform, and
+  // on a tilted coin the shadow would rotate with it. This node only translates,
+  // so every coin's shadow falls the same way.
+  filter: drop-shadow(4px 4px 0 var(--qres-black));
+}
+
+.dex-card-animation__shell {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(0.56) rotate(calc(var(--dex-tilt) * 1.18));
+  animation: dex-card-token-enter 780ms cubic-bezier(0.2, 0.85, 0.2, 1) var(--dex-enter-delay) both;
+  will-change: transform, opacity;
+}
+
+.dex-card-animation__float {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  border-radius: 50%;
+  transform: rotate(var(--dex-tilt));
+  animation: dex-card-token-drift var(--dex-duration) ease-in-out calc(var(--dex-enter-delay) + 260ms) infinite alternate;
+  will-change: transform;
+}
+
+.dex-card-animation__float img {
+  width: 136%;
+  height: 136%;
+  max-width: none;
+  object-fit: contain;
+  filter: contrast(1.28);
+}
+
+@keyframes dex-card-token-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.56) rotate(calc(var(--dex-tilt) * 1.18));
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(var(--dex-tilt));
+  }
+}
+
+@keyframes dex-card-token-drift {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(var(--dex-tilt));
+  }
+
+  100% {
+    transform: translate3d(var(--dex-drift-x), var(--dex-drift-y), 0) rotate(calc(var(--dex-tilt) + 7deg));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dex-card-animation__shell,
+  .dex-card-animation__float {
+    animation: none;
+  }
+
+  .dex-card-animation__shell {
+    opacity: 1;
+    transform: scale(1) rotate(var(--dex-tilt));
+  }
+
+  .dex-card-animation__float {
+    transform: rotate(var(--dex-tilt));
+  }
+}
+
+@media (max-width: 991px) {
+  .dex-card-animation__token {
+    width: calc(clamp(4.5rem, min(18cqw, 32cqh - 22px), 6.8rem) * var(--dex-scale));
+  }
+
+  .dex-card-animation__float {
+    animation-duration: calc(var(--dex-duration) + 520ms);
+  }
+}
+
+@media (max-width: 767px) {
+  .dex-card-animation__token {
+    width: calc(clamp(3.8rem, 21%, 5.9rem) * var(--dex-scale));
+  }
+
+  .dex-card-animation__float {
+    animation-duration: calc(var(--dex-duration) + 760ms);
+  }
+}

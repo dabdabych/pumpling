@@ -1,0 +1,96 @@
+::ng-deep {
+  .mat-mdc-dialog-container .mdc-dialog__surface {
+    border-radius: 0;
+  }
+
+  .system-dialog {
+    .mdc-dialog__content {
+      padding-top: 30px;
+      padding-bottom: 30px;
+    }
+
+    .dialog-header {
+      .mat-mdc-button-persistent-ripple::before,
+      .mat-mdc-icon-button:hover .mat-mdc-button-persistent-ripple::before,
+      .mat-mdc-icon-button:focus .mat-mdc-button-persistent-ripple::before,
+      .mat-mdc-icon-button:active .mat-mdc-button-persistent-ripple::before {
+        opacity: 0;
+      }
+
+      .mat-mdc-button-ripple {
+        display: none;
+      }
+
+      .btn-close {
+        width: 10px;
+        height: 10px;
+        top: 20px;
+        right: 15px;
+        opacity: 1;
+
+        &:hover {
+          opacity: .5;
+        }
+
+        &:focus {
+          box-shadow: none;
+        }
+      }
+    }
+
+    mat-dialog-actions {
+      padding-bottom: 10px;
+      padding-right: 10px;
+
+      .mat-mdc-button-persistent-ripple, .mat-mdc-button-ripple {
+        display: none;
+      }
+
+      .mat-unthemed:hover {
+        opacity: .6;
+      }
+
+      .mat-unthemed:active {
+        opacity: .4;
+      }
+    }
+  }
+}
+
+.mdc-button {
+  padding: 0 16px 0 16px;
+}
+
+.mdc-button.mat-accent {
+  background: transparent;
+  color: #2778F1;
+  border: 2px solid #2778F1;
+  font-weight: bold;
+
+  &:hover {
+    opacity: .8;
+  }
+
+  &:active {
+    opacity: .6;
+  }
+}
+
+.mdc-button.mat-warn {
+  background: transparent;
+  color: #f44336;
+  border: 2px solid #f44336;
+  font-weight: bold;
+
+  &:hover {
+    opacity: .8;
+  }
+
+  &:active {
+    opacity: .6;
+  }
+}
+
+.mat-mdc-button:active .mat-mdc-focus-indicator {
+  background: white;
+}

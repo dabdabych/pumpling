@@ -1,0 +1,64 @@
+.btn-system {
+  background: #2778F1;
+  color: #FFF;
+  border: none;
+  text-transform: uppercase;
+  padding: 8px 12px;
+  font-weight: 600;
+  transition: 0s !important;
+
+  &:hover {
+    opacity: .6;
+    background: #2778F1;
+    color: #FFF;
+  }
+
+  &:active {
+    opacity: .8;
+    background: #2778F1 !important;
+    color: #FFF !important;
+    border: none;
+  }
+}
+//
+//.btn-system:hover, .btn-system:focus {
+//  background: #7dd6f6;
+//  color: white;
+//  border: none;
+//}
+
+.btn-aux {
+  background-color: black;
+  opacity: 1;
+
+  &:hover, &:focus-visible {
+    opacity: .6;
+    background-color: black;
+    color: white;
+    border: none;
+  }
+
+  &:active {
+    opacity: .8;
+    background-color: black !important;
+    color: white;
+  }
+
+  &:focus {
+    background-color: black;
+  }
+}
+
+.btn {
+  font-weight: normal;
+  font-size: .9em;
+}
+
+.btn-check:checked+.btn {
+  background: #2778F1;
+}
+
+.btn:disabled {
+  background-color: #b6b6b6;
+  color: #424242;
+}

@@ -1,0 +1,37 @@
+# Where Grafana sends alerts. A TEMPLATE: the working file is built at deploy time.
+#
+# The same bot and the same chat as the phase worker: there is no reason to keep
+# two channels for the same people. The token and the chat live in the
+# environment and never reach the repository.
+#
+# Why a template rather than substituting variables here. Grafana parses a
+# substituted value as JSON, and a chat id like -100… arrives as a number where a
+# string is expected: provisioning fails outright and the container restarts in a
+# loop. That holds for both `${VAR}` and `$__env{VAR}` — checked by starting
+# Grafana with each. A literal in the file works, so
+# `scripts/render-alerting.sh` substitutes the values before startup.
+#
+# If the channel is not configured the file simply will not exist: Grafana comes
+# up and the rules stay, but there is nowhere to send to.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: pumpling-telegram
+    receivers:
+      - uid: pumpling-telegram
+        type: telegram
+        settings:
+          # Specifically $__env{}, not ${}. With ordinary substitution Grafana
+          # parses the value as JSON, and a chat id like -100… becomes a number
+          # where a string is expected. Provisioning fails outright and the
+          # container restarts in a loop. Checked on a live stand.
+          bottoken: "__TELEGRAM_ERROR_BOT_TOKEN__"
+          chatid: "__TELEGRAM_ERROR_CHAT_ID__"
+          # A short human message: the details are behind the link in Grafana.
+          message: |
+            {{ if eq .Status "firing" }}🚨{{ else }}✅{{ end }} {{ .Status | toUpper }} · pumpling
+            {{ range .Alerts }}{{ .Annotations.summary }}
+            {{ end }}
+          disable_notifications: false
+        disableResolveMessage: false

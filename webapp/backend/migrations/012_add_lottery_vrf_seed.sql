@@ -1,0 +1,2 @@
+ALTER TABLE lotteries
+ADD COLUMN IF NOT EXISTS vrf_seed VARCHAR(64);

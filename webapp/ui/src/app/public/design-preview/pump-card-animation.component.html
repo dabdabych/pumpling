@@ -1,0 +1,37 @@
+<svg
+  class="pump-card-animation"
+  [attr.viewBox]="'0 0 ' + chartWidth + ' ' + chartHeight"
+  preserveAspectRatio="xMidYMid meet">
+  <path
+    class="pump-card-animation__price-line"
+    [attr.d]="priceLinePath"
+    pathLength="100" />
+
+  <g
+    *ngFor="let candle of candles"
+    class="pump-card-animation__candle"
+    [class.pump-card-animation__candle--bull]="candle.isBull"
+    [class.pump-card-animation__candle--bear]="!candle.isBull"
+    [style.animation-delay]="candle.delayMs + 'ms'">
+    <line
+      *ngIf="candle.hasWick"
+      class="pump-card-animation__wick"
+      [attr.x1]="candle.x"
+      [attr.x2]="candle.x"
+      [attr.y1]="candle.yHigh"
+      [attr.y2]="candle.yLow"
+      pathLength="100"
+      [style.animation-delay]="candle.delayMs + 'ms'" />
+
+    <rect
+      class="pump-card-animation__body"
+      [class.pump-card-animation__body--bull]="candle.isBull"
+      [class.pump-card-animation__body--bear]="!candle.isBull"
+      [attr.x]="candle.x - (bodyWidth / 2)"
+      [attr.y]="candle.bodyY"
+      [attr.width]="bodyWidth"
+      [attr.height]="candle.bodyHeight"
+      rx="2"
+      [style.animation-delay]="candle.delayMs + 'ms'" />
+  </g>
+</svg>

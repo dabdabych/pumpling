@@ -1,0 +1,18 @@
+<!-- There is deliberately no close cross: the pumpling mark above is a link to the main page. -->
+<div class="page-form">
+  <a class="brand-pill" routerLink="/" aria-label="PUMPLING home">
+    <img class="brand-mark" src="assets/images/pumpling-mascot.png"
+         alt="" aria-hidden="true">
+    <span class="brand-copy">
+      <span class="brand-copy__name">PUMPLING</span>
+    </span>
+  </a>
+
+  <div class="main-box">
+    <!-- The same flow as the sign-in dialog. The page is there for direct links,
+         emails and protected sections that send people here with a returnUrl. -->
+    <div class="auth-card">
+      <app-auth-flow [mode]="mode" [view]="view" (completed)="navigateAfterSignIn()"></app-auth-flow>
+    </div>
+  </div>
+</div>

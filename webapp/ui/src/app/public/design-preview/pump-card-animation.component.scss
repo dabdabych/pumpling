@@ -1,0 +1,208 @@
+// The colours are set by whoever embeds the animation, through variables on the
+// wrapper. We deliberately do NOT declare them here: a variable declared on
+// `:host` sits directly on the element, and a value from the parent no longer
+// reaches it. That is what happened: the wrapper on the main page set light
+// colours while dark ones were drawn — pale candles, a white price line and a
+// grey haze under the chart. The defaults below are for the light card the
+// animation lives on.
+:host {
+  position: absolute;
+  inset: 0;
+  display: block;
+  pointer-events: none;
+  z-index: 0;
+  --pump-cycle-duration: 5.2s;
+}
+
+.pump-card-animation {
+  position: absolute;
+  left: 50%;
+  bottom: 7%;
+  width: min(92%, 34rem);
+  height: auto;
+  overflow: visible;
+  color: var(--pump-line, rgba(2, 2, 2, 0.3));
+  transform: translateX(-50%);
+}
+
+.pump-card-animation__price-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  opacity: 0;
+  animation: pump-card-price-cycle var(--pump-cycle-duration) linear infinite;
+}
+
+.pump-card-animation__candle {
+  opacity: 0;
+  animation: pump-card-candle-presence var(--pump-cycle-duration) linear infinite;
+}
+
+.pump-card-animation__wick {
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: pump-card-wick-cycle var(--pump-cycle-duration) linear infinite;
+}
+
+// The glow is gone: on a light card it gave not light but a dirty halo.
+// Legibility comes from a thin dark outline on the body, like the other elements
+// on the page, only quieter — the candles are background, not the card's subject.
+.pump-card-animation__body {
+  transform-box: fill-box;
+  stroke-width: 1.5;
+  paint-order: stroke;
+  animation: pump-card-body-cycle var(--pump-cycle-duration) linear infinite;
+}
+
+.pump-card-animation__candle--bull .pump-card-animation__wick {
+  stroke: var(--pump-bull, #8fffaf);
+}
+
+.pump-card-animation__candle--bear .pump-card-animation__wick {
+  stroke: var(--pump-bear, #af8fff);
+}
+
+.pump-card-animation__body--bull {
+  fill: var(--pump-bull, #8fffaf);
+  stroke: var(--pump-outline, rgba(2, 2, 2, 0.5));
+}
+
+.pump-card-animation__body--bear {
+  fill: var(--pump-bear, #af8fff);
+  stroke: var(--pump-outline, rgba(2, 2, 2, 0.5));
+}
+
+.pump-card-animation__body--bull {
+  transform-origin: center bottom;
+}
+
+.pump-card-animation__body--bear {
+  transform-origin: center top;
+}
+
+@keyframes pump-card-candle-presence {
+  0%,
+  2% {
+    opacity: 0;
+  }
+
+  5%,
+  78% {
+    opacity: 1;
+  }
+
+  86%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes pump-card-wick-cycle {
+  0%,
+  2% {
+    stroke-dashoffset: 100;
+  }
+
+  6%,
+  78% {
+    stroke-dashoffset: 0;
+  }
+
+  86%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes pump-card-body-cycle {
+  0%,
+  1% {
+    opacity: 0;
+    transform: scaleY(0.08);
+  }
+
+  7%,
+  78% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+
+  86%,
+  100% {
+    opacity: 0;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes pump-card-price-cycle {
+  0%,
+  70% {
+    opacity: 0;
+    stroke-dashoffset: 100;
+  }
+
+  84% {
+    opacity: 0.74;
+    stroke-dashoffset: 0;
+  }
+
+  90% {
+    opacity: 0.74;
+    stroke-dashoffset: 0;
+  }
+
+  100% {
+    opacity: 0;
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pump-card-animation__candle,
+  .pump-card-animation__wick,
+  .pump-card-animation__body,
+  .pump-card-animation__price-line {
+    animation: none;
+  }
+
+  .pump-card-animation__candle,
+  .pump-card-animation__price-line {
+    opacity: 1;
+  }
+
+  .pump-card-animation__wick {
+    stroke-dashoffset: 0;
+  }
+
+  .pump-card-animation__body {
+    transform: none;
+  }
+}
+
+@media (max-width: 991px) {
+  :host {
+    --pump-cycle-duration: 5.8s;
+  }
+
+  .pump-card-animation {
+    bottom: 6%;
+    width: min(92%, 32rem);
+  }
+}
+
+@media (max-width: 767px) {
+  :host {
+    --pump-cycle-duration: 6.2s;
+  }
+
+  .pump-card-animation {
+    bottom: 8%;
+    width: min(94%, 27rem);
+  }
+}

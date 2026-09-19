@@ -1,0 +1,68 @@
+/* The dialog card: the same 2px border and hard shadow as the other dialogs. */
+:host {
+  display: block;
+}
+
+.auth-dialog {
+  position: relative;
+  /* A long registration form in a short window scrolls inside the card rather
+     than running off the edge together with the button. */
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 26px 28px 24px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 6px 6px 0 var(--qres-black);
+}
+
+.auth-dialog__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.auth-dialog__close svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.auth-dialog__close:hover,
+.auth-dialog__close:focus-visible {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+/* Phone: a full-width bottom sheet. A thumb reaches the buttons and the keyboard
+   does not cover the fields, as it does with a centred dialog. */
+@media (max-width: 599px) {
+  .auth-dialog {
+    max-height: calc(100dvh - 32px);
+    padding: 22px 18px calc(20px + env(safe-area-inset-bottom));
+    border-width: 2px 0 0;
+    box-shadow: none;
+  }
+
+  .auth-dialog__close {
+    top: 14px;
+    right: 14px;
+  }
+}

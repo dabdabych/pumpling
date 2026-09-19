@@ -1,0 +1,286 @@
+/* ============================================================
+   The round archive. The same palette and the same bold borders as the pool
+   page: a person arrives here from the footer and must not think they left the site.
+   ============================================================ */
+:host {
+  display: block;
+  background: var(--qres-white);
+  color: var(--qres-black);
+}
+
+.arch {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: clamp(24px, 5vw, 56px) clamp(16px, 4vw, 40px) 40px;
+}
+
+/* ------------------------------------------------------------ the header */
+.arch__eyebrow {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.arch__title {
+  margin: 0;
+  font-size: clamp(2rem, 6vw, 3.4rem);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+.arch__plate {
+  padding: 0 0.12em;
+  background: var(--qres-purple);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.arch__lede {
+  max-width: 44rem;
+  margin: 16px 0 0;
+  font-size: clamp(15px, 1.6vw, 18px);
+  line-height: 1.5;
+  color: rgba(2, 2, 2, 0.72);
+}
+
+/* ------------------------------------------------------------ states */
+.arch__state {
+  margin-top: 28px;
+  padding: 24px;
+  border: 2px dashed rgba(2, 2, 2, 0.3);
+  font-size: 15px;
+  line-height: 1.5;
+  color: rgba(2, 2, 2, 0.72);
+}
+
+.arch__state--bad {
+  border-style: solid;
+  border-color: var(--qres-black);
+  background: rgba(175, 143, 255, 0.14);
+  color: var(--qres-black);
+}
+
+.arch__state-title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--qres-black);
+}
+
+.arch__cta {
+  display: inline-block;
+  margin-top: 14px;
+  padding: 10px 16px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-green);
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--qres-black);
+}
+
+.arch__cta:hover {
+  box-shadow: 4px 4px 0 var(--qres-black);
+  translate: -1px -1px;
+}
+
+/* ------------------------------------------------------------ the list */
+.arch__list {
+  display: grid;
+  gap: 18px;
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.round {
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+}
+
+.round__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+  padding: 14px 18px;
+  border-bottom: 2px solid var(--qres-black);
+}
+
+.round__id {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.round__when {
+  font-size: 13px;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.round__total {
+  margin-left: auto;
+  font-size: 14px;
+  color: rgba(2, 2, 2, 0.7);
+}
+
+.round__total b {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--qres-black);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------ coin rows */
+.round__coins {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.crow {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  grid-template-areas:
+    "rank names sol"
+    "rank bought bought";
+  align-items: center;
+  gap: 4px 12px;
+  padding: 12px 18px;
+}
+
+.crow + .crow {
+  border-top: 2px dashed rgba(2, 2, 2, 0.18);
+}
+
+@media (min-width: 720px) {
+  .crow {
+    grid-template-columns: 2rem minmax(0, 1fr) 10rem 12rem;
+    grid-template-areas: "rank names sol bought";
+  }
+}
+
+.crow--zero {
+  background: rgba(2, 2, 2, 0.03);
+}
+
+.crow__rank {
+  grid-area: rank;
+  font-weight: 700;
+  color: rgba(2, 2, 2, 0.5);
+}
+
+.crow__names {
+  grid-area: names;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.crow__names b {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.crow__name {
+  font-size: 13px;
+  color: rgba(2, 2, 2, 0.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crow__sol {
+  grid-area: sol;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.crow__bought {
+  grid-area: bought;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.crow__sol small,
+.crow__bought small {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.crow__hint {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.55);
+}
+
+/* ------------------------------------------------------------ the round footer */
+.round__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding: 12px 18px;
+  border-top: 2px solid var(--qres-black);
+  font-size: 13px;
+}
+
+.round__meta {
+  color: rgba(2, 2, 2, 0.65);
+}
+
+.round__link {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--qres-black);
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------ the page footer */
+.arch__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-top: 36px;
+  padding-top: 18px;
+  border-top: 2px solid var(--qres-black);
+  font-size: 13px;
+}
+
+.arch__footer a {
+  color: var(--qres-black);
+  font-weight: 600;
+}
+
+.arch__copy {
+  margin-left: auto;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+/* "Verify" is a button but looks like a link next to Solscan: it is the same
+   gesture of "look at the proof". Padding rather than margin-left: auto,
+   otherwise the two links press against each other. */
+.round__verify {
+  margin-left: 12px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}

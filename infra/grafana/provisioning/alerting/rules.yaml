@@ -1,0 +1,140 @@
+# Alert rules.
+#
+# Three things worth waking someone up for:
+#   1) the buyer is throwing errors, so other people's money is not being spent
+#      the way we promised;
+#   2) a round has been stuck in a phase longer than it should be, which the
+#      worker itself reports;
+#   3) the phase worker has gone silent: crashed or hung, and nobody is driving
+#      the rounds any more.
+#
+# The queries go to Loki, so all three services must log there
+# (see docker-compose.yml, logging: driver: loki).
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: pumpling
+    folder: pumpling
+    interval: 1m
+    rules:
+      - uid: buyer-errors
+        title: Buyer is throwing errors
+        condition: THRESHOLD
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            The buyer has been logging errors for the last five minutes. The
+            buying may not finish, and participants' SOL would be left sitting
+            on the keeper. Logs: the "Errors and alerts" dashboard.
+        # No logs at all is covered by the separate silence rule; emptiness
+        # is not an error here.
+        noDataState: OK
+        execErrState: Alerting
+        data:
+          - refId: ERRORS
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: P8E80F9AEF21F6940
+            model:
+              refId: ERRORS
+              editorMode: code
+              queryType: instant
+              expr: sum(count_over_time({container_name="lottery-buyer"} | json | level="error" [5m]))
+          - refId: THRESHOLD
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: THRESHOLD
+              type: threshold
+              expression: ERRORS
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 0
+
+      - uid: lifecycle-stuck
+        title: Round stuck in a phase
+        condition: THRESHOLD
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            A round has been sitting in one phase longer than it should. The
+            phase worker reports this with a lifecycle-stuck line carrying the
+            round number and how old the phase is.
+        noDataState: OK
+        execErrState: Alerting
+        data:
+          - refId: STUCK
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: P8E80F9AEF21F6940
+            model:
+              refId: STUCK
+              editorMode: code
+              queryType: instant
+              expr: sum(count_over_time({container_name="lottery-phase-worker"} |= "lifecycle-stuck" [15m]))
+          - refId: THRESHOLD
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: THRESHOLD
+              type: threshold
+              expression: STUCK
+              conditions:
+                - evaluator:
+                    type: gt
+                    params:
+                      - 0
+
+      - uid: lifecycle-silent
+        title: Phase worker has gone silent
+        condition: THRESHOLD
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: >-
+            Not a single heartbeat line from the phase worker in fifteen
+            minutes. Nobody is driving the rounds: the pool will not close, the
+            draw will not happen, the buying will not start.
+        # Here silence IS the incident: no logs at all must raise the alarm
+        # rather than quietly count as normal.
+        noDataState: Alerting
+        execErrState: Alerting
+        data:
+          - refId: BEATS
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: P8E80F9AEF21F6940
+            model:
+              refId: BEATS
+              editorMode: code
+              queryType: instant
+              expr: sum(count_over_time({container_name="lottery-phase-worker"} |= "lifecycle-heartbeat" [15m]))
+          - refId: THRESHOLD
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              refId: THRESHOLD
+              type: threshold
+              expression: BEATS
+              conditions:
+                - evaluator:
+                    type: lt
+                    params:
+                      - 1

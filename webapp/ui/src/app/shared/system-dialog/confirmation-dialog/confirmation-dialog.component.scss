@@ -1,0 +1,146 @@
+/* The confirmation dialog in the pumpling style: a white card, a 2px border and a
+   hard shadow — like the sign-in dialog. The MatDialog body and backdrop are set
+   by the global `.qres-confirm-panel` styles in styles.scss. */
+:host {
+  display: block;
+}
+
+.qres-confirm {
+  position: relative;
+  width: min(calc(100vw - 32px), 400px);
+  padding: 26px 28px 24px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 6px 6px 0 var(--qres-black);
+  color: var(--qres-black);
+}
+
+.qres-confirm__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.qres-confirm__close svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.qres-confirm__close:hover,
+.qres-confirm__close:focus-visible {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+.qres-confirm__title {
+  margin: 0;
+  padding-right: 44px;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.qres-confirm__message {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  /* 70% black is 8.2:1. */
+  color: rgba(2, 2, 2, 0.7);
+}
+
+.qres-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.qres-confirm__btn {
+  min-width: 112px;
+  height: 46px;
+  padding: 0 18px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.qres-confirm__btn:hover,
+.qres-confirm__btn:focus-visible {
+  box-shadow: 3px 3px 0 var(--qres-black);
+  transform: translate(-1px, -1px);
+}
+
+.qres-confirm__btn--primary {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+/* A purple background with black text: white on it is 2.5:1. */
+.qres-confirm__btn--primary:hover,
+.qres-confirm__btn--primary:focus-visible {
+  background: var(--qres-purple);
+  color: var(--qres-black);
+}
+
+/* An irreversible action in the admin area — delete, close a pool. White on this
+   red is 6.4:1. */
+.qres-confirm__btn--danger {
+  border-color: #b3261e;
+  background: #b3261e;
+}
+
+.qres-confirm__btn--danger:hover,
+.qres-confirm__btn--danger:focus-visible {
+  border-color: var(--qres-black);
+  background: #8c1d17;
+  color: var(--qres-white);
+}
+
+@media (max-width: 480px) {
+  .qres-confirm {
+    padding: 22px 18px 18px;
+  }
+
+  .qres-confirm__actions {
+    flex-direction: column-reverse;
+  }
+
+  .qres-confirm__btn {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qres-confirm__btn {
+    transition: none;
+  }
+
+  .qres-confirm__btn:hover,
+  .qres-confirm__btn:focus-visible {
+    transform: none;
+  }
+}

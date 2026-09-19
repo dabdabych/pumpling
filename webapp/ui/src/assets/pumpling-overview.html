@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pumpling — Project overview</title>
+<meta name="description" content="Attention is the new currency. We provide it.">
+<meta name="theme-color" content="#FCFCFC">
+<link rel="icon" href="images/pumpling-mascot.png">
+<style>
+/* The tokens are the ones from lottery/webapp/ui/src/styles.scss. */
+:root{
+  --white:#FCFCFC; --black:#020202; --purple:#AF8FFF; --grey:#6B6B6B;
+  --line:2px; --radius:2px;
+  --font:'Inter',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{
+  background:var(--white); color:var(--black);
+  font-family:var(--font); font-size:17px; line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* The column is limited by character count rather than pixels: that keeps a line
+   readable on a laptop and on a phone alike. */
+.wrap{max-width:37rem;margin:0 auto;padding:0 20px}
+
+/* ------------------------------------------------------------- the header */
+header{border-bottom:var(--line) solid var(--black);background:var(--white)}
+.bar{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  max-width:37rem;margin:0 auto;padding:14px 20px;
+}
+.brand{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none;min-width:0}
+.brand img{width:34px;height:34px;display:block;flex-shrink:0}
+.brand span{font-size:16px;font-weight:600;letter-spacing:-.01em}
+.dl{
+  display:inline-flex;align-items:center;gap:7px;flex-shrink:0;
+  height:40px;padding:0 14px;
+  border:var(--line) solid var(--black);border-radius:var(--radius);
+  background:var(--white);color:inherit;text-decoration:none;
+  font-size:14px;font-weight:600;line-height:1;
+  transition:background .2s,color .2s;
+}
+.dl:hover,.dl:focus-visible{background:var(--black);color:var(--white)}
+
+/* ------------------------------------------------------------- the title */
+.title{padding:56px 0 8px}
+.title h1{font-size:clamp(2.4rem,9vw,3.6rem);font-weight:600;letter-spacing:-.035em;line-height:1}
+.title .sub{margin-top:10px;font-size:1.05rem;font-weight:600;color:var(--purple)}
+.title .tag{margin-top:16px;font-size:1.1rem;line-height:1.5}
+.title .rule{height:var(--line);background:var(--black);margin-top:28px}
+
+/* ------------------------------------------------------------- the text */
+article{padding:8px 0 72px}
+h2{
+  font-size:clamp(1.45rem,5.5vw,1.9rem);font-weight:600;letter-spacing:-.02em;
+  line-height:1.2;margin:44px 0 0;
+}
+h2+.hr{height:var(--line);background:var(--purple);margin:10px 0 18px}
+p{margin:0 0 16px}
+.lead{font-size:1.16rem;line-height:1.55}
+b,strong{font-weight:600}
+
+/* The key thought: a line on the left, no fill. */
+.accent{
+  border-left:4px solid var(--purple);
+  padding:4px 0 4px 18px;margin:26px 0;
+  font-size:1.18rem;font-weight:600;line-height:1.4;
+}
+
+/* The only callout style in the whole document. */
+.box{
+  position:relative;margin:26px 0;
+  border:var(--line) solid var(--black);border-radius:var(--radius);
+  background:var(--white);padding:18px;
+  box-shadow:4px 4px 0 var(--purple);
+}
+.box .head{display:block;font-weight:600;margin-bottom:6px}
+
+ul{list-style:none;margin:0 0 18px;padding:0}
+ul li{position:relative;padding-left:22px;margin-bottom:11px}
+ul li::before{
+  content:"";position:absolute;left:0;top:.62em;
+  width:8px;height:8px;background:var(--black);
+}
+
+/* Numbered items. */
+.num{display:flex;gap:14px;margin-bottom:18px}
+.num .n{
+  flex:0 0 28px;height:28px;display:grid;place-items:center;
+  border:var(--line) solid var(--black);border-radius:var(--radius);
+  background:var(--black);color:var(--white);
+  font-size:14px;font-weight:700;line-height:1;
+}
+.num .t{font-weight:600;margin-bottom:2px}
+.num .x{color:var(--grey);font-size:.97rem;line-height:1.5}
+
+/* The round diagram. */
+.tl{margin:26px 0;padding:0}
+.tl li{position:relative;padding:0 0 22px 30px;list-style:none}
+.tl li::before{
+  content:"";position:absolute;left:0;top:6px;
+  width:11px;height:11px;border:2px solid var(--black);border-radius:50%;
+  background:var(--white);
+}
+.tl li:first-child::before{background:var(--black)}
+.tl li::after{
+  content:"";position:absolute;left:5px;top:17px;bottom:0;
+  width:1.5px;background:var(--black);
+}
+.tl li:last-child{padding-bottom:0}
+.tl li:last-child::after{display:none}
+.tl .t{font-weight:600;margin-bottom:2px}
+.tl .x{color:var(--grey);font-size:.97rem;line-height:1.5}
+
+/* ------------------------------------------------------------- the footer */
+footer{border-top:var(--line) solid var(--black);padding:22px 0 40px}
+.foot{
+  max-width:37rem;margin:0 auto;padding:0 20px;
+  display:flex;flex-wrap:wrap;gap:10px 18px;
+  align-items:center;justify-content:space-between;
+  font-size:.88rem;color:var(--grey);
+}
+.foot a{color:var(--black);text-decoration:none;border-bottom:1px solid var(--black)}
+.foot a:hover{color:var(--purple);border-color:var(--purple)}
+
+a:focus-visible{outline:2px solid var(--purple);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <a class="brand" href="/">
+      <img src="images/pumpling-mascot.png" width="34" height="34" alt="">
+      <span>pumpling</span>
+    </a>
+    <a class="dl" href="pumpling-overview.pdf" download>Download PDF</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="title">
+    <h1>pumpling</h1>
+    <div class="sub">Project overview</div>
+    <p class="tag">Attention is the new currency. We provide it.</p>
+    <div class="rule"></div>
+  </div>
+
+  <article>
+<h2>What we are building</h2>
+<div class="hr"></div>
+<p class="lead">A platform that we believe is the next logical step after you launch your coin.</p>
+<p>Today hype is gated by audience. With 50,000 followers you move your coin with a single post. With 500 you move nothing, no matter how good the coin is.</p>
+<p class="accent">Getting noticed should not depend<br/>on how many followers you have.</p>
+<p>This is <b>not a launchpad</b> — not another pump.fun clone. And not another crypto Twitter. Our platform is simple math wrapped in a transparent GameFi mechanic.</p>
+<h2>Who it is for</h2>
+<div class="hr"></div>
+<div class="box"><b>Our core audience is people who have a coin but no audience.</b> Solo launchers and small teams with nothing to promote their coin with except their own money. Until now that bought them nothing: you can buy 100 SOL of your own coin without us, it just will not create any hype.</div>
+<p>From there the effect spreads on its own:</p>
+<ul><li><b>Traders and snipers</b> get something rare — a signal that comes with guaranteed execution.</li><li><b>Algo traders</b> get a new, predictable on-chain event to build strategies around.</li><li><b>Crypto content creators</b> get a ready-made story every few hours.</li></ul>
+<h2>The idea</h2>
+<div class="hr"></div>
+<p>The easiest way to explain it is a thought experiment.</p>
+<div class="box">You see a post on Twitter. Someone with 500 followers announces that he has a coin and that in exactly one hour he will buy <b>100 SOL</b> of it. The coin's market cap right now is <b>40 SOL</b>.</div>
+<p class="accent">Would you go and buy that coin right now?</p>
+<p>On one hand, it looks like a great opportunity. On the other — what guarantees he will not simply be lying? You would scroll his timeline, check whether he has done this before and whether he followed through, weigh the risk. And most likely you would pass.</p>
+<p class="accent">Our idea is to replace that person<br/>with a smart contract.</p>
+<p>Every three hours we open a pool. Anyone can send in their SOL and name any memecoin they are interested in. Once the pool closes, the whole pool is committed to buying — publicly, on-chain, spread over the following hour. How the pool is split between the named coins is settled by a draw; the next section explains how.</p>
+<p>The promise no longer requires trusting a person. The SOL sits in a contract, nobody can take it back, and the buying happens in the open. The price starts moving on anticipation — which is exactly what any coin needs.</p>
+<ul class="tl"><li><div class="t">Pool opens</div><div class="x">Anyone sends in SOL and names any memecoin they are interested in.</div></li><li><div class="t">Pool closes</div><div class="x">Two hours later entries close — or sooner, if the pool reaches 111 SOL. Everyone can see what is about to be bought.</div></li><li><div class="t">The draw sets the split</div><div class="x">A draw decides how much of the pool goes to each named coin. The more SOL backed a coin, the larger its share.</div></li><li><div class="t">The buying starts</div><div class="x">Over the next hour the coins are bought publicly and continuously, on-chain, in small batches. Every buy is an ordinary Solana transaction, and the site links to each one.</div></li><li><div class="t">Tokens go back</div><div class="x">What was bought goes to the people who backed those coins.</div></li></ul>
+<h2>A bit of unpredictability</h2>
+<div class="hr"></div>
+<p>If every coin were bought for exactly what backed it, a round would be a spreadsheet — the result would be known before the pool even closed, and there would be nothing to watch.</p>
+<p>So the split is settled by a draw. It is a redistribution, not a knockout: shares move around what each coin attracted, rather than collapsing onto a single winner.</p>
+<div class="box"><span class="head">Example</span>A pool closes at <b>100 SOL</b>. Three coins were named: $AAA backed with 50 SOL, $BBB with 30, $CCC with 20.<br/><br/>The draw settles the split at <b>55 / 28 / 14</b> — 97 SOL after our 3% fee.<br/><br/>Over the next hour exactly those amounts are bought, in small batches. The tokens bought for each coin go to the people who backed it, split by how much SOL each of them put in.</div>
+<p>The more SOL stands behind a coin, the closer its result sits to its share. A small stake is the most exposed: the draw can lift it well above its share, and occasionally down to nothing.</p>
+<p>This has three consequences:</p>
+<div class="num"><div class="n">1</div><div><div class="t">The outcome is worth watching</div><div class="x">A round stops being a spreadsheet you can solve ahead of time.</div></div></div><div class="num"><div class="n">2</div><div><div class="t">Traders play against each other</div><div class="x">PvP instead of arithmetic: the competition is between participants, not against a calculator.</div></div></div><div class="num"><div class="n">3</div><div><div class="t">Going in alone pays better</div><div class="x">Diluting the pool is not in your interest — so there is a reason to move first and alone: then the whole round, and the whole buy, goes to one coin.</div></div></div>
+<h2>What this solves</h2>
+<div class="hr"></div>
+<p>The product closes two real problems.</p>
+<div class="box"><span class="head">First — attention.</span>We give a new and far more substantial way to promote your coin to people who have no audience of their own. And for those who do have one, we amplify it: a post gains the thing a post alone never has — a guarantee that drives the crowd even harder.</div>
+<div class="box"><span class="head">Second — sniping coins before the hype.</span>A trader enters a coin before the move starts and gets something memecoins never offer: a guarantee that for the next hour this coin will not rug, because right now it is being bought publicly and continuously.</div>
+<h2>Where to find us</h2>
+<div class="hr"></div>
+<p>The chat is open before launch — join, ask questions, watch it being built.</p>
+<div class="box"><b>pumpling.xyz</b> — the pre-release site, with the chat.<br/><b>x.com/pumplingxyz</b> — announcements.</div>
+  </article>
+</main>
+
+<footer>
+  <div class="foot">
+    <span>pumpling · Solana · memecoins</span>
+    <a href="/">Back to pumpling.xyz</a>
+  </div>
+</footer>
+
+</body>
+</html>

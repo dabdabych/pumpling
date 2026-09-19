@@ -1,0 +1,10 @@
+node_modules
+dist
+.idea
+.git*
+**/.git*
+**/.docker*
+**/Docker*
+**/charts*
+**/kubernetes*
+!docker-entrypoint.d/**

@@ -1,0 +1,2 @@
+ALTER TABLE lotteries
+ADD COLUMN IF NOT EXISTS max_total NUMERIC(20, 8);

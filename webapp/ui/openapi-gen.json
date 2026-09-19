@@ -1,0 +1,9 @@
+{
+  "input": "http://127.0.0.1:9876/openapi.json",
+  "output": "src/app/api-client",
+  "ignoreUnusedModels": false,
+  "serviceSuffix": "Api",
+  "enumStyle": "enum",
+  "removeStaleFiles": true,
+  "promises": false
+}

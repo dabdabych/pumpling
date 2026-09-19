@@ -1,0 +1,77 @@
+<app-site-header></app-site-header>
+
+<main class="arch">
+  <header class="arch__head">
+    <p class="arch__eyebrow">Archive</p>
+    <h1 class="arch__title">Pools that <span class="arch__plate">already ran</span></h1>
+    <p class="arch__lede">
+      Every finished pool with SOL in it: what stood behind each coin and how much went into its buys.
+    </p>
+  </header>
+
+  @if (loading) {
+    <div class="arch__state" role="status">Loading the history…</div>
+  } @else if (failed) {
+    <div class="arch__state arch__state--bad" role="alert">
+      Could not load the history right now. Refresh the page in a moment.
+    </div>
+  } @else if (rounds.length === 0) {
+    <div class="arch__state">
+      <p class="arch__state-title">No finished pools yet</p>
+      <p>The first one shows up here as soon as a pool closes with SOL in it.</p>
+      <a routerLink="/pool" class="arch__cta">Open the live pool</a>
+    </div>
+  } @else {
+    <ul class="arch__list">
+      @for (round of rounds; track trackRound($index, round)) {
+        <li class="round">
+          <header class="round__head">
+            <b class="round__id">Pool #{{ round.id }}</b>
+            <span class="round__when">{{ endedAt(round) }}</span>
+            <span class="round__total"><b>{{ round.totalSol | number: '1.0-2' }}</b> SOL in the pool</span>
+          </header>
+
+          <ul class="round__coins">
+            @for (coin of round.coins; track trackCoin($index, coin)) {
+              <li class="crow" [class.crow--zero]="coin.boughtSol === 0">
+                <span class="crow__rank">{{ coin.rank }}</span>
+                <span class="crow__names">
+                  <b>${{ coin.ticker }}</b>
+                  <span class="crow__name">{{ coin.name }}</span>
+                </span>
+                <span class="crow__sol">{{ coin.sol | number: '1.0-2' }} <small>SOL in</small></span>
+                <span class="crow__bought">
+                  @if (coin.boughtSol === null) {
+                    <span class="crow__hint">no draw</span>
+                  } @else if (coin.boughtSol > 0) {
+                    {{ coin.boughtSol | number: '1.0-2' }} <small>SOL of buys</small>
+                  } @else {
+                    <span class="crow__hint">drawn to zero</span>
+                  }
+                </span>
+              </li>
+            }
+          </ul>
+
+          <footer class="round__foot">
+            <span class="round__meta">{{ boughtCount(round) }} of {{ round.coins.length }} coins bought</span>
+            @if (round.poolAccount) {
+              <a class="round__link"
+                 [href]="'https://solscan.io/account/' + round.poolAccount + explorerQuery"
+                 target="_blank" rel="noreferrer">{{ shortMint(round.poolAccount) }} on Solscan</a>
+            }
+            <!-- For anyone who wants to check a draw later on. -->
+            <button type="button" class="round__link round__verify" (click)="openVerify(round.id)">Verify</button>
+          </footer>
+        </li>
+      }
+    </ul>
+  }
+
+  <footer class="arch__footer">
+    <a routerLink="/pool">Live pool</a>
+    <a routerLink="/privacy-policy">Privacy Policy</a>
+    <a routerLink="/terms">Terms of Use</a>
+    <span class="arch__copy">© 2026 pumpling · built on Solana</span>
+  </footer>
+</main>

@@ -1,0 +1,61 @@
+<div class="share">
+  <header class="share__head">
+    <h2 class="share__title" id="share-dialog-title">Post it</h2>
+    <button type="button" class="share__close" aria-label="Close" (click)="close()">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" /></svg>
+    </button>
+  </header>
+
+  <p class="share__lede">People see the buy coming before it starts. Take the card and post it.</p>
+
+  <div class="share__preview" [class.is-ready]="ready">
+    <canvas #canvas
+            class="share__canvas"
+            [width]="width"
+            [height]="height"
+            role="img"
+            [attr.aria-label]="copy.post"></canvas>
+    @if (!ready && !failed) {
+      <span class="share__loading" aria-hidden="true"></span>
+    }
+  </div>
+
+  @if (failed) {
+    <p class="share__error">The card could not be drawn here. The link still works.</p>
+  }
+
+  <div class="share__actions">
+    @if (canCopyImage) {
+      <button type="button" class="share__button share__button--primary" (click)="copyImage()" [disabled]="!ready">
+        Copy card
+      </button>
+    }
+    <button type="button" class="share__button" (click)="download()" [disabled]="!ready">
+      Download
+    </button>
+    @if (canShareFile) {
+      <button type="button" class="share__button share__button--share" (click)="shareFile()" [disabled]="!ready">
+        Share
+      </button>
+    }
+    <button type="button" class="share__button" (click)="copyLink()">
+      Copy link
+    </button>
+    <a class="share__button share__button--x" [href]="postUrl()" target="_blank" rel="noopener">
+      Post on X
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M3 3h5.2l4.3 6 5-6H21l-7 8.3L21.5 21H16.3l-4.6-6.4L6.2 21H3.5l7.4-8.8L3 3z" />
+      </svg>
+    </a>
+  </div>
+
+  <p class="share__note" role="status" aria-live="polite">
+    @switch (feedback) {
+      @case ('image-copied') { Card copied. Paste it into your post. }
+      @case ('link-copied') { Link copied. }
+      @case ('downloaded') { Saved. Attach it to your post. }
+      @case ('copy-failed') { Your browser would not copy it. Download the card instead. }
+      @default { X does not pull the card from the link, so attach it yourself. }
+    }
+  </p>
+</div>

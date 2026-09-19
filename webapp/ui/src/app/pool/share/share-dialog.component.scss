@@ -1,0 +1,214 @@
+/* The dialog lives in the shared `.auth-dialog-panel` body from styles.scss: a
+   white sheet with a black border on desktop and a bottom sheet on a phone. */
+
+:host {
+  display: block;
+}
+
+/* The dialog body is the same as sign-in: a 2px border and a hard shadow. The
+   overlay itself is transparent — the component draws the white sheet. */
+.share {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 22px 24px 24px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 6px 6px 0 var(--qres-black);
+  color: var(--qres-black);
+}
+
+.share__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.share__title {
+  margin: 0;
+  font-size: clamp(1.5rem, 3.4vw, 1.9rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+.share__close {
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: var(--qres-black);
+    stroke-width: 2.4;
+    stroke-linecap: round;
+  }
+}
+
+.share__lede {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: rgba(2, 2, 2, 0.7);
+  text-wrap: pretty;
+}
+
+.share__preview {
+  position: relative;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 6px 6px 0 var(--qres-purple);
+  overflow: hidden;
+}
+
+.share__canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.share__preview.is-ready .share__canvas {
+  opacity: 1;
+}
+
+/* While the card is being drawn its space is already taken: the dialog does not jump. */
+.share__loading {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(2, 2, 2, 0.05) 25%, rgba(2, 2, 2, 0.1) 37%, rgba(2, 2, 2, 0.05) 63%);
+  background-size: 200% 100%;
+  animation: share-skeleton 1.4s ease-in-out infinite;
+}
+
+@keyframes share-skeleton {
+  to { background-position: -200% 0; }
+}
+
+.share__error {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #b0341d;
+}
+
+.share__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.share__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--qres-black);
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+
+  svg {
+    width: 15px;
+    height: 15px;
+    fill: currentColor;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+}
+
+.share__button--primary {
+  background: var(--qres-purple);
+}
+
+.share__button--share {
+  background: var(--qres-green);
+}
+
+.share__button--x {
+  margin-left: auto;
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+@media (hover: hover) {
+  .share__button:not(:disabled):hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 var(--qres-black);
+  }
+
+  .share__button--x:not(:disabled):hover {
+    box-shadow: 3px 3px 0 var(--qres-purple);
+  }
+
+  .share__close:hover {
+    background: var(--qres-purple);
+  }
+}
+
+.share__note {
+  margin: 0;
+  min-height: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+@media (max-width: 599px) {
+  .share {
+    max-height: calc(100dvh - 32px);
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+    border-width: 2px 0 0;
+    box-shadow: none;
+  }
+
+  .share__button {
+    flex: 1 1 calc(50% - 5px);
+    justify-content: center;
+  }
+
+  .share__button--x {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .share__canvas,
+  .share__button,
+  .share__close {
+    transition: none;
+  }
+
+  .share__loading {
+    animation: none;
+  }
+}

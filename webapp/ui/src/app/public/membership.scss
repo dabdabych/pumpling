@@ -1,0 +1,412 @@
+/* ============================================================
+   Shared styles for the auth pages: sign in, sign up, password recovery and
+   reset, email confirmation.
+
+   Included from sign-in.component.scss, which the other pages of the flow
+   inherit from, and from the sign-in flow (auth/auth-flow).
+
+   IMPORTANT about spacing. Tailwind is loaded without preflight, and Bootstrap
+   lives alongside with its own mt-1..mt-5 utilities on a different scale, with
+   !important. So everything here is set with our own classes and pixels rather
+   than utilities — otherwise the values are silently overridden.
+   ============================================================ */
+
+.main-box {
+  width: 100%;
+}
+
+/* ------------------------------------------------------------ the card */
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 28px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 5px 5px 0 var(--qres-black);
+}
+
+.auth-card__title {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--qres-black);
+}
+
+/* Paragraphs with no class of their own: Tailwind without preflight, so a <p>
+   keeps the bootstrap margin — we set our own. The selector deliberately only
+   hits the unclassified ones: otherwise it beats .auth-card__subtitle, .auth-note
+   and .auth-foot on specificity and wrecks their spacing. */
+.auth-card p:not([class]) {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #3D3D3D;
+}
+
+.auth-card p:not([class]):last-child {
+  margin-bottom: 0;
+}
+
+.auth-card__subtitle {
+  /* Between the subtitle and the first field there is nowhere for an error to
+     come from, so no headroom is needed here. */
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: #5F5F5F;
+}
+
+/* ------------------------------------------------------------- the field */
+/* Three layers: the label, the border with the field itself, and the error
+   message. The error lives OUTSIDE the border — otherwise the field grows in
+   height, the error text ends up inside the border, and the show-password
+   button, anchored to the middle, drifts into the middle of the error list. */
+.field {
+  display: block;
+}
+
+/* The rhythm is tuned for a 420px card: the fields sit closer together, but the
+   room for an error message (18px) is untouched — it keeps the form from jumping. */
+.field + .field {
+  margin-top: 12px;
+}
+
+.field__label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--qres-black);
+}
+
+.field__control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 52px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.field__control:focus-within {
+  border-color: var(--qres-purple);
+  box-shadow: 3px 3px 0 var(--qres-purple);
+}
+
+.field--invalid .field__control {
+  border-color: #C7332F;
+}
+
+.field--invalid .field__control:focus-within {
+  box-shadow: 3px 3px 0 #C7332F;
+}
+
+/* Only the container draws a border: the field itself has none, otherwise you
+   get nested rectangles. */
+.field__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 14px 0 46px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--qres-black);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.field--with-toggle .field__input {
+  padding-right: 46px;
+}
+
+.field__input::placeholder {
+  color: #9A9A9A;
+}
+
+/* Browser autofill paints the field with its own background and breaks the look. */
+.field__input:-webkit-autofill,
+.field__input:-webkit-autofill:hover,
+.field__input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--qres-black);
+  -webkit-box-shadow: 0 0 0 1000px var(--qres-white) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+.field__icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  color: rgba(2, 2, 2, 0.45);
+}
+
+.field__icon svg,
+.field__icon img {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
+.field__icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The show-password button is anchored to the border, not to the height of the whole field. */
+.field__toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: rgba(2, 2, 2, 0.5);
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.field__toggle:hover {
+  color: var(--qres-black);
+  background: rgba(2, 2, 2, 0.06);
+}
+
+.field__toggle svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Room for the message is reserved: without it an error appearing jerks the
+   whole form down. It must not go below 17px — a message line at 12.5px/1.35
+   takes 16.875px, and the headroom would stop holding it. */
+.field__message {
+  min-height: 17px;
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: #C7332F;
+}
+
+.field__message ul {
+  margin: 2px 0 0;
+  padding-left: 16px;
+}
+
+.field__message li {
+  margin-top: 1px;
+}
+
+/* --------------------------------------------------------- actions */
+.auth-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.auth-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  min-width: 200px;
+  height: 48px;
+  padding: 0 24px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-black);
+  color: var(--qres-white);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.auth-btn:hover:not(:disabled),
+.auth-btn:focus-visible:not(:disabled) {
+  background: var(--qres-purple);
+  border-color: var(--qres-purple);
+}
+
+.auth-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auth-btn--secondary {
+  background: var(--qres-white);
+  color: var(--qres-black);
+}
+
+.auth-btn--secondary:hover:not(:disabled),
+.auth-btn--secondary:focus-visible:not(:disabled) {
+  background: var(--qres-black);
+  color: var(--qres-white);
+  border-color: var(--qres-black);
+}
+
+/* ------------------------------------------------- the divider and the bottom */
+/* The "Sign in — or — Continue with wallet" block is tightened: there is never
+   an error message between those three lines, so there is nothing to hold room for. */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8A8A8A;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 2px;
+  background: rgba(2, 2, 2, 0.12);
+}
+
+/* Adjacent margins collapse to the larger, and the 16px on .auth-actions would
+   beat the divider's 10px — the wallet button would stay where it was. */
+.auth-divider + .auth-actions {
+  margin-top: 10px;
+}
+
+.auth-note {
+  margin: 16px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #5F5F5F;
+}
+
+.auth-actions + .auth-foot {
+  margin-top: 16px;
+}
+
+.auth-foot {
+  margin: 10px 0 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--qres-black);
+}
+
+/* The policy link at the very bottom of the card. Set off by a line and muted:
+   it is a reference link and must not compete for attention with "Create one".
+   A button rather than a link, because it opens a dialog rather than navigating
+   — a link with no href has neither keyboard support nor a role. */
+.auth-legal {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 2px solid rgba(2, 2, 2, 0.1);
+  text-align: center;
+}
+
+.auth-legal__link {
+  padding: 2px 4px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  color: #6F6F6F;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.auth-legal__link:hover,
+.auth-legal__link:focus-visible {
+  color: var(--qres-black);
+}
+
+/* The shared form error bar: an email already taken, a wrong password and so on. */
+.auth-error {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 2px solid #C7332F;
+  border-radius: 2px;
+  background: rgba(199, 51, 47, 0.06);
+  font-size: 13px;
+  line-height: 1.4;
+  color: #8E1F1C;
+}
+
+/* ------------------------------------------------------- "remember me" */
+.auth-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 10px;
+  font-size: 13.5px;
+  color: var(--qres-black);
+  cursor: pointer;
+  user-select: none;
+}
+
+.auth-check input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--qres-purple);
+  cursor: pointer;
+}
+
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 22px 18px;
+  }
+
+  /* On a narrow screen the button is full width — easier with a thumb. */
+  .auth-btn {
+    align-self: stretch;
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* A card with a policy link at the bottom needs less air: under the last line
+   sits a footnote rather than content, and the shared 28px left a noticeable gap
+   below it. The rule comes AFTER the media query deliberately — padding is set
+   there in shorthand and would otherwise put the bottom back. */
+.auth-card:has(.auth-legal) {
+  padding-bottom: 20px;
+}
+
+@media (max-width: 480px) {
+  .auth-card:has(.auth-legal) {
+    padding-bottom: 16px;
+  }
+}

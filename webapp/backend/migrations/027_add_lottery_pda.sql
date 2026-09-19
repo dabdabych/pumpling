@@ -1,0 +1,2 @@
+ALTER TABLE lotteries
+ADD COLUMN IF NOT EXISTS lottery_pda VARCHAR(64);

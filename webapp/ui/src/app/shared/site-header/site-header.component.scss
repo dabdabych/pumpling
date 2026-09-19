@@ -1,0 +1,165 @@
+/* The header of the inner pages. The sizes and colours match the main page
+   header: a 64px bar, a 2px border, a black backdrop offset by 4px. */
+
+:host {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.site-header {
+  padding: 16px 16px 12px;
+  background: var(--qres-white);
+}
+
+@media (min-width: 640px) {
+  .site-header {
+    padding: 16px 32px 12px;
+  }
+}
+
+.site-header__frame {
+  position: relative;
+  max-width: 80rem;
+  margin: 0 auto;
+}
+
+.site-header__shadow {
+  position: absolute;
+  inset: 0;
+  transform: translate(4px, 4px);
+  border-radius: 2px;
+  background: var(--qres-black);
+}
+
+.site-header__bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 64px;
+  padding: 0 12px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+}
+
+@media (min-width: 640px) {
+  .site-header__bar {
+    padding: 0 20px;
+  }
+}
+
+.site-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--qres-black);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.site-header__brand:hover,
+.site-header__brand:focus-visible {
+  color: var(--qres-purple);
+}
+
+.site-header__word {
+  display: none;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+@media (min-width: 560px) {
+  .site-header__word {
+    display: inline;
+  }
+}
+
+.site-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.site-header__icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  color: var(--qres-black);
+}
+
+.site-header__icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.site-header__auth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 16px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-black);
+  color: var(--qres-white);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+@media (hover: hover) {
+  .site-header__auth:hover:not(:disabled) {
+    border-color: var(--qres-purple);
+    background: var(--qres-purple);
+    color: var(--qres-black);
+  }
+}
+
+.site-header__auth:focus-visible {
+  outline: 2px solid var(--qres-purple);
+  outline-offset: 2px;
+}
+
+.site-header__auth:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+/* The link to your own commits: visible only when signed in, so it stays calm. */
+.site-header__mine {
+  padding: 8px 12px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--qres-black);
+  text-decoration: none;
+}
+
+.site-header__mine:hover,
+.site-header__mine:focus-visible {
+  background: var(--qres-purple);
+}
+
+@media (max-width: 480px) {
+  .site-header__mine {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+}

@@ -1,0 +1,160 @@
+/* The legal text dialog. The same styling as the wallet chooser: a white card, a
+   black 2px border and a hard shadow — the neo-brutalism from styles.scss. */
+
+:host {
+  display: block;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+/* The panel, the backdrop and full-screen mode on a phone are set in
+   src/styles.scss: they are not descendants of this component and cannot be reached from here. */
+
+.legal-dialog {
+  display: flex;
+  flex-direction: column;
+  /* The height limit lives here rather than on the panel: otherwise the header
+     and footer travel off the edge with the text instead of staying put. */
+  max-height: 88vh;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 5px 5px 0 var(--qres-black);
+}
+
+/* -------------------------------------------------------------- the header */
+.legal-dialog__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 18px 20px 14px;
+  border-bottom: 2px solid var(--qres-black);
+}
+
+.legal-dialog__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--qres-black);
+}
+
+.legal-dialog__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.legal-dialog__close svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.legal-dialog__close:hover,
+.legal-dialog__close:focus-visible {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+/* --------------------------------------------------------------- the text */
+.legal-dialog__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+}
+
+.legal-dialog__body:focus-visible {
+  outline: 2px solid var(--qres-purple);
+  outline-offset: -2px;
+}
+
+/* -------------------------------------------------------------- the footer */
+.legal-dialog__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  padding: 14px 20px;
+  border-top: 2px solid var(--qres-black);
+}
+
+.legal-dialog__link {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #6B4BC4;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.legal-dialog__link:hover,
+.legal-dialog__link:focus-visible {
+  color: var(--qres-black);
+}
+
+.legal-dialog__done {
+  min-width: 120px;
+  height: 42px;
+  padding: 0 20px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-black);
+  color: var(--qres-white);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.legal-dialog__done:hover,
+.legal-dialog__done:focus-visible {
+  background: var(--qres-purple);
+  border-color: var(--qres-purple);
+}
+
+/* On a phone the dialog is full screen — styles.scss stretches the panel itself,
+   here only the inner card adapts to it. */
+@media (max-width: 600px) {
+  .legal-dialog {
+    max-height: 100vh;
+    height: 100vh;
+    border: none;
+    box-shadow: none;
+  }
+
+  .legal-dialog__head {
+    padding: 14px 16px 12px;
+  }
+
+  .legal-dialog__body {
+    padding: 16px;
+  }
+
+  .legal-dialog__foot {
+    /* Below the button is the system gesture bar, otherwise "Close" goes under it. */
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .legal-dialog__done {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+}

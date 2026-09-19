@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+  <head>
+      <base href="/">
+
+      <!-- Google tag (gtag.js), production domains only -->
+      <script>
+        (function () {
+          var measurementId = 'G-Y3DPP4QXPJ';
+          var allowedHosts = ['pumpling.xyz', 'www.pumpling.xyz'];
+          var hostname = window.location.hostname.toLowerCase();
+
+          if (allowedHosts.indexOf(hostname) === -1) {
+            return;
+          }
+
+          window.dataLayer = window.dataLayer || [];
+          window.gtag = window.gtag || function () {
+            window.dataLayer.push(arguments);
+          };
+          window.gtag('js', new Date());
+          window.gtag('config', measurementId);
+
+          var script = document.createElement('script');
+          script.async = true;
+          script.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(measurementId);
+          document.head.appendChild(script);
+        })();
+      </script>
+
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Pumpling — promote your memecoin on Solana</title>
+    <meta name="description" content="Pumpling is a platform built so anyone can hype and promote their coin on the Solana network.">
+    <meta name="robots" content="index,follow,max-image-preview:large">
+
+    <link rel="canonical" href="https://pumpling.xyz/">
+
+    <!-- The icon set is cut to what is needed: a .ico with 16/32/48 inside, PNGs
+         in case the browser prefers them, apple-touch for iOS and two for the
+         manifest. mask-icon and msapplication-TileColor are gone — nothing reads them any more. -->
+    <link rel="icon" href="/favicon.ico?v=6" sizes="any">
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png?v=6">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=6">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=6">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=6">
+    <link rel="manifest" href="/site.webmanifest?v=6">
+    <meta name="theme-color" content="#FCFCFC">
+
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Pumpling">
+    <meta property="og:title" content="Pumpling — promote your memecoin on Solana">
+    <meta property="og:description" content="Pumpling is a platform built so anyone can hype and promote their coin on the Solana network.">
+    <meta property="og:url" content="https://pumpling.xyz/">
+    <meta property="og:image" content="https://pumpling.xyz/assets/seo/pumpling-share.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Pumpling — promotion for Solana memecoins">
+
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@pumplingxyz">
+    <meta name="twitter:title" content="Pumpling — promote your memecoin on Solana">
+    <meta name="twitter:description" content="Pumpling is a platform built so anyone can hype and promote their coin on the Solana network.">
+    <meta name="twitter:image" content="https://pumpling.xyz/assets/seo/pumpling-share.png">
+
+    <!-- Markup for search engines: who we are and where to find us. Product, FAQ
+         and reviews are not added before launch — Google punishes invented markup. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://pumpling.xyz/#organization",
+          "name": "Pumpling",
+          "url": "https://pumpling.xyz/",
+          "description": "Pumpling is a platform built so anyone can hype and promote their coin on the Solana network.",
+          "logo": "https://pumpling.xyz/assets/seo/android-chrome-512x512.png",
+          "sameAs": ["https://x.com/pumplingxyz"]
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://pumpling.xyz/#website",
+          "name": "Pumpling",
+          "url": "https://pumpling.xyz/",
+          "description": "Pumpling is a platform built so anyone can hype and promote their coin on the Solana network.",
+          "publisher": { "@id": "https://pumpling.xyz/#organization" },
+          "inLanguage": "en"
+        }
+      ]
+    }
+    </script>
+
+    <!-- The splash mark loads first: it is also the mark in the header, which is where it flies. -->
+    <link rel="preload" as="image" href="assets/images/pumpling-mascot.png" fetchpriority="high">
+    <noscript><style>#qres-app-loader { display: none; }</style></noscript>
+
+    <!-- Our own font rather than one from somebody else's domain: a third-party
+         request in the head slowed the first paint and sometimes hung, and the
+         splash waits for exactly that font. Weights 400–800 live in one variable file. -->
+    <link rel="preload" as="font" type="font/woff2" href="assets/fonts/inter-latin.woff2" crossorigin>
+    <style>
+      @font-face {
+        font-family: 'Inter';
+        font-style: normal;
+        font-weight: 400 800;
+        font-display: swap;
+        src: url(assets/fonts/inter-latin.woff2) format('woff2');
+        unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+      }
+      @font-face {
+        font-family: 'Inter';
+        font-style: normal;
+        font-weight: 400 800;
+        font-display: swap;
+        src: url(assets/fonts/inter-latin-ext.woff2) format('woff2');
+        unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+      }
+      @font-face {
+        font-family: 'Inter';
+        font-style: normal;
+        font-weight: 400 800;
+        font-display: swap;
+        src: url(assets/fonts/inter-cyrillic.woff2) format('woff2');
+        unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+      }
+      /* Admin icons: also our own, so that not one foreign domain is left in the
+         head of the page. */
+      @font-face {
+        font-family: 'Material Icons';
+        font-style: normal;
+        font-weight: 400;
+        font-display: block;
+        src: url(assets/fonts/material-icons.woff2) format('woff2');
+      }
+      .material-icons {
+        font-family: 'Material Icons';
+        font-weight: normal;
+        font-style: normal;
+        font-size: 24px;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-block;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+        -webkit-font-feature-settings: 'liga';
+        -webkit-font-smoothing: antialiased;
+      }
+    </style>
+      <style>
+        /* The splash before the app's first frame. Visible from the first paint
+           of the HTML, with no scripts or external styles, holds for at least 1.5
+           seconds and leaves in one movement: the mark flies to its place in the
+           header and the background melts. The loading screen used to appear only
+           after 1.2s, and before that the fallback markup flashed for a fraction
+           of a second — a "preview". The splash is driven by the script right
+           after its markup. The id must not change: the script depends on it. */
+        #qres-app-loader {
+          position: fixed;
+          inset: 0;
+          z-index: 2147483647;
+          display: grid;
+          place-items: center;
+          background: rgb(252 252 252);
+          /* Insurance in case the splash script itself failed: after 25s the
+             splash leaves and reveals the fallback markup. */
+          animation: qres-splash-give-up 240ms ease 25s forwards;
+        }
+
+        .qres-splash__stack {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .qres-splash__logo {
+          width: 112px;
+          height: 112px;
+        }
+
+        /* The hop and the landing are from the bottom centre, like the mark in the header. */
+        .qres-splash__img {
+          display: block;
+          width: 100%;
+          height: 100%;
+          opacity: 0;
+          transform-origin: 50% 90%;
+        }
+
+        .qres-splash__word {
+          font: 600 26px/1 Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+          letter-spacing: -0.02em;
+          color: #020202;
+          opacity: 0;
+        }
+
+        /* The mark appears once the image has loaded: otherwise the animation
+           would play on an empty space. If loading drags on, it hops. */
+        #qres-app-loader.is-shown .qres-splash__img {
+          animation:
+            qres-splash-pop 560ms cubic-bezier(0.2, 0.9, 0.3, 1.25) both,
+            qres-splash-hop 1200ms ease-in-out 1900ms infinite;
+        }
+
+        /* The word only with the real font, otherwise it flashes in a system one. */
+        #qres-app-loader.is-shown.has-font .qres-splash__word {
+          animation: qres-splash-word 420ms cubic-bezier(0.2, 0.8, 0.2, 1) 180ms both;
+        }
+
+        #qres-app-loader.is-leaving {
+          animation: none;
+        }
+
+        #qres-app-loader.is-leaving .qres-splash__img {
+          animation: none;
+          opacity: 1;
+        }
+
+        @keyframes qres-splash-pop {
+          from { opacity: 0; transform: translateY(10px) scale(0.6); }
+          to   { opacity: 1; transform: none; }
+        }
+
+        @keyframes qres-splash-hop {
+          0%, 55%, 100% { transform: none; }
+          12% { transform: translateY(1px) scale(1.08, 0.9); }
+          30% { transform: translateY(-9px) scale(0.95, 1.06); }
+          45% { transform: scale(1.05, 0.94); }
+        }
+
+        @keyframes qres-splash-word {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: none; }
+        }
+
+        @keyframes qres-splash-give-up {
+          to { opacity: 0; visibility: hidden; }
+        }
+
+        /* The mark in the header is hidden while the splash mark flies to it: at
+           the end exactly one of them has to be in place.
+
+           With insurance. This is the only rule on the site that hides exactly one
+           element and nothing else, and if the splash script somehow fails to
+           remove the class, the mark in the header would disappear forever — the
+           page looks whole and a person just sees a hole at the top left. So after
+           ten seconds the mark comes back by itself, whatever happened to the
+           script. By then the splash is long gone: it holds no longer than a
+           second and a half normally, and no longer than five after loading. */
+        html.qres-splash-active [data-splash-target] {
+          visibility: hidden;
+          animation: qres-splash-target-give-up 0s linear 10s forwards;
+        }
+
+        @keyframes qres-splash-target-give-up {
+          to { visibility: visible; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          #qres-app-loader.is-shown .qres-splash__img,
+          #qres-app-loader.is-shown.has-font .qres-splash__word {
+            animation: none;
+            opacity: 1;
+          }
+        }
+
+        /* Fallback content inside <app-root>: a search engine that does not run
+           scripts sees it, and so does a person on a slow network. Angular
+           replaces it with itself at startup. */
+        .boot-fallback {
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 14px;
+          padding: 32px 20px;
+          text-align: center;
+          background: #FCFCFC;
+          color: #020202;
+          font-family: 'Inter', Roboto, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+        .boot-fallback img { width: 88px; height: 88px; object-fit: contain; }
+        .boot-fallback h1 { margin: 0; font-size: 40px; font-weight: 600; letter-spacing: -0.04em; }
+      </style>
+</head>
+
+  <body>
+    <noscript>
+      <p>JavaScript is <strong>disabled</strong>. Please <a href="http://enable-javascript.com" rel="nofollow noreferrer noopener" target="_blank">enable JavaScript in your browser</a> to continue.</p>
+    </noscript>
+    <!--[if IE]>
+    <p>Internet Explorer is <strong>outdated and not supported</strong> browser. Please <a href="https://browsehappy.com/?locale=en" rel="nofollow noreferrer noopener" target="_blank">use modern browser</a> to continue.</p>
+    <![endif]-->
+    <div id="qres-app-loader" aria-hidden="true">
+      <div class="qres-splash__stack">
+        <div class="qres-splash__logo">
+          <img class="qres-splash__img" src="assets/images/pumpling-mascot.png" width="112" height="112" alt="">
+        </div>
+        <span class="qres-splash__word">pumpling</span>
+      </div>
+    </div>
+    <script>
+      (function () {
+        var splash = document.getElementById('qres-app-loader');
+        if (!splash) {
+          return;
+        }
+        var root = document.documentElement;
+        var logo = splash.querySelector('.qres-splash__logo');
+        var img = splash.querySelector('.qres-splash__img');
+        var word = splash.querySelector('.qres-splash__word');
+        var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        // No less than 1.5s from the start of loading: any shorter and the splash
+        // cannot be read. The mark itself is held for at least 0.9s after it
+        // appears. The waiting hop starts later (1.9s) so a fast load does not
+        // cut it off halfway.
+        var MIN_TOTAL_MS = 1500;
+        var MIN_LOGO_MS = 900;
+        // We wait no longer for the font: without it the title would jump right
+        // after the splash leaves.
+        var FONT_WAIT_MS = 2500;
+        // The app never reported readiness — we leave anyway.
+        // Counted from page load rather than from the start: on a slow network the
+        // app's own scripts take longer than eight seconds, and the splash used to
+        // leave before the first screen was built.
+        var GIVE_UP_AFTER_LOAD_MS = 5000;
+        var GIVE_UP_MAX_MS = 20000;
+
+        var logoShownAt = -1;
+        var appReady = false;
+        var fontsReady = false;
+        var holds = 0;
+        var leaving = false;
+        var timer = 0;
+
+        root.classList.add('qres-splash-active');
+
+        function showLogo() {
+          if (logoShownAt >= 0) {
+            return;
+          }
+          logoShownAt = performance.now();
+          splash.classList.add('is-shown');
+          schedule();
+        }
+        if (img.complete && img.naturalWidth) {
+          showLogo();
+        } else {
+          img.addEventListener('load', showLogo);
+          img.addEventListener('error', showLogo);
+        }
+
+        function fontsDone() {
+          if (!fontsReady) {
+            fontsReady = true;
+            schedule();
+          }
+        }
+        if (document.fonts && document.fonts.load) {
+          Promise.all(['400', '500', '600'].map(function (weight) {
+            return document.fonts.load(weight + ' 16px Inter');
+          })).then(function () {
+            splash.classList.add('has-font');
+            fontsDone();
+          }, fontsDone);
+          setTimeout(fontsDone, Math.max(0, FONT_WAIT_MS - performance.now()));
+        } else {
+          fontsDone();
+        }
+
+        // A wheel or a finger over the splash must not scroll the page underneath.
+        function block(event) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        splash.addEventListener('wheel', block, { passive: false });
+        splash.addEventListener('touchmove', block, { passive: false });
+
+        function schedule() {
+          clearTimeout(timer);
+          if (leaving || !appReady || holds > 0 || !fontsReady || logoShownAt < 0) {
+            return;
+          }
+          var now = performance.now();
+          timer = setTimeout(leave, Math.max(0, MIN_TOTAL_MS - now, logoShownAt + MIN_LOGO_MS - now));
+        }
+
+        // Where to fly: the mark in the header, if it is on screen and not hidden.
+        function targetRect() {
+          var target = document.querySelector('[data-splash-target]');
+          if (!target) {
+            return null;
+          }
+          var rect = target.getBoundingClientRect();
+          if (rect.width < 8 || rect.bottom <= 0 || rect.top >= window.innerHeight) {
+            return null;
+          }
+          for (var node = target; node && node !== root; node = node.parentElement) {
+            var style = getComputedStyle(node);
+            if (style.display === 'none' || parseFloat(style.opacity) < 0.5) {
+              return null;
+            }
+          }
+          return rect;
+        }
+
+        var finished = false;
+        function finish() {
+          if (finished) {
+            return;
+          }
+          finished = true;
+          try {
+            splash.remove();
+          } catch (error) {
+            // The node may have gone already: what matters is removing the class, not the markup.
+          }
+          root.classList.remove('qres-splash-active');
+          window.dispatchEvent(new CustomEvent('pumpling:splash-done'));
+        }
+
+        function leave() {
+          if (leaving) {
+            return;
+          }
+          leaving = true;
+          // The splash leaving is tied to animations finishing, and they may not
+          // finish: the tab was minimised, the browser cancelled, something
+          // failed. Then the class would stay on html, and with it the hidden mark
+          // in the header. This timer clears everything regardless of animations.
+          setTimeout(finish, 1500);
+          if (getComputedStyle(splash).visibility === 'hidden' || !splash.animate) {
+            finish();
+            return;
+          }
+          var to = reduceMotion ? null : targetRect();
+          splash.classList.add('is-leaving');
+          window.dispatchEvent(new CustomEvent('pumpling:splash-exit'));
+          if (!to) {
+            splash.animate([{ opacity: 1 }, { opacity: 0 }], {
+              duration: reduceMotion ? 200 : 320,
+              easing: 'ease',
+              fill: 'forwards'
+            }).finished.then(finish, finish);
+            return;
+          }
+          var from = logo.getBoundingClientRect();
+          var dx = to.left + to.width / 2 - (from.left + from.width / 2);
+          var dy = to.top + to.height / 2 - (from.top + from.height / 2);
+          var scale = to.width / from.width;
+          word.animate([
+            { opacity: getComputedStyle(word).opacity, transform: 'none' },
+            { opacity: 0, transform: 'translateY(8px)' }
+          ], { duration: 180, easing: 'ease-in', fill: 'forwards' });
+          splash.animate([
+            { backgroundColor: 'rgb(252 252 252 / 1)' },
+            { backgroundColor: 'rgb(252 252 252 / 0)' }
+          ], { duration: 380, delay: 160, easing: 'ease-out', fill: 'forwards' });
+          logo.animate([
+            { transform: 'translate(0, 0) scale(1)' },
+            { transform: 'translate(' + dx + 'px, ' + dy + 'px) scale(' + scale + ')' }
+          ], { duration: 620, easing: 'cubic-bezier(0.7, 0, 0.3, 1)', fill: 'forwards' }).finished.then(finish, finish);
+        }
+
+        // The app holds the splash until the first screen is built
+        // (src/app/shared/splash.ts) and then reports readiness.
+        window.pumplingSplash = {
+          hold: function () {
+            holds++;
+          },
+          release: function () {
+            holds = Math.max(0, holds - 1);
+            schedule();
+          },
+          ready: function () {
+            appReady = true;
+            schedule();
+          }
+        };
+
+        function giveUp() {
+          appReady = true;
+          fontsReady = true;
+          holds = 0;
+          showLogo();
+          schedule();
+        }
+        window.addEventListener('load', function () {
+          setTimeout(giveUp, GIVE_UP_AFTER_LOAD_MS);
+        });
+        setTimeout(giveUp, GIVE_UP_MAX_MS);
+      })();
+    </script>
+    <app-root>
+      <div class="boot-fallback">
+        <img src="assets/images/pumpling-mark.png" alt="Pumpling">
+        <h1>Pumpling</h1>
+      </div>
+    </app-root>
+  </body>
+</html>

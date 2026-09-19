@@ -1,0 +1,762 @@
+/* Landing styling lives in Tailwind utility classes (template) plus the
+   designer custom CSS/animations in src/qres-landing.css. The old dark-navy
+   dashboard styles were removed with the scroll-story redesign. */
+
+:host {
+  display: block;
+}
+
+/* ============================================================
+   The vertical rhythm of the first screen.
+
+   A laptop window is 650–790px tall: a 1366×768 or 1440×900 screen minus the
+   tabs and the address bar. Fixed sizes did not fit in windows like that: the
+   scroll button went off the edge. So the header padding, the title size and
+   the scroll button depend on the window height, and the cards take the rest.
+   ============================================================ */
+.qres-root {
+  --qres-header-pad: clamp(12px, 2.6vh, 24px);
+  --qres-hero-gap: clamp(14px, 2.6vh, 24px);
+  --qres-cue-size: clamp(44px, 7vh, 64px);
+  --qres-cue-bottom: clamp(10px, 2.2vh, 20px);
+}
+
+.qres-site-header {
+  padding-top: var(--qres-header-pad);
+  padding-bottom: var(--qres-header-pad);
+  /* The header is sticky, and with no background under it Quick start showed
+     through when the page travels towards the footer — and on a phone, all the
+     text along the edges of the bar. */
+  background: var(--qres-white);
+}
+
+.qres-section-nav {
+  margin-top: clamp(8px, 1.8vh, 16px);
+}
+
+.qres-hero {
+  min-height: calc(100vh - var(--qres-header-h, 112px));
+  gap: 16px;
+  padding-bottom: 96px;
+}
+
+.qres-hero-card {
+  height: 320px;
+  min-height: 0;
+}
+
+@media (min-width: 768px) {
+  .qres-hero {
+    height: calc(100vh - var(--qres-header-h, 174px));
+    min-height: 0;
+    gap: var(--qres-hero-gap);
+    /* The button: a circle, 8px padding, a gap from the bottom and from the cards. */
+    padding-bottom: calc(var(--qres-cue-size) + 16px + var(--qres-cue-bottom) + 8px);
+  }
+
+  .qres-hero-cards {
+    flex: 0 1 440px;
+    min-height: 220px;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .qres-hero-card {
+    height: auto;
+  }
+}
+
+.qres-chat-card > app-chat {
+  position: absolute;
+  inset: 0;
+  display: block;
+  min-height: 0;
+}
+
+/* ============================================================
+   The title of the first screen.
+
+   The mascot on the left, a column of text on the right: the title in two lines
+   with the mechanic under it. The text is aligned to the left edge of the
+   column, so the subtitle reads as a continuation of the title rather than a
+   separate centred caption. On a phone the mascot goes above the text and
+   everything is centred.
+   ============================================================ */
+.qres-hero-headline {
+  gap: 12px;
+}
+
+.qres-hero-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.qres-hero-title {
+  font-size: clamp(1.625rem, 7.4vw, 2.25rem);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.qres-hero-lede {
+  /* Sized by the title: two lines both on 1920 and on a laptop.
+     43rem rather than 40: with "the participating coins" on 1920 at 18px the
+     phrase went to a third line. */
+  max-width: 43rem;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+  /* 72% black on white is 8.9:1: secondary in tone but not pale. */
+  color: rgba(2, 2, 2, 0.72);
+  /* On a phone the text is centred: lines of even length with no two-word
+     tail. On a wide screen the paragraph sits left, where pretty is enough. */
+  text-wrap: balance;
+}
+
+/* The plate under the accent. `clone` is needed on narrow screens: if the
+   accent wraps, each piece gets its own background and padding instead of one
+   torn rectangle. */
+.qres-hero-accent {
+  padding: 0 0.12em;
+  background: var(--qres-purple);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.qres-hero-mascot {
+  width: 3.5rem;
+  height: 3.5rem;
+  /* This mascot has its glasses at mid height and its mouth lower: the
+     newspaper covers the mouth and it looks over the top. The phone does not
+     reach the text on the right and does not drop onto the title when the
+     mascot is above it on a phone. */
+  --mascot-paper-width: 68%;
+  --mascot-paper-left: 16%;
+  --mascot-paper-bottom: -10%;
+  --mascot-phone-width: 36%;
+  --mascot-phone-right: -8%;
+  --mascot-phone-bottom: -6%;
+}
+
+@media (min-width: 640px) {
+  .qres-hero-headline {
+    gap: 24px;
+  }
+
+  .qres-hero-text {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .qres-hero-title {
+    font-size: clamp(1.625rem, min(3.9vw, 6.4vh), 3.5rem);
+  }
+
+  .qres-hero-lede {
+    font-size: clamp(15px, min(1.25vw, 2.2vh), 18px);
+    text-wrap: pretty;
+  }
+
+  .qres-hero-mascot {
+    width: clamp(4.5rem, min(7.8vw, 13vh), 7rem);
+    height: clamp(4.5rem, min(7.8vw, 13vh), 7rem);
+  }
+}
+
+/* The qres logo mark inlines an <svg> via [innerHTML]; make it fill its box. */
+
+/* ============================================================
+   The scroll hint: an arrow only, no caption.
+   ============================================================ */
+.qres-scroll-cue {
+  bottom: 24px;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  appearance: none;
+}
+
+.qres-scroll-cue__inner {
+  width: 56px;
+  height: 56px;
+  animation: qres-scroll-cue-float 2.8s ease-in-out infinite;
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease;
+}
+
+.qres-scroll-cue__chevron {
+  width: 50%;
+  height: 50%;
+}
+
+@media (min-width: 768px) {
+  .qres-scroll-cue {
+    bottom: var(--qres-cue-bottom);
+  }
+
+  .qres-scroll-cue__inner {
+    width: var(--qres-cue-size);
+    height: var(--qres-cue-size);
+  }
+}
+
+@keyframes qres-scroll-cue-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(9px); }
+}
+
+/* The second chevron lags and is fainter — it makes a trail of downward
+   movement that replaces the caption we used to have. */
+.qres-scroll-cue__chevron-trail {
+  opacity: 0.35;
+  animation: qres-scroll-cue-trail 2.8s ease-in-out infinite;
+}
+
+@keyframes qres-scroll-cue-trail {
+  0%, 100% { opacity: 0.15; transform: translateY(-2px); }
+  50%      { opacity: 0.5;  transform: translateY(2px); }
+}
+
+.qres-scroll-cue:hover .qres-scroll-cue__inner,
+.qres-scroll-cue:focus-visible .qres-scroll-cue__inner {
+  color: var(--qres-white);
+  background: var(--qres-black);
+  border-color: var(--qres-black);
+}
+
+/* Endless vertical motion is hard to tolerate with a vestibular disorder; the
+   meaning "there is more below" is kept with a pulse of opacity. */
+@media (prefers-reduced-motion: reduce) {
+  .qres-scroll-cue__inner,
+  .qres-scroll-cue__chevron-trail {
+    animation: qres-scroll-cue-pulse 2.8s ease-in-out infinite;
+  }
+
+  @keyframes qres-scroll-cue-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.55; }
+  }
+}
+
+/* ============================================================
+   The section menu: the item mark and the "you are here" stroke.
+
+   An item has two images stacked, and the active one comes through over the
+   ordinary one for the current section, on hover and on keyboard focus. They
+   fade and appear at the same time: the marks have different headgear, and the
+   ordinary one would otherwise peek out from under the active one.
+   ============================================================ */
+.qres-nav-icon {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+}
+
+.qres-nav-icon__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transition: opacity 160ms ease;
+}
+
+.qres-nav-icon__img--active {
+  opacity: 0;
+}
+
+.qres-nav-item.is-current .qres-nav-icon__img,
+.qres-nav-item:hover .qres-nav-icon__img,
+.qres-nav-item:focus-visible .qres-nav-icon__img {
+  opacity: 0;
+}
+
+.qres-nav-item.is-current .qres-nav-icon__img--active,
+.qres-nav-item:hover .qres-nav-icon__img--active,
+.qres-nav-item:focus-visible .qres-nav-icon__img--active {
+  opacity: 1;
+}
+
+/* The position and width are set by the component from measuring the item. The
+   transition is only enabled after the first layout, otherwise the stroke would
+   ride in from the left edge on load. */
+.qres-nav-marker {
+  will-change: transform, width;
+}
+
+.qres-nav-marker--animated {
+  transition:
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qres-nav-icon__img,
+  .qres-nav-marker--animated {
+    transition: none;
+  }
+}
+
+/* ============================================================
+   The header away from the hero screen.
+
+   We hide it with opacity rather than `display: none`: the bar sits in the flow,
+   and removing it would shift the layout and with it the hero pinning, which the
+   whole story is measured from. The section strip stays.
+   ============================================================ */
+.qres-header-bar {
+  /* Leaving and coming back are part of the transition between screens, so the
+     duration is comparable to it and the curve is the one the cards use: a sharp
+     start and a soft stop. The old 260ms with a linear ease read as "it just
+     disappeared". */
+  transition:
+    opacity 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.qres-header-bar--hidden {
+  opacity: 0;
+  /* It travels up noticeably rather than by 6px: a small shift is not read by
+     the eye and leaves a sense of vanishing without movement. */
+  transform: translateY(-18px);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qres-header-bar {
+    transition: none;
+  }
+}
+
+/* ============================================================
+   Top headroom for the story sections.
+
+   The sections ride up (`top: -6rem`) so the title sits higher on screen. But
+   the section strip stays visible after the header bar is hidden, and the title
+   overlapped it (measured: title at 110px with the strip bottom at 134px).
+
+   `!important` here is warranted: we compete with the `sm:pt-6` utility of the
+   same weight, and the order in which the component styles and Tailwind load is
+   not ours to control. The padding is only needed where the strip is shown,
+   which is from md.
+   ============================================================ */
+@media (min-width: 768px) {
+  .qres-story-section {
+    padding-top: 6.5rem !important;
+  }
+}
+
+/* ============================================================
+   The bodies of the story sections.
+
+   The What is it and How it works scenes take all the space between the section
+   title and the marquee. Quick start is a list, and its sizes come from the
+   window height: on a laptop (650–790px) the fifth row went under the footer.
+   ============================================================ */
+.qres-story-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: clamp(12px, 2.6vh, 32px) 0 clamp(12px, 2.4vh, 28px);
+}
+
+.qres-quick-list {
+  margin-top: clamp(16px, 4.2vh, 56px);
+}
+
+.qres-quick-row {
+  padding-top: clamp(10px, 2.2vh, 24px);
+  padding-bottom: clamp(10px, 2.2vh, 24px);
+}
+
+.qres-quick-num {
+  font-size: clamp(2.25rem, 6vh, 3.5rem);
+}
+
+.qres-quick-title {
+  font-size: clamp(1.625rem, 5vh, 2.75rem);
+}
+
+.qres-quick-x {
+  width: 0.8em;
+  height: 0.8em;
+}
+
+/* The step explanation. Under the title on a tablet, to the right of it on a wide screen. */
+.qres-quick-desc {
+  margin: 0;
+  font-size: clamp(14px, min(1.15vw, 2.1vh), 17px);
+  font-weight: 500;
+  line-height: 1.4;
+  text-wrap: balance;
+  /* 66% black is 7.0:1. */
+  color: rgba(2, 2, 2, 0.66);
+  transition: color 0.3s ease;
+}
+
+/* On the last step the row goes black on hover — the text lightens with it. */
+@media (hover: hover) {
+  .group\/qres-execution:hover .qres-quick-desc--last {
+    color: rgba(252, 252, 252, 0.75);
+  }
+}
+
+/* A plate instead of a cursor. It appears and fades by opacity only: the script
+   sets the position immediately on entry, and travelling from the previous point
+   would look like a flight across the screen. */
+.qres-cursor-bubble {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.qres-cursor-bubble.is-visible {
+  opacity: 1;
+}
+
+/* We hide the system cursor only under a mouse: with the plate it is redundant. */
+@media (hover: hover) and (pointer: fine) {
+  [data-qres-cursor] {
+    cursor: none;
+  }
+}
+
+@media (min-width: 640px) {
+  .qres-quick-desc {
+    grid-column: 2;
+  }
+}
+
+/* From md the story is pinned: five rows share the screen height evenly and the
+   list reaches exactly the bottom — the footer comes straight after. */
+@media (min-width: 768px) {
+  .qres-quick-section {
+    padding-bottom: 0;
+  }
+
+  .qres-quick-list {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    border-bottom: 0;
+  }
+
+  .qres-quick-row {
+    flex: 1 1 0;
+    min-height: 0;
+    align-content: center;
+  }
+}
+
+@media (min-width: 1024px) {
+  .qres-quick-row {
+    grid-template-columns: 7rem minmax(0, 1fr) minmax(18rem, 30rem);
+    align-items: center;
+  }
+
+  .qres-quick-desc {
+    grid-column: 3;
+    text-align: right;
+  }
+}
+
+/* ============================================================
+   The column layout of the story (phone, reduced motion).
+
+   The sections sit inside the hero and both have their own side padding — on a
+   phone they added up and ate a third of the width. The sections take the
+   hero's padding. Quick start on a phone puts the number to the left of the
+   title, with the size from the width: from the window height it came out
+   larger than the screen.
+   ============================================================ */
+.qres-story--static .qres-story-section {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.qres-story--static .qres-story-body {
+  margin-bottom: 24px;
+}
+
+/* The footer comes straight after the last Quick start step: the first screen no
+   longer has room at the bottom for the scroll arrow — in the column layout there is none. */
+.qres-story--static .qres-hero,
+.qres-story--static .qres-quick-section {
+  padding-bottom: 0;
+}
+
+@media (max-width: 767px) {
+  .qres-story--static .qres-quick-row {
+    grid-template-columns: 3.25rem minmax(0, 1fr);
+    align-items: baseline;
+    gap: 12px;
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+
+  .qres-story--static .qres-quick-num {
+    font-size: 2rem;
+  }
+
+  .qres-story--static .qres-quick-title {
+    font-size: clamp(1.375rem, 6.6vw, 2rem);
+    line-height: 1.05;
+  }
+
+  .qres-story--static .qres-quick-desc {
+    grid-column: 2;
+    margin-top: -6px;
+    font-size: 14px;
+  }
+
+  .qres-story--static .qres-quick-list {
+    margin-top: 20px;
+  }
+}
+
+/* ============================================================
+   The footer.
+   ============================================================ */
+.qres-footer {
+  padding: clamp(40px, 7vh, 72px) 20px 28px;
+}
+
+.qres-footer__inner {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(28px, 5vh, 48px);
+  width: 100%;
+  max-width: 80rem;
+  margin: 0 auto;
+}
+
+.qres-footer__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.qres-footer__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--qres-white);
+}
+
+.qres-footer__brand img {
+  width: 44px;
+  height: 44px;
+}
+
+.qres-footer__x {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 2px solid var(--qres-white);
+  color: var(--qres-white);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.qres-footer__x svg {
+  width: 18px;
+  height: 18px;
+}
+
+.qres-footer__x:hover,
+.qres-footer__x:focus-visible {
+  background: var(--qres-white);
+  color: var(--qres-black);
+}
+
+.qres-footer__cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.qres-footer__headline {
+  margin: 0;
+  font-size: clamp(2.25rem, 5.4vw, 4.5rem);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+/* Black text on a purple plate is 8.1:1. */
+.qres-footer__plate {
+  padding: 0 0.1em;
+  background: var(--qres-purple);
+  color: var(--qres-black);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.qres-footer__button {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  height: 60px;
+  padding: 0 26px;
+  border: 2px solid var(--qres-white);
+  background: var(--qres-green);
+  color: var(--qres-black);
+  font-size: 20px;
+  font-weight: 700;
+  box-shadow: 5px 5px 0 var(--qres-purple);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.qres-footer__button svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.qres-footer__button:hover,
+.qres-footer__button:focus-visible {
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0 var(--qres-purple);
+}
+
+.qres-footer__verify {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px 32px;
+  margin: 0;
+  padding: 20px 0;
+  border-top: 2px solid rgba(252, 252, 252, 0.2);
+  border-bottom: 2px solid rgba(252, 252, 252, 0.2);
+}
+
+.qres-footer__verify div {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  min-width: 0;
+}
+
+.qres-footer__verify dt {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  /* 65% white on black is 8.3:1. */
+  color: rgba(252, 252, 252, 0.65);
+}
+
+.qres-footer__verify dd {
+  min-width: 0;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qres-footer__verify a {
+  color: var(--qres-white);
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-underline-offset: 3px;
+}
+
+.qres-footer__empty {
+  color: rgba(252, 252, 252, 0.65);
+}
+
+.qres-footer__bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.qres-footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+
+.qres-footer__links a {
+  color: var(--qres-white);
+  transition: color 0.15s ease;
+}
+
+.qres-footer__links a:hover,
+.qres-footer__links a:focus-visible {
+  color: var(--qres-green);
+}
+
+.qres-footer__copy {
+  color: rgba(252, 252, 252, 0.65);
+}
+
+@media (min-width: 640px) {
+  .qres-footer {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qres-footer__button {
+    transition: none;
+  }
+
+  .qres-footer__button:hover,
+  .qres-footer__button:focus-visible {
+    transform: none;
+  }
+}
+
+/* ============================================================
+   Text selection.
+
+   On a page with pinned scrolling any drag of the mouse selects titles and
+   captions — it looks untidy and is of no use: there is nothing here to copy.
+
+   The exceptions are mandatory. The chat is a live conversation and a person has
+   every right to copy a message. Input fields cannot be edited without
+   selection: you can neither select a word nor replace it. Disabling selection
+   there is not "stricter", it is worse.
+   ============================================================ */
+.qres-root {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.qres-root app-chat,
+.qres-root input,
+.qres-root textarea,
+.qres-root select,
+.qres-root [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+

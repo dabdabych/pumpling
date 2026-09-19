@@ -1,0 +1,134 @@
+<!-- The page takes exactly one screen. The chat has a fixed height: otherwise
+     arriving messages would change its size and the centred block would float. -->
+<main class="qres-root flex h-[100svh] flex-col bg-[var(--qres-white)] text-[var(--qres-black)]">
+
+  <!-- ============================ HEADER ============================ -->
+  <header class="shrink-0 px-4 pt-4 sm:px-8">
+    <div class="relative mx-auto w-full max-w-7xl">
+      <div class="absolute inset-0 translate-x-1 translate-y-1 rounded-sm bg-[var(--qres-black)]"></div>
+      <div class="relative flex h-16 items-center justify-between gap-2 rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)] px-2 sm:gap-3 sm:px-5">
+
+        <a routerLink="/" aria-label="pumpling home" (mouseenter)="logoMascot.onHover()"
+           class="flex shrink-0 items-center gap-3 text-[var(--qres-black)] transition-colors hover:text-[var(--qres-purple)]">
+          <!-- The mark hops on hover. The splash mark also flies here on load
+               (data-splash-target). -->
+          <app-mascot-logo #logoMascot [size]="40" data-splash-target></app-mascot-logo>
+          <!-- On narrow screens it gives way to the Docs link: that one is
+               substantive, and the mascot mark is enough to recognise us by. -->
+          <span class="hidden text-base font-semibold leading-none min-[560px]:inline">pumpling</span>
+        </a>
+
+        <!-- my-0 is mandatory: Tailwind is loaded without preflight, so <p>
+             keeps the bootstrap margin-bottom: 1rem. Flexbox centres the box
+             together with that margin and the line sat 8px above the middle of
+             the header, while the logo on the left was exactly centred. -->
+        <p class="my-0 hidden shrink-0 items-center whitespace-nowrap text-lg font-bold leading-none text-[var(--qres-black)] sm:flex lg:text-2xl">
+          <!-- An invisible twin reserves the width of the longest phrase, so the
+               line does not twitch left and right while the characters change. -->
+          <span class="relative inline-block">
+            <span class="invisible" aria-hidden="true">{{ widestPhrase }}</span>
+            <span class="absolute inset-0 flex items-center justify-center">
+              <span>{{ headlineText }}</span>
+              <span class="typing-caret" [class.is-paused]="headlinePhase === 'hold'" aria-hidden="true"></span>
+            </span>
+          </span>
+        </p>
+
+        <div class="flex shrink-0 items-center gap-1.5 text-sm font-semibold sm:gap-2">
+          <!-- Docs to the left of the social links: a utility link, not the main
+               action. The arrow hides on narrow screens so the header does not overflow. -->
+          <a href="assets/pumpling-overview.html" target="_blank" rel="noopener"
+             class="flex h-10 items-center gap-1.5 rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)] leading-none transition-colors duration-200 hover:bg-[var(--qres-black)] hover:text-[var(--qres-white)] px-2.5 sm:px-3">
+            Docs
+            <span class="hidden sm:inline" aria-hidden="true">→</span>
+          </a>
+
+          <a href="https://x.com/pumplingxyz" target="_blank" rel="noreferrer" aria-label="pumpling on X"
+             class="flex h-10 w-10 items-center justify-center rounded-sm border-2 border-[var(--qres-black)] leading-none transition-colors duration-200 hover:bg-[var(--qres-black)] hover:text-[var(--qres-white)]">
+            <svg viewBox="0 0 24 24" class="h-4 w-4" aria-hidden="true" focusable="false">
+              <path fill="currentColor" d="M18.9 2h3.68l-8.04 9.19L24 22h-7.41l-5.8-7.59L4.15 22H.47l8.6-9.84L0 2h7.59l5.24 6.93L18.9 2Zm-1.29 18.1h2.04L6.48 3.8H4.29l13.32 16.3Z"/>
+            </svg>
+          </a>
+
+          <button *ngIf="!isAuthenticated" type="button" (click)="openSignIn()"
+                  class="flex h-10 items-center justify-center rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-black)] px-3 leading-none text-[var(--qres-white)] sm:px-4 transition-colors duration-200 hover:border-[var(--qres-purple)] hover:bg-[var(--qres-purple)]">
+            Sign In
+          </button>
+          <button *ngIf="isAuthenticated" type="button" (click)="signOut()" [disabled]="walletBusy"
+                  class="flex h-10 items-center justify-center rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)] px-4 leading-none transition-colors duration-200 hover:bg-[var(--qres-black)] hover:text-[var(--qres-white)] disabled:opacity-50">
+            Sign Out
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================ CONTENT ============================ -->
+  <!-- We centre with auto margins rather than justify-center: when the height is
+       short the content is not cut off at the top but scrolls honestly. -->
+  <div class="flex min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
+    <!-- We deliberately do NOT put text-center here: the property inherits, and
+         the text of the messages inside the chat would be centred too. We centre
+         specifically, on the title and the caption. -->
+    <div class="m-auto flex w-full max-w-2xl flex-col items-center">
+
+      <!-- On mobile the marquee does not fit the header and lives here. -->
+      <p class="mb-[24px] mt-0 flex items-center text-sm font-bold leading-none sm:hidden">
+        <span>{{ headlineText }}</span>
+        <span class="typing-caret" [class.is-paused]="headlinePhase === 'hold'" aria-hidden="true"></span>
+      </p>
+
+      <!-- The spacing is set explicitly and in pixels. Two reasons. First:
+           Tailwind is loaded without preflight, so without mb-0 half the gap
+           would come from the bootstrap defaults. Second: Bootstrap has its own
+           mt-1..mt-5 utilities on a DIFFERENT scale with !important, and it beats
+           Tailwind (its mt-4 is 24px against 16px, mt-5 is 48px against 20px).
+           Bootstrap does not define bracketed values, so those are reliable.
+           Lowercase rather than caps: caps shout, lowercase reads calmer.
+           The letter spacing is tighter than usual — at a large size that holds together better. -->
+      <!-- The mascot to the left of the text, as with the title on the main page:
+           it hops now and then, catches a glint on its glasses, pulls out a phone
+           or a newspaper. On a phone it goes above the text, everything centred. -->
+      <div class="soon-intro flex w-full flex-col items-center justify-center sm:flex-row">
+        <app-mascot-logo src="assets/images/hero-mascot.png" [idle]="true"
+                         aria-hidden="true" class="soon-mascot shrink-0"></app-mascot-logo>
+        <div class="soon-copy flex flex-col items-center sm:items-start">
+          <h1 class="mb-0 text-center text-[clamp(2.75rem,8.5vw,5rem)] font-semibold leading-[1.02] tracking-[-0.045em] sm:text-left">
+            Coming <span class="text-[var(--qres-purple)]">soon</span>
+          </h1>
+
+          <!-- The second line repeats the wording from the project overview:
+               "the ones with a coin and no audience". Nothing about money here —
+               that framing puts people off. -->
+          <p class="mb-0 mt-[16px] max-w-lg text-center text-base leading-relaxed sm:text-left sm:text-lg">
+            Pumpling is a promotion platform for Solana memecoins.<br class="hidden sm:block">
+            Built for anyone with a coin but no audience.
+          </p>
+        </div>
+      </div>
+
+      <!-- The chat: the same component as in production on the main page. -->
+      <section class="soon-chat relative mt-12 h-[360px] w-full sm:h-[420px]" aria-label="Community chat">
+        <div class="absolute inset-0 translate-x-1 translate-y-1 rounded-sm bg-[var(--qres-black)]" aria-hidden="true"></div>
+        <div class="relative flex h-full overflow-hidden rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)]">
+          <app-chat class="block h-full w-full" [embedded]="true"></app-chat>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- ============================ CREDIT ============================ -->
+  <!-- On its own line rather than over the content: the page is exactly one
+       screen, and on a phone the chat input takes the bottom — an overlay would
+       cover the send button. Bracketed padding: Bootstrap has its own pt-*/pb-*
+       on a different scale with !important and would silently override ordinary
+       utilities. The colour is set through rgba rather than an opacity on a
+       variable: Tailwind cannot apply one to an arbitrary value. -->
+  <footer class="shrink-0 px-4 pb-[10px] pt-[2px] text-right sm:px-8">
+    <span class="text-[11px] leading-none tracking-[0.02em] text-[rgba(2,2,2,0.22)]">
+      designed by Nurgissa Barit
+    </span>
+  </footer>
+</main>

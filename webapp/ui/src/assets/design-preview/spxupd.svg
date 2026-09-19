@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 3000 3000" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
+    <g id="spx">
+        <path class="token-ring-fill" d="M1500,400A1100,1100 0 1,0 1500,2600A1100,1100 0 1,0 1500,400ZM1500,500A1000,1000 0 1,1 1500,2500A1000,1000 0 1,1 1500,500Z" style="fill:#e0ad25;stroke:none;"/>
+        <circle class="token-core-fill" cx="1500" cy="1500" r="1000" style="fill:#d2a23a;stroke:none;"/>
+        <g transform="matrix(1,0,0,1,-100,-100)">
+            <circle cx="1600" cy="1600" r="1100" style="fill:none;stroke:black;stroke-width:41.67px;"/>
+        </g>
+        <g transform="matrix(1,0,0,1,-300,-300)">
+            <circle cx="1800" cy="1800" r="1000" style="fill:none;stroke:black;stroke-width:41.67px;"/>
+        </g>
+        <g transform="matrix(-0.848528,-0.848528,0.848528,-0.848528,1160.59,4130.44)">
+            <path d="M819.67,2280.33L952.252,2147.75C1057.74,2253.24 1200.82,2312.5 1350,2312.5C1660.45,2312.5 1912.5,2060.45 1912.5,1750C1912.5,1600.82 1853.24,1457.74 1747.75,1352.25L1880.33,1219.67C2020.98,1360.32 2100,1551.09 2100,1750C2100,2163.94 1763.94,2500 1350,2500C1151.09,2500 960.322,2420.98 819.67,2280.33Z" style="fill:none;stroke:black;stroke-width:34.72px;"/>
+        </g>
+        <g transform="matrix(1.21394,1.21394,-0.707107,0.707107,1228.3,-1122.31)">
+            <path d="M1270.83,1900L1154.33,1900L1183.45,1150L1241.7,1150L1270.83,1900Z" style="fill:none;stroke:black;stroke-width:29.66px;"/>
+        </g>
+    </g>
+</svg>

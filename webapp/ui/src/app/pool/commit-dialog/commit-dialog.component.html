@@ -1,0 +1,212 @@
+<div class="commit">
+  <button type="button" class="commit__close" (click)="close()" [disabled]="send !== 'idle'" aria-label="Close">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6L6 18" /></svg>
+  </button>
+
+  <h2 class="commit__title" id="commit-dialog-title">Commit SOL</h2>
+  <p class="commit__sub">
+    @if (snapshot?.poolId !== null && snapshot?.poolId !== undefined) {
+      Pool #{{ snapshot?.poolId }}
+      @if (poolOpen && closesIn) { · closes in <span class="commit__clock" [class.commit__clock--soon]="closingSoon">{{ closesIn }}</span> }
+    } @else {
+      Loading the pool…
+    }
+  </p>
+
+  @if (snapshot && !poolOpen && snapshot.phase !== 'loading') {
+    <div class="commit__closed" role="alert">This pool no longer takes SOL.</div>
+  }
+
+  <form class="commit__form" (ngSubmit)="submit()" novalidate>
+    <!-- the coin -->
+    <div class="field" [class.field--invalid]="!!coinError">
+      <label class="field__label" for="commit-mint">Coin</label>
+      <!-- The coins already in the pool: the shortest path to a commit. Few
+           people have an address in their clipboard, while almost everybody wants
+           to back something that is already collecting SOL. -->
+      @if (pickCoins.length) {
+        <div class="commit-pick">
+          <span class="commit-pick__label">Pick one from this pool</span>
+          <div class="commit-pick__list" role="group" aria-label="Coins already in this pool">
+            @for (coin of pickCoins; track coin.mint) {
+              <button type="button" class="commit-pick__coin" (click)="pickCoin(coin)" [disabled]="send !== 'idle'">
+                @if (coin.logoUrl) {
+                  <img class="commit-pick__logo" [src]="coin.logoUrl" alt="" width="24" height="24" loading="lazy">
+                } @else {
+                  <span class="commit-pick__logo commit-pick__logo--fallback" aria-hidden="true">{{ coin.ticker.slice(0, 2) }}</span>
+                }
+                <b>${{ coin.ticker }}</b>
+                <span class="commit-pick__sol">{{ coin.sol | number: '1.0-2' }} SOL</span>
+              </button>
+            }
+          </div>
+        </div>
+      }
+
+      <div class="field__control">
+        <input #mintField id="commit-mint" name="mint" class="field__input commit__input" type="text"
+               [placeholder]="pickCoins.length ? 'Or paste any coin\'s address' : 'Paste the coin\'s address'" autocomplete="off" autocapitalize="off" spellcheck="false"
+               [ngModel]="mintInput" (ngModelChange)="onMintInput($event)" [disabled]="send !== 'idle'"
+               [attr.aria-describedby]="'commit-mint-status'">
+        @if (coin.kind === 'checking') {
+          <span class="commit__spinner" aria-hidden="true"></span>
+        }
+      </div>
+      <div class="field__message" id="commit-mint-status" aria-live="polite">
+        @if (coinError) {
+          {{ coinError }}
+        } @else if (coin.kind === 'checking') {
+          <span class="field__hint">Checking the coin…</span>
+        } @else if (coin.kind === 'empty') {
+          <span class="field__hint">Any Solana memecoin, on the pump.fun curve or on a DEX. A link works too.</span>
+        }
+      </div>
+
+      @if (readyCoin; as found) {
+        <div class="commit-coin">
+          @if (found.logoUrl) {
+            <img class="commit-coin__logo" [src]="found.logoUrl" alt="" width="40" height="40">
+          } @else {
+            <span class="commit-coin__logo commit-coin__logo--fallback" aria-hidden="true">{{ found.ticker.slice(0, 2) }}</span>
+          }
+          <span class="commit-coin__names">
+            <b>${{ found.ticker }}</b>
+            <span>{{ found.name }}</span>
+          </span>
+          <span class="chip chip--ok">Found</span>
+        </div>
+        <!-- The coin's market: a person has to see what they are paying for
+             without leaving the page. The source is external, so every number is
+             shown separately and only if it arrived. -->
+        @if (found.market; as market) {
+          <dl class="commit-market">
+            @if (market.priceUsd !== null) {
+              <div>
+                <dt>Price</dt>
+                <dd>
+                  {{ usd(market.priceUsd) }}
+                  @if (market.priceChange24h !== null) {
+                    <span class="commit-market__change"
+                          [class.is-up]="market.priceChange24h > 0"
+                          [class.is-down]="market.priceChange24h < 0">{{ market.priceChange24h > 0 ? '+' : '' }}{{ market.priceChange24h | number: '1.0-1' }}%</span>
+                  }
+                </dd>
+              </div>
+            }
+            @if (market.marketCapUsd !== null) {
+              <div>
+                <dt>Market cap</dt>
+                <dd>{{ usd(market.marketCapUsd) }}</dd>
+              </div>
+            }
+            @if (market.liquidityUsd !== null) {
+              <div>
+                <dt>Liquidity</dt>
+                <dd>{{ usd(market.liquidityUsd) }}</dd>
+              </div>
+            }
+            @if (market.dexId) {
+              <div>
+                <dt>Trades on</dt>
+                <dd>{{ market.dexId }}</dd>
+              </div>
+            }
+          </dl>
+          @if (market.pairUrl) {
+            <a class="commit-market__link" [href]="market.pairUrl" target="_blank" rel="noreferrer">Open the chart</a>
+          }
+        }
+        @if (found.venue) {
+          <p class="commit__venue">{{ found.venue }}</p>
+        }
+      }
+    </div>
+
+    <!-- the amount -->
+    <div class="field" [class.field--invalid]="!!amountError">
+      <label class="field__label" for="commit-amount">Amount</label>
+      <div class="field__control">
+        <input #amountField id="commit-amount" name="amount" class="field__input commit__input commit__input--amount" type="text"
+               inputmode="decimal" placeholder="0.5" autocomplete="off"
+               [(ngModel)]="amountInput" [disabled]="send !== 'idle'" aria-describedby="commit-amount-status">
+        <span class="commit__unit" aria-hidden="true">SOL</span>
+      </div>
+      <div class="field__message" id="commit-amount-status" aria-live="polite">
+        @if (amountError) {
+          {{ amountError }}
+        } @else {
+          <span class="field__hint">Min {{ minText }} SOL · {{ maxText }} SOL of room left</span>
+        }
+      </div>
+      <div class="commit__presets" role="group" aria-label="Quick amounts">
+        @for (preset of presets; track preset) {
+          <button type="button" class="commit__preset" [class.is-active]="amountInput === preset" (click)="setPreset(preset)" [disabled]="send !== 'idle'">{{ preset }}</button>
+        }
+        <button type="button" class="commit__preset" (click)="setMax()" [disabled]="send !== 'idle' || !poolOpen">Max</button>
+      </div>
+    </div>
+
+    <!-- How fast it lands in a block. The network charges for queue position, and
+         during a busy hour a commit without it may never arrive. The price is
+         computed from the network itself and the recommended level is preselected. -->
+    <div class="commit__priority" role="group" aria-label="Network priority">
+      <div class="commit__priority-head">
+        <span class="commit__priority-title">Network priority</span>
+        <span class="commit__priority-hint">paid to Solana, on top of the network fee</span>
+      </div>
+      <div class="commit__priority-row">
+        @for (level of priorityLevels; track level) {
+          <button type="button"
+                  class="commit__priority-option"
+                  [class.is-active]="priority === level"
+                  [disabled]="send !== 'idle'"
+                  [attr.aria-pressed]="priority === level"
+                  (click)="selectPriority(level)">
+            <span class="commit__priority-name">{{ priorityTitle(level) }}</span>
+            <span class="commit__priority-cost">{{ priorityCost(level) }}</span>
+          </button>
+        }
+      </div>
+    </div>
+
+    <!-- what matters before sending -->
+    <div class="commit__facts">
+      @if (readyCoin && amountText) {
+        <p class="commit__summary">
+          {{ amountText }} SOL goes behind <b>${{ readyCoin.ticker }}</b>@if (shareText) { · {{ shareText }} of the pool }
+        </p>
+        @if (expectedBuyText) {
+          <!-- This number is the whole point: the announced buying visibly grows.
+               "If it closed now" because the draw will still move the shares, and
+               we cannot promise an exact amount. -->
+          <p class="commit__expect">If the pool closed now, <b>${{ readyCoin.ticker }}</b> would get ≈ {{ expectedBuyText }} SOL of buys.</p>
+        }
+      }
+      <!-- First what will happen, then what the risk is. The other way round, the
+           last thing somebody reads before the button is the scariest sentence. -->
+      <p class="commit__next">When the pool closes, a draw sets each coin's share. The SOL then goes into public buys over the next hour, and the tokens bought go to the people behind those coins.</p>
+      <p class="commit__risk">SOL can't be taken back once it's in. Small stakes swing the most in the draw, sometimes down to zero.</p>
+    </div>
+
+    @if (error) {
+      <div class="auth-error commit__error" role="alert">{{ error }}</div>
+    }
+
+    @if (walletAddress) {
+      <p class="commit__wallet">
+        Signing with <b>{{ walletName || 'your wallet' }}</b> · {{ walletShort }}
+        <button type="button" class="commit__link commit__wallet-change" [disabled]="send !== 'idle'" (click)="changeWallet()">Change</button>
+      </p>
+    }
+
+    <button type="submit" class="commit__submit" [disabled]="send !== 'idle' || !poolOpen">
+      {{ submitLabel }}
+    </button>
+
+    <p class="commit__legal">
+      By committing you agree to the
+      <button type="button" class="commit__link" (click)="openTerms()">Terms of Use</button>.
+      Your wallet shows the network fee before you sign.
+    </p>
+  </form>
+</div>

@@ -1,0 +1,204 @@
+/* The round verification dialog. Dense and technical: people come here for
+   numbers rather than for an impression. The body is shared with the site's other dialogs. */
+
+.verify {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  color: var(--qres-black);
+  /* On a phone the dialog becomes a bottom sheet: the content scrolls inside
+     rather than running off the edge of the screen. */
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+
+.verify__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.verify__title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.verify__lede {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.verify__close {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  cursor: pointer;
+}
+
+.verify__close svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--qres-black);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.verify__state {
+  margin: 0;
+  padding: 12px;
+  border: 2px dashed rgba(2, 2, 2, 0.25);
+  font-size: 13px;
+}
+
+.verify__state--bad {
+  border-color: #b0341d;
+  color: #b0341d;
+}
+
+.verify__row {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 2px solid rgba(2, 2, 2, 0.12);
+}
+
+.verify__label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.55);
+}
+
+.verify__verdict {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.verify__verdict--ok::before {
+  content: "✓ ";
+  color: #1c7a3c;
+  font-weight: 800;
+}
+
+.verify__verdict--bad {
+  color: #b0341d;
+}
+
+/* The commitment preimage: a long string somebody copies whole. */
+.verify__code {
+  margin: 0;
+  padding: 10px;
+  max-height: 140px;
+  overflow: auto;
+  border: 2px solid rgba(2, 2, 2, 0.15);
+  background: rgba(2, 2, 2, 0.04);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.verify__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.verify__copy {
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.verify__copy:hover {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+.verify__facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.verify__facts div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.verify__facts dt {
+  font-size: 12px;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.verify__facts dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.verify__value {
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.verify__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding-top: 12px;
+  border-top: 2px solid rgba(2, 2, 2, 0.12);
+}
+
+.verify__link {
+  min-height: 24px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--qres-black);
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 599px) {
+  .verify {
+    padding: 16px;
+    border-width: 2px 0 0;
+  }
+}

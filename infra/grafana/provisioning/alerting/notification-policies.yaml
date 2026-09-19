@@ -1,0 +1,16 @@
+# Alert routing.
+#
+# There are few rules and they are all about "something broke", so there is one
+# route: everything goes to the shared channel. It repeats every six hours, so a
+# hanging problem is not forgotten while the chat does not become a feed.
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: pumpling-telegram
+    group_by:
+      - alertname
+    # A minute to collect a burst into one message.
+    group_wait: 1m
+    group_interval: 5m
+    repeat_interval: 6h

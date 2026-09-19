@@ -1,0 +1,97 @@
+@import "../membership";
+
+/* ============================================================
+   Styles for the auth pages. Password recovery, reset and email confirmation
+   inherit from this file.
+
+   The page layout (centring the card) is set by .page-form in
+   root.component.scss — that one is global, ViewEncapsulation.None.
+   ============================================================ */
+
+:host {
+  display: block;
+  min-height: 100vh;
+  background: var(--qres-white);
+}
+
+.page-form {
+  --qres-shadow: 4px 4px 0 var(--qres-black);
+  background: var(--qres-white);
+  color: var(--qres-black);
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+/* The brand plate is excluded: it has its own colour, and the shared link style
+   beat it on specificity and turned the text purple. */
+.page-form a:not(.brand-pill):not(.auth-btn) {
+  color: var(--qres-purple);
+}
+
+.page-form a:not(.brand-pill):not(.auth-btn):hover,
+.page-form a:not(.brand-pill):not(.auth-btn):focus-visible {
+  color: var(--qres-black);
+}
+
+/* ------------------------------------------------------- the brand mark */
+.brand-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 auto 24px;
+  padding: 10px 18px 10px 12px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  text-decoration: none;
+  box-shadow: 4px 4px 0 var(--qres-black);
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.brand-pill:hover,
+.brand-pill:focus-visible {
+  background: var(--qres-purple);
+  border-color: var(--qres-purple);
+  color: var(--qres-white);
+}
+
+/* The mark is an image (the mascot) rather than a set of CSS rings, as it used to be. */
+.brand-mark {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  display: block;
+  object-fit: contain;
+}
+
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
+}
+
+.brand-copy__name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: inherit;
+}
+
+@media (max-width: 480px) {
+  .brand-pill {
+    gap: 10px;
+    padding: 8px 14px 8px 10px;
+    margin-bottom: 20px;
+  }
+
+  .brand-mark {
+    flex-basis: 34px;
+    width: 34px;
+    height: 34px;
+  }
+
+  .brand-copy__name {
+    font-size: 13.5px;
+  }
+}

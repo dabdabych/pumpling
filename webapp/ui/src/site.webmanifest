@@ -1,0 +1,24 @@
+{
+  "name": "Pumpling",
+  "short_name": "Pumpling",
+  "description": "Pumpling is a platform built so anyone can hype and promote their coin on the Solana network.",
+  "start_url": "/",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/assets/seo/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/seo/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "theme_color": "#FCFCFC",
+  "background_color": "#FCFCFC",
+  "display": "standalone"
+}

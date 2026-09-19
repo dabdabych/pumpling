@@ -1,0 +1,1412 @@
+{
+  "address": "4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH",
+  "metadata": {
+    "name": "lottery",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "bind_vrf_request",
+      "discriminator": [
+        156,
+        207,
+        104,
+        99,
+        56,
+        8,
+        151,
+        226
+      ],
+      "accounts": [
+        {
+          "name": "lottery",
+          "writable": true
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "lottery"
+          ]
+        },
+        {
+          "name": "randomness_account_data"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "close_lottery",
+      "discriminator": [
+        253,
+        97,
+        216,
+        187,
+        251,
+        189,
+        113,
+        22
+      ],
+      "accounts": [
+        {
+          "name": "lottery",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "lottery"
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "lottery"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "deposit_sol",
+      "discriminator": [
+        108,
+        81,
+        78,
+        117,
+        125,
+        155,
+        56,
+        200
+      ],
+      "accounts": [
+        {
+          "name": "lottery",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "lottery"
+              }
+            ]
+          }
+        },
+        {
+          "name": "payer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "We only verify that this account's key matches the mint_pubkey argument.",
+            "No account data is accessed, so this is safe."
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "mint_arg",
+          "type": "pubkey"
+        },
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "emergency_fulfill_randomness",
+      "discriminator": [
+        44,
+        138,
+        40,
+        131,
+        40,
+        5,
+        22,
+        56
+      ],
+      "accounts": [
+        {
+          "name": "lottery",
+          "writable": true
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "lottery"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "seed",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "fulfill_randomness",
+      "discriminator": [
+        235,
+        105,
+        140,
+        46,
+        40,
+        88,
+        117,
+        2
+      ],
+      "accounts": [
+        {
+          "name": "lottery",
+          "writable": true
+        },
+        {
+          "name": "randomness_account_data"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize",
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "lottery",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  111,
+                  116,
+                  116,
+                  101,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "admin"
+              },
+              {
+                "kind": "arg",
+                "path": "lottery_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "lottery"
+              }
+            ]
+          }
+        },
+        {
+          "name": "wallet_fee",
+          "docs": [
+            "Commission wallet"
+          ],
+          "writable": true
+        },
+        {
+          "name": "wallet_keeper",
+          "docs": [
+            "Keeper wallet (for off-chain purchases & distributions)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "_lottery_id",
+          "type": "u64"
+        },
+        {
+          "name": "start_ts",
+          "type": "i64"
+        },
+        {
+          "name": "end_ts",
+          "type": "i64"
+        },
+        {
+          "name": "fee_bps",
+          "type": "u16"
+        },
+        {
+          "name": "min_amount",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "max_amount",
+          "type": {
+            "option": "u64"
+          }
+        },
+        {
+          "name": "max_total",
+          "type": "u64"
+        },
+        {
+          "name": "vrf_algorithm_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "pause",
+      "discriminator": [
+        211,
+        22,
+        221,
+        251,
+        74,
+        121,
+        193,
+        47
+      ],
+      "accounts": [
+        {
+          "name": "lottery",
+          "writable": true
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "lottery"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "retry_randomness",
+      "discriminator": [
+        150,
+        38,
+        239,
+        219,
+        143,
+        192,
+        79,
+        104
+      ],
+      "accounts": [
+        {
+          "name": "lottery",
+          "writable": true
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "lottery"
+          ]
+        },
+        {
+          "name": "randomness_account_data"
+        }
+      ],
+      "args": [
+        {
+          "name": "wait_seconds",
+          "type": {
+            "option": "i64"
+          }
+        }
+      ]
+    },
+    {
+      "name": "start_purchases_phase",
+      "discriminator": [
+        123,
+        116,
+        106,
+        111,
+        95,
+        73,
+        184,
+        151
+      ],
+      "accounts": [
+        {
+          "name": "lottery",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "lottery"
+              }
+            ]
+          }
+        },
+        {
+          "name": "wallet_fee",
+          "writable": true
+        },
+        {
+          "name": "wallet_keeper",
+          "writable": true
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "lottery"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "start_second_phase",
+      "discriminator": [
+        217,
+        238,
+        55,
+        14,
+        7,
+        102,
+        160,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "lottery",
+          "writable": true
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "lottery"
+          ]
+        },
+        {
+          "name": "randomness_account_data"
+        }
+      ],
+      "args": [
+        {
+          "name": "weights_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "wait_seconds",
+          "type": {
+            "option": "i64"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unpause",
+      "discriminator": [
+        169,
+        144,
+        4,
+        38,
+        10,
+        141,
+        188,
+        255
+      ],
+      "accounts": [
+        {
+          "name": "lottery",
+          "writable": true
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "lottery"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_max_amount",
+      "discriminator": [
+        201,
+        56,
+        102,
+        231,
+        215,
+        69,
+        216,
+        17
+      ],
+      "accounts": [
+        {
+          "name": "lottery",
+          "writable": true
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "lottery"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "new_max",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Lottery",
+      "discriminator": [
+        162,
+        182,
+        26,
+        12,
+        164,
+        214,
+        112,
+        3
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "Deposit",
+      "discriminator": [
+        62,
+        205,
+        242,
+        175,
+        244,
+        169,
+        136,
+        52
+      ]
+    },
+    {
+      "name": "EmergencySeedUsed",
+      "discriminator": [
+        11,
+        16,
+        187,
+        249,
+        175,
+        206,
+        146,
+        125
+      ]
+    },
+    {
+      "name": "LimitsUpdated",
+      "discriminator": [
+        160,
+        131,
+        108,
+        76,
+        91,
+        80,
+        118,
+        137
+      ]
+    },
+    {
+      "name": "LotteryInitialized",
+      "discriminator": [
+        198,
+        188,
+        153,
+        94,
+        232,
+        47,
+        124,
+        219
+      ]
+    },
+    {
+      "name": "PauseStatusChanged",
+      "discriminator": [
+        79,
+        144,
+        205,
+        195,
+        9,
+        152,
+        146,
+        91
+      ]
+    },
+    {
+      "name": "Phase2Started",
+      "discriminator": [
+        150,
+        213,
+        12,
+        65,
+        83,
+        172,
+        2,
+        51
+      ]
+    },
+    {
+      "name": "PhaseChanged",
+      "discriminator": [
+        178,
+        201,
+        67,
+        222,
+        208,
+        36,
+        213,
+        219
+      ]
+    },
+    {
+      "name": "PurchasesPhaseStarted",
+      "discriminator": [
+        155,
+        58,
+        73,
+        228,
+        94,
+        213,
+        112,
+        242
+      ]
+    },
+    {
+      "name": "VrfBinded",
+      "discriminator": [
+        216,
+        186,
+        125,
+        52,
+        33,
+        195,
+        74,
+        210
+      ]
+    },
+    {
+      "name": "VrfFulfilled",
+      "discriminator": [
+        133,
+        214,
+        117,
+        50,
+        159,
+        239,
+        83,
+        72
+      ]
+    },
+    {
+      "name": "VrfRetryScheduled",
+      "discriminator": [
+        204,
+        166,
+        98,
+        178,
+        2,
+        221,
+        51,
+        218
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidTimeRange",
+      "msg": "Invalid time range"
+    },
+    {
+      "code": 6001,
+      "name": "WalletsMustBeDifferent",
+      "msg": "Fee wallet and keeper wallet must be different"
+    },
+    {
+      "code": 6002,
+      "name": "FeeTooHigh",
+      "msg": "Fee is too high"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidAmountBounds",
+      "msg": "Invalid min/max amount bounds"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidTotalLimit",
+      "msg": "Invalid total limit"
+    },
+    {
+      "code": 6005,
+      "name": "Paused",
+      "msg": "Lottery is paused"
+    },
+    {
+      "code": 6006,
+      "name": "NotOpen",
+      "msg": "Lottery is not open"
+    },
+    {
+      "code": 6007,
+      "name": "NotStarted",
+      "msg": "Lottery not started yet"
+    },
+    {
+      "code": 6008,
+      "name": "Ended",
+      "msg": "Lottery ended"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidAmount",
+      "msg": "Invalid amount"
+    },
+    {
+      "code": 6010,
+      "name": "TotalLimitExceeded",
+      "msg": "Total limit exceeded"
+    },
+    {
+      "code": 6011,
+      "name": "Overflow",
+      "msg": "Overflow"
+    },
+    {
+      "code": 6012,
+      "name": "MintKeyMismatch",
+      "msg": "Mint key mismatch"
+    },
+    {
+      "code": 6013,
+      "name": "WrongPhase",
+      "msg": "Wrong phase for this action"
+    },
+    {
+      "code": 6014,
+      "name": "WeightsHashAlreadySet",
+      "msg": "Weights hash already set for this lottery"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidWeightsHash",
+      "msg": "Invalid weights hash (zero value)"
+    },
+    {
+      "code": 6016,
+      "name": "InvalidPhase2Wait",
+      "msg": "Invalid wait duration for second phase"
+    },
+    {
+      "code": 6017,
+      "name": "NotEndedYet",
+      "msg": "Entry period has not ended yet"
+    },
+    {
+      "code": 6018,
+      "name": "VrfNotReady",
+      "msg": "VRF is not ready yet"
+    },
+    {
+      "code": 6019,
+      "name": "VrfAlreadyCalled",
+      "msg": "VRF already called"
+    },
+    {
+      "code": 6020,
+      "name": "InsufficientVaultBalance",
+      "msg": "Insufficient vault balance"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidVrfSeed",
+      "msg": "Invalid VRF seed (zero)"
+    },
+    {
+      "code": 6022,
+      "name": "DurationTooLong",
+      "msg": "Lottery duration is too long"
+    },
+    {
+      "code": 6023,
+      "name": "AlreadyPaused",
+      "msg": "Lottery is already paused"
+    },
+    {
+      "code": 6024,
+      "name": "NotPaused",
+      "msg": "Lottery is not paused"
+    },
+    {
+      "code": 6025,
+      "name": "NotInPurchasesPhase",
+      "msg": "Lottery is not in purchases phase"
+    },
+    {
+      "code": 6026,
+      "name": "InvalidVaultOwner",
+      "msg": "Vault must be owned by the System Program"
+    },
+    {
+      "code": 6027,
+      "name": "InvalidVaultData",
+      "msg": "Vault must have zero data"
+    },
+    {
+      "code": 6028,
+      "name": "InvalidRandomnessAccount",
+      "msg": "Invalid randomness account"
+    },
+    {
+      "code": 6029,
+      "name": "RandomnessAccountMismatch",
+      "msg": "Randomness account does not match lottery state"
+    },
+    {
+      "code": 6030,
+      "name": "InvalidRandomnessAccountData",
+      "msg": "Failed to parse randomness account"
+    },
+    {
+      "code": 6031,
+      "name": "RandomnessNotResolved",
+      "msg": "Randomness is not resolved"
+    },
+    {
+      "code": 6032,
+      "name": "InvalidRandomnessAccountOwner",
+      "msg": "Randomness account owner is invalid"
+    },
+    {
+      "code": 6033,
+      "name": "RandomnessAccountAlreadyResolved",
+      "msg": "Randomness account already has a revealed value"
+    },
+    {
+      "code": 6034,
+      "name": "RandomnessTooOld",
+      "msg": "Randomness account uses data from before phase 2"
+    },
+    {
+      "code": 6035,
+      "name": "RandomnessTooStale",
+      "msg": "Randomness result is older than the allowed freshness window"
+    },
+    {
+      "code": 6036,
+      "name": "VrfRetryLimitReached",
+      "msg": "VRF retry limit reached"
+    },
+    {
+      "code": 6037,
+      "name": "VrfRetryTooEarly",
+      "msg": "VRF retry can only be called after vrf_ready_ts"
+    },
+    {
+      "code": 6038,
+      "name": "SameRandomnessAccount",
+      "msg": "Retry must use a new randomness account"
+    },
+    {
+      "code": 6039,
+      "name": "VrfRetriesNotExhausted",
+      "msg": "Emergency seed is allowed only after max VRF retries"
+    },
+    {
+      "code": 6040,
+      "name": "VrfRequestNotBound",
+      "msg": "VRF request metadata is not bound yet"
+    },
+    {
+      "code": 6041,
+      "name": "VrfRequestAlreadyBound",
+      "msg": "VRF request metadata is already bound"
+    },
+    {
+      "code": 6042,
+      "name": "RandomnessRequestMismatch",
+      "msg": "Randomness data does not match the bound request metadata"
+    },
+    {
+      "code": 6043,
+      "name": "InvalidVrfAlgorithmHash",
+      "msg": "Invalid VRF algorithm hash (zero value)"
+    },
+    {
+      "code": 6044,
+      "name": "BlockedBetMint",
+      "msg": "USDC and SOL/wSOL cannot be used as lottery bet tokens"
+    }
+  ],
+  "types": [
+    {
+      "name": "Deposit",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lottery",
+            "type": "pubkey"
+          },
+          {
+            "name": "user",
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EmergencySeedUsed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lottery",
+            "type": "pubkey"
+          },
+          {
+            "name": "seed",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "retry_count",
+            "type": "u8"
+          },
+          {
+            "name": "ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LimitsUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lottery",
+            "type": "pubkey"
+          },
+          {
+            "name": "min_amount",
+            "type": "u64"
+          },
+          {
+            "name": "max_amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Lottery",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "start_ts",
+            "type": "i64"
+          },
+          {
+            "name": "end_ts",
+            "type": "i64"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "wallet_fee",
+            "type": "pubkey"
+          },
+          {
+            "name": "wallet_keeper",
+            "type": "pubkey"
+          },
+          {
+            "name": "min_amount",
+            "type": "u64"
+          },
+          {
+            "name": "max_amount",
+            "type": "u64"
+          },
+          {
+            "name": "max_total",
+            "type": "u64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "LotteryStatus"
+              }
+            }
+          },
+          {
+            "name": "paused",
+            "type": "bool"
+          },
+          {
+            "name": "deposits_count",
+            "type": "u64"
+          },
+          {
+            "name": "total_deposited",
+            "type": "u128"
+          },
+          {
+            "name": "weights_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "vrf_ready_ts",
+            "type": "i64"
+          },
+          {
+            "name": "vrf_seed",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "vrf_called",
+            "type": "bool"
+          },
+          {
+            "name": "vrf_randomness_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "vrf_phase2_slot",
+            "type": "u64"
+          },
+          {
+            "name": "vrf_retry_count",
+            "type": "u8"
+          },
+          {
+            "name": "vrf_request_seed_slot",
+            "type": "u64"
+          },
+          {
+            "name": "vrf_request_seed_slothash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "vrf_algorithm_hash",
+            "docs": [
+              "sha256 of the canonical VRF used for this lottery. Set once in",
+              "initialize, immutable thereafter. Verified off-chain by users."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "LotteryInitialized",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lottery",
+            "type": "pubkey"
+          },
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "start_ts",
+            "type": "i64"
+          },
+          {
+            "name": "end_ts",
+            "type": "i64"
+          },
+          {
+            "name": "min_amount",
+            "type": "u64"
+          },
+          {
+            "name": "max_amount",
+            "type": "u64"
+          },
+          {
+            "name": "max_total",
+            "type": "u64"
+          },
+          {
+            "name": "vrf_algorithm_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "LotteryStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Open"
+          },
+          {
+            "name": "PendingVrf"
+          },
+          {
+            "name": "ReadyToDraw"
+          },
+          {
+            "name": "ProceedingPurchases"
+          },
+          {
+            "name": "Closed"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PauseStatusChanged",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lottery",
+            "type": "pubkey"
+          },
+          {
+            "name": "paused",
+            "type": "bool"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Phase2Started",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lottery",
+            "type": "pubkey"
+          },
+          {
+            "name": "weights_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "randomness_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "vrf_ready_ts",
+            "type": "i64"
+          },
+          {
+            "name": "phase2_slot",
+            "type": "u64"
+          },
+          {
+            "name": "retry_count",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PhaseChanged",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lottery",
+            "type": "pubkey"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "LotteryStatus"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PurchasesPhaseStarted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lottery",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_amount",
+            "type": "u64"
+          },
+          {
+            "name": "meme_amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "VrfBinded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lottery",
+            "type": "pubkey"
+          },
+          {
+            "name": "randomness_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "seed_slot",
+            "type": "u64"
+          },
+          {
+            "name": "seed_slothash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VrfFulfilled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lottery",
+            "type": "pubkey"
+          },
+          {
+            "name": "seed",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "VrfRetryScheduled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "lottery",
+            "type": "pubkey"
+          },
+          {
+            "name": "randomness_account",
+            "type": "pubkey"
+          },
+          {
+            "name": "phase2_slot",
+            "type": "u64"
+          },
+          {
+            "name": "retry_count",
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

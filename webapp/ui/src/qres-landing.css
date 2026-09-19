@@ -1,0 +1,296 @@
+/* ============================================================
+   qres landing — Tailwind utilities + designer custom CSS
+   (ported verbatim from the designer's globals.css)
+
+   Tailwind is loaded WITHOUT preflight so its global reset does
+   not clash with Bootstrap on the rest of the app. Only theme +
+   utilities layers are imported.
+   ============================================================ */
+@layer theme;
+@import "tailwindcss/theme.css" layer(theme);
+/* Utilities imported UNLAYERED so they win by specificity over the app's
+   global element rules (e.g. `a { color: #2778F1 }` in styles.scss). */
+@import "tailwindcss/utilities.css";
+
+/* Scan the app templates for utility classes. */
+@source "./app";
+
+/* Landing links inherit their contextual color instead of the app-wide blue
+   `a { color: #2778F1 }`. Tailwind hover utilities (higher specificity) still win. */
+.qres-root a { color: inherit; text-decoration: none; }
+
+/* --- typing headline caret ------------------------------------------------ */
+.typing-caret {
+  display: inline-block;
+  width: 0.1em;
+  height: 0.9em;
+  margin-left: 0.08em;
+  border-radius: 999px;
+  vertical-align: -0.08em;
+  background: var(--qres-black);
+  opacity: 1;
+}
+
+.typing-caret.is-paused {
+  animation: blinkCaret 0.9s steps(1) infinite;
+}
+
+/* --- hero copy marquee ---------------------------------------------------- */
+.qres-marquee-track {
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation: qres-marquee 80s linear infinite;
+}
+
+/* --- header X icon hover -------------------------------------------------- */
+.qres-x-layer {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.qres-x-layer-steady {
+  z-index: 2;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.qres-x-layer-main-left,
+.qres-x-layer-main-right {
+  z-index: 1;
+  opacity: 0;
+  transform: translate3d(0, 0, 0);
+}
+
+.qres-x-layer-entry-left {
+  z-index: 1;
+  opacity: 0;
+  transform: translate3d(1.5rem, 1.5rem, 0);
+}
+
+.qres-x-layer-entry-right {
+  z-index: 1;
+  opacity: 0;
+  transform: translate3d(-1.5rem, 1.5rem, 0);
+}
+
+.qres-x-link:hover .qres-x-layer-steady,
+.qres-x-link:focus-visible .qres-x-layer-steady {
+  animation: qres-x-steady 850ms linear forwards;
+}
+
+.qres-x-link:hover,
+.qres-x-link:focus-visible {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+.qres-x-link:hover .qres-x-layer-main-left,
+.qres-x-link:focus-visible .qres-x-layer-main-left {
+  animation: qres-x-line-out-left 360ms cubic-bezier(0.2, 0.85, 0.2, 1) forwards;
+}
+
+.qres-x-link:hover .qres-x-layer-main-right,
+.qres-x-link:focus-visible .qres-x-layer-main-right {
+  animation: qres-x-line-out-right 360ms cubic-bezier(0.2, 0.85, 0.2, 1) forwards;
+}
+
+.qres-x-link:hover .qres-x-layer-entry-left,
+.qres-x-link:focus-visible .qres-x-layer-entry-left {
+  animation: qres-x-line-in-left 760ms linear 90ms forwards;
+}
+
+.qres-x-link:hover .qres-x-layer-entry-right,
+.qres-x-link:focus-visible .qres-x-layer-entry-right {
+  animation: qres-x-line-in-right 760ms linear 90ms forwards;
+}
+
+/* --- quick-start: "pick a memecoin" falling coins ------------------------- */
+.qres-coin-hover .qres-falling-coin {
+  position: absolute;
+  top: 0;
+  left: var(--qres-coin-left);
+  z-index: 4;
+  width: var(--qres-coin-size);
+  height: var(--qres-coin-size);
+  opacity: 0;
+  transform: translate3d(-50%, -180%, 0) scale(0.82);
+  will-change: transform, opacity;
+}
+
+.qres-coin-hover .qres-falling-coin svg {
+  display: block;
+  filter: drop-shadow(3px 4px 0 rgb(2 2 2 / 0.14));
+}
+
+/* Hover only where there is a mouse: on a phone :hover stuck after a tap and the
+   coins fell endlessly. There the shower runs once, when the row appears on
+   screen (quick-start-pointer.ts). */
+@media (hover: hover) {
+  .qres-coin-hover:hover .qres-falling-coin {
+    animation: qres-coin-fall var(--qres-coin-duration) cubic-bezier(0.18, 0.72, 0.24, 1) var(--qres-coin-delay) infinite;
+  }
+}
+
+.qres-coin-hover--burst .qres-falling-coin {
+  animation: qres-coin-fall var(--qres-coin-duration) cubic-bezier(0.18, 0.72, 0.24, 1) calc(var(--qres-coin-delay) * 0.35) 1 both;
+}
+
+/* --- quick-start: "wait for the draw" clock ------------------------------- */
+.qres-draw-timer-slot {
+  min-width: 10.7em;
+}
+
+.qres-draw-timer-word {
+  display: inline-block;
+  transform-origin: 0 50%;
+  transition:
+    opacity 260ms ease,
+    transform 320ms ease,
+    max-width 320ms ease;
+  max-width: 10.7em;
+  white-space: nowrap;
+}
+
+.qres-draw-timer-icon {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1.25em;
+  height: 1.25em;
+  opacity: 0;
+  transform: translateY(-50%) scale(0.42) rotate(-18deg);
+  transform-origin: 50% 50%;
+  transition:
+    opacity 220ms ease 110ms,
+    transform 340ms cubic-bezier(0.2, 0.85, 0.2, 1) 80ms;
+}
+
+@media (hover: hover) {
+  .qres-draw-hover-row:hover .qres-draw-timer-word {
+    max-width: 0;
+    opacity: 0;
+    transform: translateX(-0.7em) scaleX(0.08);
+  }
+
+  .qres-draw-hover-row:hover .qres-draw-timer-icon {
+    opacity: 1;
+    transform: translateY(-50%) scale(1) rotate(0deg);
+  }
+
+  .qres-draw-hover-row:hover .qres-draw-timer-hand {
+    transform-origin: 32px 32px;
+    animation: qres-timer-spin 1.05s linear infinite;
+  }
+
+  .qres-draw-hover-row:hover .qres-draw-timer-hand-secondary {
+    animation-duration: 4.2s;
+  }
+}
+
+/* --- quick-start: "make a bet" commit SOL --------------------------------- */
+.qres-commit-sol-row {
+  transition:
+    background-color 260ms ease,
+    box-shadow 260ms ease,
+    transform 260ms ease;
+}
+
+@media (hover: hover) {
+  .qres-commit-sol-row:hover {
+    background: var(--qres-black);
+    box-shadow: 6px 7px 0 var(--qres-purple);
+    transform: translateY(-2px);
+  }
+
+  .qres-commit-sol-row:hover .qres-commit-sol-fill {
+    transform: translateX(0);
+  }
+}
+
+.qres-commit-sol-fill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--qres-black);
+  transform: translateX(-101%);
+  transition: transform 320ms cubic-bezier(0.2, 0.86, 0.2, 1);
+}
+
+
+.qres-commit-sol-stage {
+  position: absolute;
+  right: 2rem;
+  top: 50%;
+  z-index: 1;
+  width: min(48%, 20rem);
+  height: 5.6rem;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  overflow: visible;
+}
+
+/* --- keyframes ------------------------------------------------------------ */
+@keyframes qres-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes qres-timer-spin {
+  to { transform: rotate(1turn); }
+}
+
+@keyframes blinkCaret {
+  0%, 45% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+
+
+@keyframes qres-x-steady {
+  0% { opacity: 1; }
+  12% { opacity: 0; }
+  48% { opacity: 0; }
+  70%, 100% { opacity: 1; }
+}
+
+@keyframes qres-x-line-out-left {
+  0% { opacity: 1; transform: translate3d(0, 0, 0); }
+  100% { opacity: 0; transform: translate3d(-1.65rem, -1.65rem, 0); }
+}
+
+@keyframes qres-x-line-out-right {
+  0% { opacity: 1; transform: translate3d(0, 0, 0); }
+  100% { opacity: 0; transform: translate3d(1.65rem, -1.65rem, 0); }
+}
+
+@keyframes qres-x-line-in-left {
+  0% { opacity: 0; transform: translate3d(1.65rem, 1.65rem, 0); animation-timing-function: cubic-bezier(0.2, 0.85, 0.2, 1); }
+  42% { opacity: 1; transform: translate3d(0, 0, 0); animation-timing-function: linear; }
+  70%, 100% { opacity: 0; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes qres-x-line-in-right {
+  0% { opacity: 0; transform: translate3d(-1.65rem, 1.65rem, 0); animation-timing-function: cubic-bezier(0.2, 0.85, 0.2, 1); }
+  42% { opacity: 1; transform: translate3d(0, 0, 0); animation-timing-function: linear; }
+  70%, 100% { opacity: 0; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes qres-coin-fall {
+  0% { opacity: 0; transform: translate3d(-50%, -180%, 0) rotate(0turn) scale(0.82); }
+  16% { opacity: 1; transform: translate3d(-50%, -108%, 0) rotate(calc(var(--qres-coin-spin) * 0.08)) scale(1); }
+  84% { opacity: 1; transform: translate3d(-50%, 330%, 0) rotate(calc(var(--qres-coin-spin) * 0.78)) scale(1); }
+  100% { opacity: 0; transform: translate3d(-50%, 410%, 0) rotate(var(--qres-coin-spin)) scale(0.88); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qres-marquee-track { animation: none; }
+  .qres-coin-hover:hover .qres-falling-coin,
+  .qres-coin-hover--burst .qres-falling-coin { animation: none; }
+  .qres-draw-hover-row:hover .qres-draw-timer-hand { animation: none; }
+}

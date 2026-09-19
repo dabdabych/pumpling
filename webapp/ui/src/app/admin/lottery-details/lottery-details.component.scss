@@ -1,0 +1,278 @@
+.category-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.category-title span {
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.back-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  vertical-align: middle;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+}
+
+.details-container {
+  max-width: 800px;
+  margin: 0;
+  padding: 20px 0;
+}
+
+.phase-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.phase-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.phase-subtitle {
+  color: #666;
+}
+
+.phase-hint {
+  font-size: 12px;
+  color: #999;
+}
+
+.phase-tabs {
+  margin-top: 8px;
+}
+
+:host ::ng-deep .phase-tabs .mat-mdc-tab .mdc-tab__text-label {
+  color: #475569;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+:host ::ng-deep .phase-tabs .mat-mdc-tab.mdc-tab--active .mdc-tab__text-label {
+  color: #1d4ed8;
+}
+
+:host ::ng-deep .phase-tabs .mat-mdc-tab:not(.mdc-tab--active):hover .mdc-tab__text-label {
+  color: #111827;
+}
+
+.phase-panel {
+  padding: 16px 8px 8px;
+}
+
+.phase-description {
+  color: #555;
+  margin-bottom: 16px;
+}
+
+.bets-section {
+  margin-bottom: 24px;
+}
+
+.wallet-selector {
+  width: 100%;
+  max-width: 420px;
+  margin-bottom: 16px;
+}
+
+.success-message {
+  color: #2e7d32;
+  margin-top: 8px;
+}
+
+.bets-header {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.bets-table {
+  width: 100%;
+
+  .monospace {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+  }
+
+  th {
+    background: #f9fafb;
+    font-weight: 600;
+    color: #374151;
+  }
+
+  td, th {
+    padding: 12px 16px;
+  }
+}
+
+.phase-form .form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.phase-form .full-width {
+  width: 100%;
+}
+
+.phase2-ops {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #1f2937;
+}
+
+.phase2-ops-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.phase2-ops ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.phase2-ops li {
+  margin: 2px 0;
+  line-height: 1.35;
+}
+
+.phase2-ops code {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+}
+
+.button-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cooldown-message {
+  margin-top: 12px;
+  padding: 10px 14px;
+  color: #ef6c00;
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.detail-row {
+  display: flex;
+  padding: 16px 0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  font-weight: 500;
+  min-width: 200px;
+  color: #666;
+}
+
+.detail-value {
+  flex: 1;
+  color: #333;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 999px;
+  background-color: #334155;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+.status-badge[class*="active" i],
+.status-badge[class*="created" i] {
+  background-color: #2563eb;
+  color: #ffffff;
+}
+
+.status-badge[class*="id_generated" i],
+.status-badge[class*="idgenerated" i] {
+  background-color: #475569;
+  color: #ffffff;
+}
+
+.status-badge[class*="finished" i] {
+  background-color: #64748b;
+  color: #ffffff;
+}
+
+.status-badge[class*="phase2started" i],
+.status-badge[class*="pending_vrf" i],
+.status-badge[class*="pendingvrf" i] {
+  background-color: #c2410c;
+  color: #ffffff;
+}
+
+.status-badge[class*="vrf_binded" i],
+.status-badge[class*="vrfbinded" i] {
+  background-color: #7c3aed;
+  color: #ffffff;
+}
+
+.status-badge[class*="vrf_fulfilled" i],
+.status-badge[class*="vrffulfilled" i] {
+  background-color: #047857;
+  color: #ffffff;
+}
+
+.status-badge[class*="proceeding_purchases" i],
+.status-badge[class*="proceedingpurchases" i] {
+  background-color: #0f766e;
+  color: #ffffff;
+}
+
+.status-badge[class*="closed" i] {
+  background-color: #dc2626;
+  color: #ffffff;
+}
+
+.error-message {
+  text-align: center;
+  color: #f44336;
+  font-size: 16px;
+  padding: 40px;
+}

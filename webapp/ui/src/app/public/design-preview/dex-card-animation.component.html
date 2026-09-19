@@ -1,0 +1,19 @@
+<div class="dex-card-animation" aria-hidden="true">
+  <span
+    *ngFor="let token of tokens"
+    class="dex-card-animation__token"
+    [style.left.%]="token.x"
+    [style.top.%]="token.y"
+    [style.--dex-tilt]="token.tiltDeg + 'deg'"
+    [style.--dex-drift-x]="token.driftX + 'px'"
+    [style.--dex-drift-y]="token.driftY + 'px'"
+    [style.--dex-scale]="token.scale"
+    [style.--dex-enter-delay]="token.enterDelayMs + 'ms'"
+    [style.--dex-duration]="token.durationMs + 'ms'">
+    <span class="dex-card-animation__shell">
+      <span class="dex-card-animation__float">
+        <img [src]="token.src" alt="">
+      </span>
+    </span>
+  </span>
+</div>

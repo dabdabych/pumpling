@@ -1,0 +1,105 @@
+/* The policy page in flat-light. There used to be a dark card from the old qres
+   design here with a patch on top correcting it — both are gone, and the style is
+   set once and correctly.
+
+   The typography of the text itself lives in shared/legal/privacy-policy-content;
+   this is only the page around it. */
+
+.legal-page {
+  padding: 32px 24px 56px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+.legal-shell {
+  /* 720px is roughly 90 characters a line at 14px. Legal text is hard to read
+     wider: the eye loses the start of the next line. */
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 5px 5px 0 var(--qres-black);
+}
+
+/* ------------------------------------------------------------- the header */
+.legal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+  text-decoration: none;
+  color: var(--qres-black);
+}
+
+.legal-brand__mark {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.legal-brand__name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.legal-title {
+  margin: 0 0 20px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--qres-black);
+}
+
+/* -------------------------------------------------------------- the bottom */
+.legal-footer {
+  display: flex;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 2px solid rgba(2, 2, 2, 0.12);
+}
+
+.legal-cta {
+  min-width: 130px;
+  height: 46px;
+  padding: 0 22px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-black);
+  color: var(--qres-white);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.legal-cta:hover,
+.legal-cta:focus-visible {
+  background: var(--qres-purple);
+  border-color: var(--qres-purple);
+}
+
+@media (max-width: 767px) {
+  .legal-page {
+    padding: 16px 12px 40px;
+  }
+
+  .legal-shell {
+    padding: 22px 18px;
+    box-shadow: 3px 3px 0 var(--qres-black);
+  }
+
+  .legal-title {
+    font-size: 24px;
+  }
+
+  .legal-cta {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}

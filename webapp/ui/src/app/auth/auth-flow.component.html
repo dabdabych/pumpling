@@ -1,0 +1,245 @@
+<div class="auth-flow">
+  @if (view === 'email-sign-in' || view === 'email-sign-up' || view === 'forgot') {
+    <button type="button" class="auth-back" (click)="back()">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l-7 7 7 7" /></svg>
+      Back
+    </button>
+  }
+
+  @switch (view) {
+    @case ('methods') {
+      <!-- choosing a method -->
+      <h2 class="auth-title" id="auth-flow-title" tabindex="-1" data-autofocus>Sign in to pumpling</h2>
+      <p class="auth-subtitle">Use your email or a Solana wallet.</p>
+
+      <div class="auth-methods">
+        <button type="button" class="auth-method auth-method--primary" (click)="go('email-sign-in', 'sign-in')">
+          <svg class="auth-method__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M3.75 6.75h16.5v10.5H3.75V6.75Z" /><path d="m4.5 7.5 7.5 6 7.5-6" />
+          </svg>
+          <span class="auth-method__label">Continue with email</span>
+          <svg class="auth-method__arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7" /></svg>
+        </button>
+
+        <ng-container *ngTemplateOutlet="walletButton"></ng-container>
+      </div>
+
+      @if (error) {
+        <div class="auth-error" role="alert">{{ error }}</div>
+      }
+
+      <p class="auth-switch">
+        No account yet? <button type="button" class="auth-link" (click)="go('email-sign-up', 'sign-up')">Sign up</button>
+      </p>
+
+      <p class="auth-legal-note">
+        By continuing you agree to the <button type="button" class="auth-link auth-link--quiet" (click)="openLegal('terms')">Terms of Use</button>
+        and <span class="auth-nowrap"><button type="button" class="auth-link auth-link--quiet" (click)="openLegal('privacy')">Privacy Policy</button>.</span>
+      </p>
+    }
+
+    @case ('email-sign-in') {
+      <!-- signing in by email -->
+      <h2 class="auth-title" id="auth-flow-title" tabindex="-1">Sign in with email</h2>
+
+      <form #signInForm="ngForm" class="auth-form" (ngSubmit)="submitSignIn(signInForm)" novalidate>
+        <div class="field" [class.field--invalid]="emailInput.invalid && (emailInput.touched || signInForm.submitted)">
+          <label class="field__label" [for]="uid + '-email'">Email</label>
+          <div class="field__control">
+            <input class="field__input field__input--plain" type="email" [id]="uid + '-email'" name="email"
+                   autocomplete="email" inputmode="email" required
+                   pattern="[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"
+                   [(ngModel)]="email" #emailInput="ngModel" data-autofocus>
+          </div>
+          <div class="field__message" aria-live="polite">
+            @if (emailInput.invalid && (emailInput.touched || signInForm.submitted)) { Enter a valid email address. }
+          </div>
+        </div>
+
+        <div class="field field--with-toggle" [class.field--invalid]="passwordInput.invalid && (passwordInput.touched || signInForm.submitted)">
+          <div class="field__label-row">
+            <label class="field__label" [for]="uid + '-password'">Password</label>
+            <button type="button" class="auth-link auth-link--small" (click)="go('forgot')">Forgot password?</button>
+          </div>
+          <div class="field__control">
+            <input class="field__input field__input--plain" [type]="passwordVisible ? 'text' : 'password'"
+                   [id]="uid + '-password'" name="password" autocomplete="current-password" required
+                   [(ngModel)]="password" #passwordInput="ngModel">
+            <ng-container *ngTemplateOutlet="passwordToggle"></ng-container>
+          </div>
+          <div class="field__message" aria-live="polite">
+            @if (passwordInput.invalid && (passwordInput.touched || signInForm.submitted)) { Enter your password. }
+          </div>
+        </div>
+
+        <label class="auth-check">
+          <input type="checkbox" name="keepSignedIn" [(ngModel)]="keepSignedIn">
+          <span>Keep me signed in</span>
+        </label>
+
+        @if (error) {
+          <div class="auth-error" role="alert">{{ error }}</div>
+        }
+
+        <button class="auth-submit" type="submit" [disabled]="submitting">
+          {{ submitting ? 'Signing in…' : 'Sign in' }}
+        </button>
+      </form>
+
+      <!-- The wallet right here: somebody who opened the email form but cannot
+           remember their email should not have to find the way back to the method choice. -->
+      <div class="auth-or" aria-hidden="true">or</div>
+      <ng-container *ngTemplateOutlet="walletButton"></ng-container>
+
+      <p class="auth-switch">
+        No account yet? <button type="button" class="auth-link" (click)="go('email-sign-up', 'sign-up')">Sign up</button>
+      </p>
+    }
+
+    @case ('email-sign-up') {
+      <!-- registering by email -->
+      <h2 class="auth-title" id="auth-flow-title" tabindex="-1">Sign up with email</h2>
+
+      <form #signUpForm="ngForm" class="auth-form" (ngSubmit)="submitSignUp(signUpForm)" novalidate>
+        <div class="field" [class.field--invalid]="nicknameInput.invalid && (nicknameInput.touched || signUpForm.submitted)">
+          <label class="field__label" [for]="uid + '-nickname'">Nickname</label>
+          <div class="field__control">
+            <input class="field__input field__input--plain" type="text" [id]="uid + '-nickname'" name="nickname"
+                   autocomplete="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]{3,32}"
+                   [(ngModel)]="nickname" #nicknameInput="ngModel" data-autofocus>
+          </div>
+          <div class="field__message" aria-live="polite">
+            @if (nicknameInput.invalid && (nicknameInput.touched || signUpForm.submitted)) {
+              3 to 32 characters: letters, digits and underscores.
+            } @else {
+              <span class="field__hint">Shown in the chat.</span>
+            }
+          </div>
+        </div>
+
+        <div class="field" [class.field--invalid]="signUpEmail.invalid && (signUpEmail.touched || signUpForm.submitted)">
+          <label class="field__label" [for]="uid + '-signup-email'">Email</label>
+          <div class="field__control">
+            <input class="field__input field__input--plain" type="email" [id]="uid + '-signup-email'" name="email"
+                   autocomplete="email" inputmode="email" required
+                   pattern="[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"
+                   [(ngModel)]="email" #signUpEmail="ngModel">
+          </div>
+          <div class="field__message" aria-live="polite">
+            @if (signUpEmail.invalid && (signUpEmail.touched || signUpForm.submitted)) { Enter a valid email address. }
+          </div>
+        </div>
+
+        <div class="field field--with-toggle" [class.field--invalid]="newPassword.invalid && (newPassword.touched || signUpForm.submitted)">
+          <label class="field__label" [for]="uid + '-new-password'">Password</label>
+          <div class="field__control">
+            <input class="field__input field__input--plain" [type]="passwordVisible ? 'text' : 'password'"
+                   [id]="uid + '-new-password'" name="password" autocomplete="new-password" required passwd-validator
+                   [(ngModel)]="password" #newPassword="ngModel">
+            <ng-container *ngTemplateOutlet="passwordToggle"></ng-container>
+          </div>
+          <div class="field__message" aria-live="polite">
+            @if (newPassword.invalid && (newPassword.touched || signUpForm.submitted)) {
+              @if (newPassword.errors?.['required']) {
+                Choose a password.
+              } @else {
+                Still needed: {{ missingPasswordRules(newPassword.errors) }}.
+              }
+            } @else {
+              <span class="field__hint">8+ characters with upper and lower case, a digit and a symbol.</span>
+            }
+          </div>
+        </div>
+
+        @if (error) {
+          <div class="auth-error" role="alert">{{ error }}</div>
+        }
+
+        <button class="auth-submit" type="submit" [disabled]="submitting">
+          {{ submitting ? 'Creating account…' : 'Create account' }}
+        </button>
+      </form>
+
+      <p class="auth-switch">
+        Already have an account? <button type="button" class="auth-link" (click)="go('email-sign-in', 'sign-in')">Sign in</button>
+      </p>
+      <p class="auth-legal-note">
+        By creating an account you agree to the <button type="button" class="auth-link auth-link--quiet" (click)="openLegal('terms')">Terms of Use</button>
+        and <span class="auth-nowrap"><button type="button" class="auth-link auth-link--quiet" (click)="openLegal('privacy')">Privacy Policy</button>.</span>
+      </p>
+    }
+
+    @case ('forgot') {
+      <!-- password reset -->
+      <h2 class="auth-title" id="auth-flow-title" tabindex="-1">Reset your password</h2>
+      <p class="auth-subtitle">Enter the email you signed up with. We will send a link to set a new password.</p>
+
+      <form #forgotForm="ngForm" class="auth-form" (ngSubmit)="submitForgot(forgotForm)" novalidate>
+        <div class="field" [class.field--invalid]="forgotEmail.invalid && (forgotEmail.touched || forgotForm.submitted)">
+          <label class="field__label" [for]="uid + '-forgot-email'">Email</label>
+          <div class="field__control">
+            <input class="field__input field__input--plain" type="email" [id]="uid + '-forgot-email'" name="email"
+                   autocomplete="email" inputmode="email" required
+                   pattern="[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"
+                   [(ngModel)]="email" #forgotEmail="ngModel" data-autofocus>
+          </div>
+          <div class="field__message" aria-live="polite">
+            @if (forgotEmail.invalid && (forgotEmail.touched || forgotForm.submitted)) { Enter a valid email address. }
+          </div>
+        </div>
+
+        @if (error) {
+          <div class="auth-error" role="alert">{{ error }}</div>
+        }
+
+        <button class="auth-submit" type="submit" [disabled]="submitting">
+          {{ submitting ? 'Sending…' : 'Send reset link' }}
+        </button>
+      </form>
+    }
+
+    @case ('reset-sent') {
+      <!-- the emails have been sent -->
+      <h2 class="auth-title" id="auth-flow-title" tabindex="-1" data-autofocus>Check your inbox</h2>
+      <p class="auth-subtitle">
+        If an account exists for <strong>{{ email }}</strong>, a reset link is on its way. It can take a minute.
+      </p>
+      <button class="auth-submit" type="button" (click)="go('email-sign-in', 'sign-in')">Back to sign in</button>
+    }
+
+    @case ('confirm-sent') {
+      <h2 class="auth-title" id="auth-flow-title" tabindex="-1" data-autofocus>Confirm your email</h2>
+      <p class="auth-subtitle">
+        We sent a link to <strong>{{ email }}</strong>. Open it to activate your account, then sign in.
+      </p>
+      <button class="auth-submit" type="button" (click)="go('email-sign-in', 'sign-in')">Back to sign in</button>
+    }
+  }
+</div>
+
+<ng-template #walletButton>
+  <button type="button" class="auth-method" [disabled]="walletBusy" (click)="continueWithWallet()">
+    <svg class="auth-method__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M4 7.5h14.5a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5H5.5A1.5 1.5 0 0 1 4 18V7.5Z" />
+      <path d="M4 7.5 15.5 4.5v3" /><path d="M16 13.25h1.5" />
+    </svg>
+    <span class="auth-method__label">{{ walletBusy ? 'Waiting for the wallet…' : 'Continue with wallet' }}</span>
+    <svg class="auth-method__arrow" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 5l7 7-7 7" /></svg>
+  </button>
+</ng-template>
+
+<ng-template #passwordToggle>
+  <button class="field__toggle" type="button" (click)="passwordVisible = !passwordVisible"
+          [attr.aria-label]="passwordVisible ? 'Hide password' : 'Show password'"
+          [attr.aria-pressed]="passwordVisible">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      @if (!passwordVisible) {
+        <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+        <circle cx="12" cy="12" r="2.75" />
+      } @else {
+        <path d="M2.5 12s3.5-6 9.5-6c2 0 3.7.66 5.1 1.6M21.5 12s-3.5 6-9.5 6c-2 0-3.7-.66-5.1-1.6" />
+        <path d="M4 4l16 16" />
+      }
+    </svg>
+  </button>
+</ng-template>

@@ -1,0 +1,30 @@
+<header class="site-header">
+  <div class="site-header__frame">
+    <div class="site-header__shadow" aria-hidden="true"></div>
+    <div class="site-header__bar">
+      <a routerLink="/" class="site-header__brand" aria-label="pumpling home" (mouseenter)="logoMascot.onHover()">
+        <app-mascot-logo #logoMascot [size]="40" data-splash-target></app-mascot-logo>
+        <span class="site-header__word">pumpling</span>
+      </a>
+
+      <div class="site-header__actions">
+        <a href="https://x.com/pumplingxyz" target="_blank" rel="noreferrer"
+           class="site-header__icon qres-x-link" aria-label="pumpling on X">
+          <span class="qres-x-layer qres-x-layer-steady"><svg viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M18.9 2h3.68l-8.04 9.19L24 22h-7.41l-5.8-7.59L4.15 22H.47l8.6-9.84L0 2h7.59l5.24 6.93L18.9 2Zm-1.29 18.1h2.04L6.48 3.8H4.29l13.32 16.3Z"/></svg></span>
+          <span class="qres-x-layer qres-x-layer-main-left"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M0 2h7.59L24 22h-7.41L0 2Z"/></svg></span>
+          <span class="qres-x-layer qres-x-layer-main-right"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M18.9 2h3.68L4.15 22H.47L18.9 2Z"/></svg></span>
+          <span class="qres-x-layer qres-x-layer-entry-left"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M0 2h7.59L24 22h-7.41L0 2Z"/></svg></span>
+          <span class="qres-x-layer qres-x-layer-entry-right"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M18.9 2h3.68L4.15 22H.47L18.9 2Z"/></svg></span>
+        </a>
+        @if (isAuthenticated) {
+          <!-- Your own commits one press away: without this link a person does
+               not know their participation is recorded anywhere. -->
+          <a routerLink="/me" class="site-header__mine">My commits</a>
+        }
+        <button type="button" class="site-header__auth" [disabled]="busy" (click)="onAuthClick()">
+          {{ busy ? 'Signing out…' : isAuthenticated ? 'Sign out' : 'Sign in' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</header>

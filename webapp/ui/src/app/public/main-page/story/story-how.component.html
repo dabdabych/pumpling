@@ -1,0 +1,251 @@
+<!-- The coin mark: the round's eight invented coins, one style for all. -->
+<ng-template #coinMark let-coin>
+  <svg class="coin" viewBox="0 0 64 64" aria-hidden="true">
+    <circle cx="32" cy="32" r="29" [attr.fill]="coin.fill" stroke="#020202" stroke-width="4"/>
+    @switch (coin.glyph) {
+      @case ('face') {
+        <circle cx="24" cy="28" r="3.5" fill="#020202"/><circle cx="40" cy="28" r="3.5" fill="#020202"/>
+        <path d="M22 38c5 6 15 6 20 0" fill="none" stroke="#020202" stroke-width="4" stroke-linecap="round"/>
+      }
+      @case ('toad') {
+        <circle cx="23" cy="25" r="6" fill="#FCFCFC" stroke="#020202" stroke-width="3"/><circle cx="41" cy="25" r="6" fill="#FCFCFC" stroke="#020202" stroke-width="3"/>
+        <circle cx="23" cy="25" r="2.2" fill="#020202"/><circle cx="41" cy="25" r="2.2" fill="#020202"/>
+        <path d="M19 40c7 5 19 5 26 0" fill="none" stroke="#020202" stroke-width="4" stroke-linecap="round"/>
+      }
+      @case ('bolt') {
+        <path d="M35 13 21 35h10l-3 16 15-23H33Z" fill="#FCFCFC" stroke="#020202" stroke-width="3.5" stroke-linejoin="round"/>
+      }
+      @case ('snack') {
+        <circle cx="25" cy="27" r="3" fill="#020202"/><circle cx="38" cy="24" r="2.6" fill="#020202"/><circle cx="33" cy="38" r="3.4" fill="#020202"/>
+        <path d="M46 18a9 9 0 0 0-9 9 9 9 0 0 0 9 9" fill="#FCFCFC" stroke="#020202" stroke-width="3" stroke-linejoin="round"/>
+      }
+      @case ('blob') {
+        <path d="M32 14c6 9 11 13 11 20a11 11 0 0 1-22 0c0-7 5-11 11-20Z" fill="#FCFCFC" stroke="#020202" stroke-width="3.5" stroke-linejoin="round"/>
+      }
+      @case ('bear') {
+        <!-- A teddy bear: a white muzzle, round ears, a smile. -->
+        <circle cx="19" cy="20" r="7.5" fill="#FCFCFC" stroke="#020202" stroke-width="3"/>
+        <circle cx="45" cy="20" r="7.5" fill="#FCFCFC" stroke="#020202" stroke-width="3"/>
+        <circle cx="32" cy="35" r="17" fill="#FCFCFC" stroke="#020202" stroke-width="3"/>
+        <circle cx="25.5" cy="31" r="2.6" fill="#020202"/>
+        <circle cx="38.5" cy="31" r="2.6" fill="#020202"/>
+        <ellipse cx="32" cy="37.2" rx="2.7" ry="2.1" fill="#020202"/>
+        <path d="M26.6 41c2.9 3.4 7.9 3.4 10.8 0" fill="none" stroke="#020202" stroke-width="2.6" stroke-linecap="round"/>
+      }
+      @case ('moon') {
+        <path d="M40 16a17 17 0 1 0 0 32 20 20 0 0 1 0-32Z" fill="#FCFCFC" stroke="#020202" stroke-width="3.5" stroke-linejoin="round"/>
+      }
+      @case ('rush') {
+        <path d="M20 42 32 22l12 20" fill="none" stroke="#020202" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M24 48h16" fill="none" stroke="#020202" stroke-width="4" stroke-linecap="round"/>
+      }
+    }
+  </svg>
+</ng-template>
+
+<div class="how">
+  <!-- ----------------------------------------------- the round scale -->
+  <div class="track" data-story-anim data-how-track>
+    <div class="track__line" aria-hidden="true">
+      <span class="track__fill" data-how-fill></span>
+    </div>
+    <ol class="track__nodes">
+      @for (node of nodes; track node.label; let i = $index) {
+        <li class="track__node" [style.left.%]="node.at" [attr.data-how-node]="i + 1">
+          <span class="track__label" [attr.data-how-label]="i + 1"><b>0{{ i + 1 }}</b> {{ node.label }}</span>
+          <span class="track__dot" [attr.data-how-dot]="i + 1"></span>
+        </li>
+      }
+    </ol>
+    <div class="track__segments" aria-hidden="true">
+      <span>Pool open · 2h</span>
+      <span>Buys · 1h</span>
+    </div>
+    <div class="track__ticks" aria-hidden="true">
+      <span style="left: 0%">0h</span>
+      <span style="left: 66.667%">2h</span>
+      <span style="left: 100%">3h</span>
+    </div>
+  </div>
+
+  <div class="how__stage">
+    <!-- ------------------------------------------- 1. the pool is open -->
+    <section class="scene" data-how-scene="1" data-story-anim aria-label="Step 1">
+      <div class="scene__copy" data-how-copy>
+        <h3 class="scene__title">A pool opens <span class="scene__plate">every 3 hours</span></h3>
+        <p class="scene__text">Add SOL and name any Solana memecoin, still on the pump.fun curve or already trading on a DEX.</p>
+      </div>
+      <div class="pcard" data-how-card aria-hidden="true">
+        <header class="pcard__head">
+          <span class="pcard__id">Pool #{{ poolId }}</span>
+          @if (poolLocked) {
+            <span class="chip chip--locked-soft">Locked</span>
+          } @else {
+            <span class="chip chip--open"><i></i>Open</span>
+          }
+          <span class="pcard__meta">closes in <b #poolClock>02:00:00</b></span>
+        </header>
+        <p class="pcard__big"><b #poolTotal>13.0</b> SOL in the pool</p>
+        <span class="bar bar--slim"><span class="bar__fill" #poolFill style="width: 11%"></span></span>
+        <ul class="hrows hrows--feed" data-how-feed>
+          @for (row of feedRows; track row) {
+            <li class="hrow hrow--feed" data-how-row>
+              <span class="hrow__amount">+{{ row.sol }} SOL</span>
+              <ng-container *ngTemplateOutlet="coinMark; context: { $implicit: row.coin }"></ng-container>
+              <b class="hrow__ticker">{{ row.coin.ticker }}</b>
+              <span class="hrow__wallet">{{ row.wallet }}</span>
+            </li>
+          }
+        </ul>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------- 2. everything is public -->
+    <section class="scene" data-how-scene="2" data-story-anim aria-label="Step 2">
+      <div class="scene__copy" data-how-copy>
+        <h3 class="scene__title">Everyone sees <span class="scene__plate">what's coming</span></h3>
+        <p class="scene__text">The coins in the pool and the SOL behind each are public. Once SOL is in, nobody can take it back. That's why the price can start rising before the first buy.</p>
+      </div>
+      <div class="pcard" data-how-card aria-hidden="true">
+        <header class="pcard__head">
+          <span class="pcard__id">Pool #128</span>
+          <span class="chip chip--open"><i></i>Open</span>
+          <span class="pcard__meta"><b>100</b> SOL</span>
+        </header>
+        <p class="pcard__label">Coins the pool will buy</p>
+        <ul class="hrows">
+          @for (hrow of board; track hrow.coin.ticker) {
+            <li class="hrow hrow--bar" data-how-row>
+              <ng-container *ngTemplateOutlet="coinMark; context: { $implicit: hrow.coin }"></ng-container>
+              <b class="hrow__ticker">{{ hrow.coin.ticker }}</b>
+              <span class="bar"><span class="bar__fill" data-how-bar [style.width.%]="hrow.sol * 2"></span></span>
+              <span class="hrow__sol">{{ hrow.sol }} SOL</span>
+            </li>
+          }
+        </ul>
+        <div class="spark">
+          <div class="spark__head">
+            <span class="spark__label">$MOCHI</span>
+            <b #priceValue class="spark__price">$0.0000182</b>
+            <span class="spark__note">moving before the buy</span>
+          </div>
+          <!-- The price line lives on its own: the points travel right to left
+               and the path is a spline, so the curve is smooth rather than jagged. -->
+          <svg #priceSvg class="spark__chart" viewBox="0 0 320 56" preserveAspectRatio="none">
+            <!-- The fill under the line: the growth shows in it even out of the corner of your eye. -->
+            <path #priceArea class="spark__area" d="" fill="var(--qres-purple)" fill-opacity="0.28" stroke="none"/>
+            <path #priceLine data-how-spark d="M0 40 L320 18" fill="none" stroke="#020202" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+            <!-- "Now": the dot at the right edge, where a new price arrives. -->
+            <circle #priceDot class="spark__dot" cx="320" cy="18" r="4" fill="#020202" stroke="#FCFCFC" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------- 3. the pool is locked -->
+    <section class="scene" data-how-scene="3" data-story-anim aria-label="Step 3">
+      <div class="scene__copy" data-how-copy>
+        <h3 class="scene__title">The pool <span class="scene__plate">locks</span></h3>
+        <p class="scene__text">After 2 hours or at 111 SOL, whichever comes first. From here no more SOL can go in.</p>
+        <p class="scene__note">A draw then sets each coin's share of the buy, so bots can't compute the result in advance. The more SOL behind a coin, the steadier its share. Small stakes swing the most, sometimes down to zero.</p>
+      </div>
+      <div class="pcard" data-how-card aria-hidden="true">
+        <header class="pcard__head">
+          <span class="pcard__id">Pool #128</span>
+          <span class="chip chip--locked">
+            <svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="1"/><path data-how-shackle d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></svg>
+            Locked
+          </span>
+          <span class="pcard__meta">draw by Switchboard</span>
+        </header>
+        <p class="pcard__label">Share of the buy after the draw</p>
+        <ul class="hrows">
+          @for (hrow of shares; track hrow.coin.ticker) {
+            <li class="hrow hrow--bar" data-how-row>
+              <ng-container *ngTemplateOutlet="coinMark; context: { $implicit: hrow.coin }"></ng-container>
+              <b class="hrow__ticker">{{ hrow.coin.ticker }}</b>
+              <span class="bar"><span class="bar__fill" data-how-share [attr.data-before]="hrow.before * 1.8" [attr.data-after]="hrow.after * 1.8" [style.width.%]="hrow.after * 1.8"></span></span>
+              <span class="hrow__sol"><s>{{ hrow.before }}</s> {{ hrow.after }} SOL</span>
+            </li>
+          }
+        </ul>
+        <p class="pcard__foot">97 SOL goes into buys after the 3% fee</p>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------- 4. the hour of buying -->
+    <section class="scene" data-how-scene="4" data-story-anim aria-label="Step 4">
+      <div class="scene__copy" data-how-copy>
+        <h3 class="scene__title">One hour of <span class="scene__plate">public buys</span></h3>
+        <p class="scene__text">The SOL goes into on-chain buys, in small batches spread across the hour. Every buy is a public transaction.</p>
+      </div>
+      <div class="pcard" data-how-card aria-hidden="true">
+        <header class="pcard__head">
+          <span class="pcard__coins" aria-hidden="true">
+            @for (coin of buyingCoins; track coin.ticker) {
+              <ng-container *ngTemplateOutlet="coinMark; context: { $implicit: coin }"></ng-container>
+            }
+          </span>
+          <span class="pcard__id">3 coins</span>
+          <span class="chip chip--buying"><i></i>Buying</span>
+          <span class="pcard__meta">38 min left</span>
+        </header>
+        <p class="pcard__label pcard__label--chart">$MOCHI price · one of the three coins</p>
+        <svg class="chart" viewBox="0 0 254 64" aria-hidden="true">
+          <path d="M0 62H254" stroke="rgba(2,2,2,.15)" stroke-width="1"/>
+          @for (c of candles; track c.x; let i = $index) {
+            <g data-how-candle [class.is-shown]="i < visibleCandles">
+              <line [attr.x1]="c.x + 6" [attr.x2]="c.x + 6" [attr.y1]="c.top - 4" [attr.y2]="c.top + c.height + 4" stroke="#020202" stroke-width="1.5"/>
+              <rect [attr.x]="c.x" [attr.y]="c.top" width="12" [attr.height]="c.height" [attr.fill]="c.up ? '#8FFFAF' : '#AF8FFF'" stroke="#020202" stroke-width="1.5"/>
+            </g>
+          }
+        </svg>
+        <div class="buyprog">
+          <span class="buyprog__text"><b #boughtValue>12</b> of {{ buyTarget }} SOL bought across the three</span>
+          <span class="bar"><span class="bar__fill bar__fill--green" #boughtBar data-how-progress style="width: 26%"></span></span>
+        </div>
+        <ul class="hrows hrows--tx" data-how-feed>
+          @for (buy of buyFeed; track buy.tx; let i = $index) {
+            <li class="hrow hrow--tx hrow--feed" data-how-row>
+              <span class="hrow__buy">Buy</span>
+              <b>{{ buy.sol }} SOL</b>
+              <span class="hrow__coin">{{ buy.coin.ticker }}</span>
+              <span class="hrow__wallet">{{ buy.tx }}</span>
+              <span class="hrow__time">{{ buyRowAge(i) }}</span>
+            </li>
+          }
+        </ul>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------- 5. tokens to participants -->
+    <section class="scene" data-how-scene="5" data-story-anim aria-label="Step 5">
+      <div class="scene__copy" data-how-copy>
+        <h3 class="scene__title">Tokens go to <span class="scene__plate">backers</span></h3>
+        <p class="scene__text">What was bought for a coin is split between the people who backed it, by how much SOL each put in.</p>
+      </div>
+      <div class="pcard" data-how-card aria-hidden="true">
+        <header class="pcard__head">
+          <ng-container *ngTemplateOutlet="coinMark; context: { $implicit: mochi }"></ng-container>
+          <span class="pcard__id">$MOCHI</span>
+          <span class="chip chip--sent">
+            <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+            Sent
+          </span>
+          <span class="pcard__meta"><b>2.4M</b> bought</span>
+        </header>
+        <p class="pcard__label">Split by SOL put in</p>
+        <ul class="hrows">
+          @for (payout of payouts; track payout.wallet) {
+            <li class="hrow hrow--payout" data-how-row>
+              <span class="hrow__wallet hrow__wallet--strong">{{ payout.wallet }}</span>
+              <span class="hrow__put">{{ payout.sol }} SOL</span>
+              <span class="bar"><span class="bar__fill" #payoutBar style="width: 0%"></span></span>
+              <b class="hrow__tokens" #payoutTokens>{{ formatTokens(payout.tokens) }}</b>
+            </li>
+          }
+        </ul>
+      </div>
+    </section>
+  </div>
+</div>

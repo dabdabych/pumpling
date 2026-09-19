@@ -1,0 +1,497 @@
+/* ============================================================
+   What is it: the text on the left, the beat's picture on the right.
+
+   The beats sit stacked in one grid cell and are switched by the timeline.
+   The card offsets and tilts are set with the `translate` and `rotate`
+   properties rather than `transform`: `transform` is taken by the GSAP
+   animation, which would overwrite a layout set through it.
+
+   The pictures are measured in em from the scene's single font size, so they
+   scale as a whole — by the window's width and height.
+   ============================================================ */
+:host {
+  display: block;
+  height: 100%;
+}
+
+.what {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: center;
+  column-gap: clamp(24px, 4vw, 72px);
+  height: 100%;
+  /* The scene font size: every card is measured from it. */
+  font-size: clamp(11px, min(1.2vw, 2.15vh), 18px);
+}
+
+/* ------------------------------------------------------------- text */
+.what__copy {
+  grid-area: 1 / 1;
+  align-self: center;
+  max-width: 34rem;
+}
+
+.what__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  margin: 0 0 clamp(10px, 2vh, 18px);
+  /* Larger than the old 13px: the caption above the title got lost next to it. */
+  font-size: clamp(14px, min(1.15vw, 2vh), 17px);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  /* 62% black is 6.0:1. */
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.what__eyebrow::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 0.8em;
+  height: 0.8em;
+  background: var(--qres-purple);
+  border: 2px solid var(--qres-black);
+}
+
+.what__title {
+  margin: 0;
+  font-size: clamp(2rem, min(4.4vw, 7.4vh), 4.25rem);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+.what__line {
+  display: block;
+}
+
+.what__plate {
+  padding: 0 0.1em;
+  background: var(--qres-purple);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.what__text {
+  max-width: 30em;
+  margin: clamp(12px, 2.4vh, 22px) 0 0;
+  font-size: clamp(15px, min(1.3vw, 2.3vh), 19px);
+  font-weight: 500;
+  line-height: 1.45;
+  /* 72% black is 8.9:1. */
+  color: rgba(2, 2, 2, 0.72);
+  /* No lonely word on the last line. */
+  text-wrap: pretty;
+}
+
+/* ------------------------------------------------------ feed posts */
+.post,
+.pool,
+.feed {
+  grid-area: 1 / 2;
+  align-self: center;
+  justify-self: center;
+  position: relative;
+  color: var(--qres-black);
+}
+
+/* Somebody else's interface is softer than ours: rounded corners and a grey
+   shadow. The pumpling card next to it has square corners and a purple shadow. */
+.post {
+  width: min(32em, 100%);
+  padding: 1.1em 1.25em 1em;
+  border: 2px solid var(--qres-black);
+  border-radius: 12px;
+  background: var(--qres-white);
+  box-shadow: 0.35em 0.35em 0 rgba(2, 2, 2, 0.14);
+}
+
+/* Where the cards stand in each beat is set by the story timeline.
+   Only the slight tilt lives here — it sits in its own property and does not
+   argue with the animation. */
+.post--anon {
+  rotate: -1.5deg;
+}
+
+.post--caller {
+  z-index: 1;
+  rotate: 1.5deg;
+}
+
+/* ------------------------------------------------------------ the feed */
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1em;
+  width: min(34em, 100%);
+  height: 100%;
+  justify-content: center;
+  opacity: 0.55;
+  -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+  mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent);
+}
+
+.feed__item {
+  display: grid;
+  grid-template-columns: 2.7em 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 0.8em;
+  row-gap: 0.55em;
+  padding: 1.1em 1.25em;
+  border: 2px solid rgba(2, 2, 2, 0.14);
+  border-radius: 12px;
+}
+
+.feed__item i {
+  grid-row: span 2;
+  width: 2.7em;
+  height: 2.7em;
+  border-radius: 50%;
+  background: rgba(2, 2, 2, 0.08);
+}
+
+.feed__item b {
+  height: 0.8em;
+  border-radius: 4px;
+  background: rgba(2, 2, 2, 0.08);
+}
+
+.feed__item b:last-child {
+  width: 62%;
+}
+
+.post__head {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+}
+
+.post__avatar svg {
+  display: block;
+  width: 2.7em;
+  height: 2.7em;
+}
+
+.post__who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.post__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  font-size: 1em;
+  font-weight: 700;
+}
+
+.post__badge {
+  width: 1.1em;
+  height: 1.1em;
+}
+
+.post__handle {
+  font-size: 0.85em;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.post__followers {
+  margin-left: auto;
+  padding: 0.3em 0.65em;
+  border: 2px solid var(--qres-black);
+  border-radius: 999px;
+  font-size: 0.8em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.post__body {
+  margin: 0.8em 0 0;
+  font-size: 1.18em;
+  line-height: 1.45;
+}
+
+.post__body b {
+  font-weight: 700;
+}
+
+.post__ticker {
+  padding: 0 0.15em;
+  border-radius: 3px;
+  background: rgba(175, 143, 255, 0.3);
+  font-weight: 700;
+}
+
+.post__meta {
+  display: flex;
+  gap: 1.6em;
+  margin-top: 0.85em;
+  font-size: 0.85em;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.post__meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+
+.post__meta svg {
+  width: 1.15em;
+  height: 1.15em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The stamp is like a rubber seal over a post. Red only here: it is the one
+   place on the page where we reject something. */
+.stamp {
+  position: absolute;
+  top: -0.95em;
+  right: -0.8em;
+  padding: 0.35em 0.7em;
+  border: 3px solid #b3261e;
+  background: var(--qres-white);
+  color: #b3261e;
+  font-size: 1.15em;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  rotate: 8deg;
+  box-shadow: 0.2em 0.2em 0 rgba(179, 38, 30, 0.22);
+}
+
+.stamp--paid {
+  top: auto;
+  right: 6%;
+  bottom: -1em;
+  rotate: -6deg;
+}
+
+/* ------------------------------------------------------ the pool card */
+.pool {
+  z-index: 2;
+  width: min(28em, 100%);
+  padding: 1.2em 1.3em 1.15em;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 0.6em 0.6em 0 var(--qres-purple);
+}
+
+.pool__head {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  padding-bottom: 0.8em;
+  border-bottom: 2px solid var(--qres-black);
+}
+
+.pool__logo {
+  width: 2.1em;
+  height: 2.1em;
+}
+
+.pool__name {
+  font-size: 1.05em;
+  font-weight: 700;
+}
+
+.pool__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  margin-left: auto;
+  padding: 0.3em 0.65em;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-green);
+  font-size: 0.8em;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pool__status i {
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: var(--qres-black);
+  animation: what-pulse 1.6s ease-in-out infinite;
+}
+
+.pool__coin {
+  display: flex;
+  align-items: center;
+  gap: 0.7em;
+  margin-top: 1em;
+}
+
+.pool__coin-mark svg {
+  display: block;
+  width: 2.7em;
+  height: 2.7em;
+}
+
+.pool__ticker {
+  font-size: 1.3em;
+  font-weight: 700;
+}
+
+.pool__sol {
+  margin-left: auto;
+  font-size: 1.05em;
+  font-weight: 600;
+}
+
+.pool__sol b {
+  font-size: 1.7em;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.pool__bar {
+  height: 1em;
+  margin-top: 0.8em;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  overflow: hidden;
+}
+
+.pool__fill {
+  display: block;
+  width: 90%;
+  height: 100%;
+  background: var(--qres-purple);
+  border-right: 2px solid var(--qres-black);
+  transform-origin: 0 50%;
+}
+
+.pool__scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.35em;
+  font-size: 0.78em;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.pool__rows {
+  display: grid;
+  gap: 0.45em;
+  margin: 0.95em 0 0;
+}
+
+.pool__rows div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1em;
+  font-size: 0.98em;
+}
+
+.pool__rows dt {
+  font-weight: 500;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.pool__rows dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.pool__timer {
+  font-variant-numeric: tabular-nums;
+}
+
+.pool__lock {
+  display: flex;
+  align-items: center;
+  gap: 0.55em;
+  margin: 1em 0 0;
+  padding: 0.65em 0.8em;
+  background: var(--qres-black);
+  color: var(--qres-white);
+  font-size: 0.92em;
+  font-weight: 700;
+}
+
+.pool__lock svg {
+  width: 1.3em;
+  height: 1.3em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+@keyframes what-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pool__status i {
+    animation: none;
+  }
+}
+
+/* ------------------------------------- as a column: phone, reduced motion */
+:host-context(.qres-story--static) {
+  height: auto;
+}
+
+:host-context(.qres-story--static) .what {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: none;
+  row-gap: 28px;
+  height: auto;
+  font-size: clamp(12px, 3.6vw, 15px);
+}
+
+:host-context(.qres-story--static) .what__copy,
+:host-context(.qres-story--static) .post,
+:host-context(.qres-story--static) .pool {
+  grid-area: auto;
+}
+
+:host-context(.qres-story--static) .feed {
+  display: none;
+}
+
+:host-context(.qres-story--static) .what__copy {
+  margin-top: 12px;
+}
+
+:host-context(.qres-story--static) .post,
+:host-context(.qres-story--static) .pool {
+  justify-self: start;
+  width: min(30em, calc(100% - 1em));
+  translate: none;
+  rotate: none;
+}
+
+:host-context(.qres-story--static) .post__head {
+  flex-wrap: wrap;
+}
+
+/* The followers go under the handle: in a narrow card three blocks in a row did
+   not fit and overlapped. */
+:host-context(.qres-story--static) .post__followers {
+  margin-left: calc(2.7em + 0.7em);
+}
+
+:host-context(.qres-story--static) .stamp {
+  right: 0.4em;
+}
+
+:host-context(.qres-story--static) .what__title {
+  font-size: clamp(1.75rem, 8vw, 2.5rem);
+}
