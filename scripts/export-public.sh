@@ -64,7 +64,7 @@ fi
 
 echo
 # This script is excluded because the pattern below is itself Cyrillic.
-echo "anything still in Russian (vrf_engine.py is frozen on purpose):"
+echo "anything still in Russian (should be nothing):"
 (cd "$TARGET" && grep -rl '[А-Яа-яЁё]' . --exclude-dir=.git --exclude=export-public.sh || true)
 
 echo

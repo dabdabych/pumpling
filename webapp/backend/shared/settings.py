@@ -376,7 +376,7 @@ def get_settings() -> AppSettings:
         lottery_autostart_fee_bps=_env_int_non_negative("LOTTERY_AUTOSTART_FEE_BPS", 300),
         lottery_autostart_vrf_algorithm_hash=_env_str(
             "LOTTERY_AUTOSTART_VRF_ALGORITHM_HASH",
-            "0x2ec9c530fcd55efd0838bd79245e2543e24f41cd3c2d660eaff43c0387629929",
+            "0x00a9da1268f2d909dbf6700a15ec3f902630c5194306bfffcf713150279d831b",
         ),
         rpc_proxy_rate_limit_per_minute=_env_int_non_negative("RPC_PROXY_RATE_LIMIT_PER_MINUTE", 240),
         rpc_proxy_max_batch_size=_env_int_non_negative("RPC_PROXY_MAX_BATCH_SIZE", 10),

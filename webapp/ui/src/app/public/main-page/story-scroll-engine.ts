@@ -150,15 +150,33 @@ export class StoryScrollEngine {
     if (newStream) {
       this.nativeFromBelowUntil = -Infinity;
     }
-    // Holding on the last stop lasts until the next gesture.
-    if (intent !== 0 && this.holdAtEnd) {
-      this.holdAtEnd = false;
-      this.updateLock();
-    }
-
     if (this.options.isSuspended() || this.canScrollInside(event.target, dy)) {
       return;
     }
+
+    // Holding on the last stop lasts until the next gesture, and that next
+    // gesture has to do something. Clearing the hold and falling through is not
+    // enough: while it was held the page sat under `overflow: hidden`, the
+    // browser had already decided this event scrolls nothing, and unlocking
+    // inside the handler does not bring the scroll back. The whole gesture was
+    // spent on unlocking and the page stood still — from the outside, a swipe
+    // that did nothing. So we take this event ourselves and step on it.
+    if (this.holdAtEnd) {
+      if (intent === 0) {
+        if (event.cancelable) {
+          event.preventDefault();
+        }
+        return;
+      }
+      this.holdAtEnd = false;
+      this.updateLock();
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+      this.requestStep(intent);
+      return;
+    }
+
     this.updateLock();
     if (!this.isEngaged(direction)) {
       if (direction < 0) {
@@ -218,6 +236,13 @@ export class StoryScrollEngine {
     if (event.touches.length !== 1) {
       this.touchStartY = null;
       return;
+    }
+    // A finger down is a new gesture, so the hold from the previous one is over.
+    // Without this the page stayed under `overflow: hidden` after a swipe landed
+    // on the last stop, and the footer could not be scrolled by touch at all.
+    if (this.holdAtEnd) {
+      this.holdAtEnd = false;
+      this.updateLock();
     }
     this.touchFromBelow = this.currentTop() > this.options.getEnd() + STOP_EPSILON_PX;
     this.touchStartY = event.touches[0].clientY;

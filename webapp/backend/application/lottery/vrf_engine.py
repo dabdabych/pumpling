@@ -5,17 +5,18 @@ from typing import Dict, List, Tuple
 
 Mint = str
 LAMPORTS_PER_SOL = 1_000_000_000
-# Число розыгрышей: k = min(K_MAX, max(n_mints, floor(6.7 * sqrt(пул в SOL)))).
+# The number of draws: k = min(K_MAX, max(n_mints, floor(6.7 * sqrt(pool in SOL)))).
 #
-# Константы перенормированы под новый потолок пула в 111 SOL: раньше
-# коэффициент 5.4 и K_MAX = 80 были подобраны так, чтобы потолок достигался
-# ровно на 222 SOL. Теперь k = 70 достигается на 109.2 SOL, то есть чуть
-# раньше максимального пула — как и задумано.
+# The constants were renormalised for the 111 SOL pool cap: the old coefficient
+# of 5.4 with K_MAX = 80 was chosen so the cap was reached at exactly 222 SOL.
+# Now k = 70 is reached at 109.2 SOL, a little before the maximum pool, which is
+# what we want.
 #
-# k регулирует не ширину раздачи, а её случайность: каждая монета в среднем
-# получает свою долю ставок, а k задаёт, насколько сильно итог от этой доли
-# отклоняется. При 15 монетах в раунде k = 56 даёт отклонение ~18.5%,
-# k = 70 — ~16.4%. Больше розыгрышей значит более предсказуемый результат.
+# k does not control how wide the distribution is, it controls how random it is.
+# On average every coin gets the share of the buying that matches the share of
+# the SOL behind it, and k sets how far the outcome strays from that share. With
+# 15 coins in a round, k = 56 gives a deviation of ~18.5% and k = 70 gives
+# ~16.4%. More draws mean a more predictable result.
 K_MAX = 70
 K_SQRT_NUMERATOR = 67
 K_SQRT_DENOMINATOR = 10

@@ -25,17 +25,14 @@
             "inlineStyleLanguage": "scss",
             "assets": [
               "src/favicon.ico",
-              "src/favicon.svg",
               "src/favicon-16x16.png",
               "src/favicon-32x32.png",
               "src/favicon-48x48.png",
               "src/apple-touch-icon.png",
-              "src/safari-pinned-tab.svg",
               "src/site.webmanifest",
               "src/assets",
               "src/robots.txt",
-              "src/sitemap.xml",
-              "src/crypto-lottery-solana.html"
+              "src/sitemap.xml"
             ],
             "styles": [
               "@angular/material/prebuilt-themes/indigo-pink.css",
@@ -121,12 +118,10 @@
             "inlineStyleLanguage": "scss",
             "assets": [
               "src/favicon.ico",
-              "src/favicon.svg",
               "src/favicon-16x16.png",
               "src/favicon-32x32.png",
               "src/favicon-48x48.png",
               "src/apple-touch-icon.png",
-              "src/safari-pinned-tab.svg",
               "src/site.webmanifest",
               "src/assets",
               "src/robots.txt",

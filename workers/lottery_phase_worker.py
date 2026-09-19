@@ -595,6 +595,16 @@ def _ensure_lottery_post_vrf(session: Session, lottery_id: int) -> Optional[Lott
 _build_js_number_string = build_number_string
 
 
+def _vrf_engine_sha256() -> str:
+    """The sha256 of the shares algorithm as it exists on this machine.
+
+    Read from the file rather than from configuration, because it is the thing
+    the configuration claims to describe.
+    """
+    engine = Path(__file__).resolve().parents[1] / "webapp" / "backend" / "application" / "lottery" / "vrf_engine.py"
+    return hashlib.sha256(engine.read_bytes()).hexdigest()
+
+
 def _parse_vrf_algorithm_hash(raw_hash: str) -> list[int]:
     normalized = (raw_hash or "").strip()
     if normalized.startswith(("0x", "0X")):
@@ -607,6 +617,23 @@ def _parse_vrf_algorithm_hash(raw_hash: str) -> list[int]:
         raise ValueError("LOTTERY_AUTOSTART_VRF_ALGORITHM_HASH must be valid hex") from exc
     if all(value == 0 for value in values):
         raise ValueError("LOTTERY_AUTOSTART_VRF_ALGORITHM_HASH must be non-zero")
+
+    # The value that goes on chain has to be the hash of the algorithm that
+    # actually runs here. A test keeps the checked-in default honest, but the
+    # default is only a fallback: an .env on the server overrides it, and then a
+    # round would declare one algorithm on chain and be computed by another.
+    # Nobody would notice until somebody checked a round and found the
+    # fingerprint did not match. Refuse to open a round instead.
+    try:
+        actual = _vrf_engine_sha256()
+    except OSError:
+        return values
+    if normalized.lower() != actual:
+        raise ValueError(
+            "LOTTERY_AUTOSTART_VRF_ALGORITHM_HASH does not match vrf_engine.py "
+            f"(configured 0x{normalized.lower()}, actual 0x{actual}). "
+            "Run: python3 scripts/vrf_algorithm_hash.py --write"
+        )
     return values
 
 

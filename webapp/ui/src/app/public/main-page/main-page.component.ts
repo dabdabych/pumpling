@@ -182,6 +182,14 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
   /** Reduced motion is on: the story is unrolled as an ordinary page. */
   reducedMotionLayout = false;
 
+  /** The first-screen entrance after the splash; kept so it cannot run twice. */
+  private heroEntrance?: gsap.core.Timeline;
+
+  /** Instant-scroll mode: held for a whole animation, see beginInstantScroll. */
+  private instantScrollForNav = false;
+  private instantScrollDepth = 0;
+  private instantScrollPrevious = '';
+
   /** The proxy we tween the scroll position through. */
   private readonly sectionScrollProxy = { top: 0 };
 
@@ -574,15 +582,25 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     const text = [hero.querySelector('.qres-hero-title'), hero.querySelector('.qres-hero-lede')].filter(Boolean);
     const cards = hero.querySelector('.qres-hero-cards');
     const clearProps = 'opacity,visibility,transform';
+    // fromTo, not from: `from` records the element's current value as the end of
+    // the tween. Run it while something else is mid-animation on the same node
+    // and the recorded end is that mid value — the entrance then animates from
+    // hidden to hidden and the first screen never appears. With both ends
+    // written down that cannot happen.
+    this.heroEntrance?.kill();
     const entrance = gsap.timeline({ defaults: { ease: 'power3.out' } });
+    this.heroEntrance = entrance;
     if (mascot) {
-      entrance.from(mascot, { autoAlpha: 0, scale: 0.8, duration: 0.55, ease: 'back.out(1.8)', clearProps }, 0.12);
+      entrance.fromTo(mascot, { autoAlpha: 0, scale: 0.8 },
+        { autoAlpha: 1, scale: 1, duration: 0.55, ease: 'back.out(1.8)', clearProps }, 0.12);
     }
     if (text.length) {
-      entrance.from(text, { autoAlpha: 0, y: 20, duration: 0.6, stagger: 0.08, clearProps }, 0.16);
+      entrance.fromTo(text, { autoAlpha: 0, y: 20 },
+        { autoAlpha: 1, y: 0, duration: 0.6, stagger: 0.08, clearProps }, 0.16);
     }
     if (cards) {
-      entrance.from(cards, { autoAlpha: 0, y: 26, duration: 0.65, clearProps }, 0.28);
+      entrance.fromTo(cards, { autoAlpha: 0, y: 26 },
+        { autoAlpha: 1, y: 0, duration: 0.65, clearProps }, 0.28);
     }
   }
 
@@ -635,6 +653,11 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
     if (section !== this.activeSection) {
       this.activeSection = section;
+      // Arriving at the start of the story by scrolling gets the same repair as
+      // arriving by the menu: the first screen has to be whole however you got here.
+      if (section === 'hero' && !this.navigatingToSection) {
+        this.restoreHeroContentAtStart();
+      }
       // On an ordinary scroll somebody has to drive the header too.
       if (!this.navigatingToSection) {
         this.headerHidden = section !== 'hero';
@@ -708,14 +731,24 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     const trigger = this.storyTimeline?.scrollTrigger;
     gsap.killTweensOf(this.sectionScrollProxy);
     this.sectionScrollProxy.top = window.scrollY;
+    this.beginInstantScroll();
+    let released = false;
+    const finish = () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      this.endInstantScroll();
+      done();
+    };
     gsap.to(this.sectionScrollProxy, {
       top,
       duration: STORY_STEP_DURATION_S,
       ease: 'power2.inOut',
       onUpdate: () => this.scrollInstantly(trigger, this.sectionScrollProxy.top),
-      onComplete: done,
+      onComplete: finish,
       // A menu transition kills this tween — otherwise the engine would stay "busy".
-      onInterrupt: done
+      onInterrupt: finish
     });
   }
 
@@ -729,12 +762,49 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
    * panels nobody asked for": not a calculation error, somebody else's CSS.
    */
   private scrollInstantly(trigger: any, top: number): void {
+    if (this.instantScrollDepth > 0) {
+      trigger.scroll(top);
+      return;
+    }
     const root = this.document.documentElement;
     const previous = root.style.scrollBehavior;
     root.style.scrollBehavior = 'auto';
     trigger.scroll(top);
     // We put it back only after the browser has applied the jump.
     requestAnimationFrame(() => { root.style.scrollBehavior = previous; });
+  }
+
+  /**
+   * Holds the instant-scroll mode for a whole animation instead of a frame.
+   *
+   * Every frame of a step and of a menu transition moves the scroll, and the
+   * single-jump version of `scrollInstantly` wrote `scroll-behavior` on the root
+   * element twice per frame and queued a rAF to put it back. Writing an
+   * inherited property on <html> sixty times a second invalidates style for the
+   * whole document, which is what the transition to Quick start felt like:
+   * the scroll arrived where it should, in visible steps.
+   *
+   * The counter is there because a menu transition kills the engine's step and
+   * starts its own: the two overlap for a moment and the first one to finish
+   * must not release the mode.
+   */
+  private beginInstantScroll(): void {
+    if (this.instantScrollDepth === 0) {
+      const root = this.document.documentElement;
+      this.instantScrollPrevious = root.style.scrollBehavior;
+      root.style.scrollBehavior = 'auto';
+    }
+    this.instantScrollDepth++;
+  }
+
+  private endInstantScroll(): void {
+    if (this.instantScrollDepth === 0) {
+      return;
+    }
+    this.instantScrollDepth--;
+    if (this.instantScrollDepth === 0) {
+      this.document.documentElement.style.scrollBehavior = this.instantScrollPrevious;
+    }
   }
 
   /**
@@ -745,6 +815,10 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
    * dims the entire page.
    */
   private endSectionTransition(): void {
+    if (this.instantScrollForNav) {
+      this.instantScrollForNav = false;
+      this.endInstantScroll();
+    }
     this.navigatingToSection = false;
     this.navTargetLabel = null;
     this.storyTransition = undefined;
@@ -752,7 +826,54 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     if (hero) {
       gsap.set(hero, { autoAlpha: 1 });
     }
+    this.restoreHeroContentAtStart();
     this.changeDetectorRef.markForCheck();
+  }
+
+  /**
+   * Puts the first screen back together when the story is standing on it.
+   *
+   * A transition to another section hides the cards and the title by hand, and
+   * the one back to the hero hides them again before bringing them in. Killing
+   * the timeline in between leaves them wherever the tween stopped, and nothing
+   * ever puts them back: the story timeline only rewrites them when the page
+   * scrolls, and standing on the hero it does not. The result was a first screen
+   * with the header and the section strip and nothing else — a whole page
+   * missing, cured only by a reload.
+   *
+   * So the end of every transition, finished or cut short, restores them, and
+   * only where they belong: at the start of the story. Further along, hidden is
+   * exactly what they should be, and the timeline owns them again.
+   */
+  private restoreHeroContentAtStart(): void {
+    const timeline = this.storyTimeline;
+    if (timeline && timeline.progress() > 0.0001) {
+      return;
+    }
+    const cards = [this.firstCardRef?.nativeElement, this.secondCardRef?.nativeElement].filter(Boolean);
+    const headline = this.heroHeadlineRef?.nativeElement;
+    const hero = this.heroRef?.nativeElement;
+    // Everything the entrance after the splash brings in, too: if it was cut
+    // short it leaves these at zero opacity and nothing else ever restores them.
+    const entranceTargets = hero
+      ? ['.qres-hero-mascot', '.qres-hero-title', '.qres-hero-lede', '.qres-hero-cards']
+          .map((selector) => hero.querySelector(selector))
+          .filter(Boolean)
+      : [];
+    const targets = [...cards, headline, ...entranceTargets].filter(Boolean);
+    if (!targets.length) {
+      return;
+    }
+    gsap.killTweensOf(targets);
+    if (cards.length) {
+      gsap.set(cards, { xPercent: 0, scale: 1, autoAlpha: 1 });
+    }
+    if (headline) {
+      gsap.set(headline, { y: 0, autoAlpha: 1 });
+    }
+    if (entranceTargets.length) {
+      gsap.set(entranceTargets, { clearProps: 'opacity,visibility,transform' });
+    }
   }
 
   goToSection(label: string, smooth = false): void {
@@ -796,6 +917,9 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     this.sectionNavRelease?.kill();
     this.storyTransition?.kill();
     gsap.killTweensOf(this.sectionScrollProxy);
+
+    this.beginInstantScroll();
+    this.instantScrollForNav = true;
 
     this.navigatingToSection = true;
     this.navTargetProgress = at / duration;

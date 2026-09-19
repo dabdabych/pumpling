@@ -40,6 +40,25 @@ const screenState = () => p.evaluate(() => {
   };
 });
 
+/**
+ * What the first screen is actually made of.
+ *
+ * Checking the hero block alone was not enough and let a whole page through: the
+ * block stayed at opacity 1 while everything inside it — mascot, title, cards —
+ * sat at zero, left there by a transition that was cut short. From the outside
+ * the page was the header, the section strip and nothing else.
+ */
+const heroContent = () => p.evaluate(() => {
+  const hero = document.getElementById('qres-hero');
+  const opacity = (el) => (el ? +(+getComputedStyle(el).opacity).toFixed(2) : null);
+  const parts = ['.qres-hero-mascot', '.qres-hero-title', '.qres-hero-lede', '.qres-hero-cards', '.qres-hero-headline']
+    .map((selector) => [selector, opacity(hero?.querySelector(selector))])
+    .filter(([, value]) => value !== null);
+  const cards = Array.from(hero?.querySelectorAll('.qres-hero-cards > *') ?? []).map(opacity);
+  const hidden = [...parts.filter(([, v]) => v < 0.99).map(([s]) => s), ...cards.filter((v) => v < 0.99).map(() => 'card')];
+  return { whole: hidden.length === 0, hidden, scrollY: Math.round(window.scrollY) };
+});
+
 const labels = await p.evaluate(
   () => Array.from(document.querySelectorAll('[data-nav-label]')).map((n) => n.getAttribute('data-nav-label'))
 );
@@ -51,6 +70,10 @@ for (const label of labels) {
   await p.waitForTimeout(1700);
   const state = await screenState();
   ok(state.opacity > 0.99 && state.visibility === 'visible', `${label}: the story is visible (opacity ${state.opacity})`);
+  if (label === 'hero') {
+    const content = await heroContent();
+    ok(content.whole, `hero: the first screen is whole (${content.hidden.join(', ') || 'everything in place'})`);
+  }
 }
 
 // 2. Interrupted transitions: we click in a row without waiting.
@@ -68,6 +91,15 @@ for (let round = 0; round < 4; round++) {
     state.opacity > 0.99 && state.visibility === 'visible',
     `interrupted run ${round + 1}: the page comes back whole (opacity ${state.opacity}, ${state.visibility})`
   );
+  // And back to the first screen: an interrupted transition must not leave it
+  // empty, whichever way the story was left.
+  await p.click('[data-nav-label="hero"]').catch(() => {});
+  await p.waitForTimeout(2400);
+  const content = await heroContent();
+  ok(
+    content.whole && content.scrollY === 0,
+    `interrupted run ${round + 1}: the first screen comes back whole (${content.hidden.join(', ') || 'everything in place'}, y ${content.scrollY})`
+  );
 }
 
 // 3. After an interruption the scroll has to work: the "transition running" flag is down.
@@ -81,6 +113,24 @@ await p.waitForTimeout(1100);
 const after = await screenState();
 ok(after.scrollY !== before, `the page still scrolls after an interrupted jump (${before} -> ${after.scrollY})`);
 ok(after.opacity > 0.99, `and stays visible (opacity ${after.opacity})`);
+
+// 4. Every gesture has to do something.
+//
+// Landing on the last stop puts a hold on the page so the tail of that same
+// swipe does not carry it into the footer. The hold used to eat the whole next
+// gesture: the page was under `overflow: hidden`, the browser had already
+// decided the event scrolled nothing, and unlocking inside the handler did not
+// bring it back. From the outside, a swipe that did nothing at all.
+await p.click('[data-nav-label="quick"]').catch(() => {});
+await p.waitForTimeout(2500);
+const atLastStop = (await screenState()).scrollY;
+await p.mouse.wheel(0, 400);
+await p.waitForTimeout(1200);
+const afterLastStop = (await screenState()).scrollY;
+ok(
+  afterLastStop > atLastStop,
+  `the first swipe after the last stop moves the page (${atLastStop} -> ${afterLastStop})`
+);
 
 ok(errors.length === 0, `no page errors ${errors.join(' | ')}`);
 console.log(fails ? `${fails} FAILED` : 'STORY NAV ALL PASSED');

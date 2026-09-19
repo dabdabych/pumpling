@@ -85,12 +85,16 @@ per-coin shares. Its sha256 over the **whole file, comments included**, is
 written into every round on chain as `vrf_algorithm_hash`, and the site offers
 that hash to anyone who wants to check the draw.
 
-So editing a comment in that file breaks the promise exactly as badly as
-editing the formula. Its comments are still in Russian for this reason, and they
-stay that way. `scripts/vrf_algorithm_hash.py` prints the hash, `--check`
-exits non-zero when the committed value has drifted, `--write` updates all the
-places that carry it. `webapp/backend/tests/test_vrf_engine.py` fails the run if
-they disagree, so a stale commitment cannot reach mainnet.
+So editing a comment in that file moves the commitment exactly as much as
+editing the formula does: rounds created after the edit carry the new value,
+rounds created before it keep the old one. Edit it only when you mean to, and
+never leave the declared value behind.
+
+Nothing writes that value by hand. `scripts/vrf_algorithm_hash.py` derives it
+from the source, `--check` exits non-zero when what is committed has drifted,
+`--write` updates all five places that carry it.
+`webapp/backend/tests/test_vrf_engine.py` fails the run if they disagree, so a
+stale commitment cannot reach mainnet.
 
 ---
 

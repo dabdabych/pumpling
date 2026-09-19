@@ -85,14 +85,18 @@ You get four things and can check each one on your own:
 The site has the same thing behind a "Verify this pool" button, on the pool page
 and on every past round in the archive.
 
-### One file we never touch
+### One file that cannot be edited quietly
 
 The fingerprint in point 3 is the sha256 of `vrf_engine.py` **as a whole file,
-comments included**. So editing a comment in it breaks the promise exactly as
-badly as editing the formula, and the file is frozen: its comments are still in
-Russian for that reason. `scripts/vrf_algorithm_hash.py --check` exits non-zero
-when the committed value has drifted, and a backend test fails the run, so a
-stale commitment cannot reach mainnet.
+comments included**. So editing a comment in it moves the commitment exactly as
+much as editing the formula does, and every round created after the edit carries
+the new value while older ones keep the old one.
+
+That is why the value is not written by hand anywhere.
+`scripts/vrf_algorithm_hash.py` derives it from the source, `--check` exits
+non-zero when what is committed has drifted, `--write` updates all five places
+that carry it, and a backend test fails the run if they disagree. A stale
+commitment cannot reach mainnet.
 
 ## What is in this repository
 

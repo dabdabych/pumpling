@@ -9,5 +9,5 @@ export const environment = {
   verifyDocsUrl: 'https://github.com/qres-crypto/public-docs',
   solanaExplorerQuery: '',
   // 32-byte hash in hex (64 chars), optional 0x prefix.
-  vrfAlgorithmHash: '0x2ec9c530fcd55efd0838bd79245e2543e24f41cd3c2d660eaff43c0387629929'
+  vrfAlgorithmHash: '0x00a9da1268f2d909dbf6700a15ec3f902630c5194306bfffcf713150279d831b'
 };
