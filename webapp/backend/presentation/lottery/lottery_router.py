@@ -2245,7 +2245,7 @@ async def mark_offchain_vrf(
 
 
 @router.get("/{lottery_id}/phase2-accounts", response_model=Phase2AccountsResponse)
-async def phase2_accounts(
+def phase2_accounts(
     lottery_id: int,
     db: Session = Depends(get_db),
     current_user_id: int = Depends(require_admin_user),

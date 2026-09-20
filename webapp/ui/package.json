@@ -9,7 +9,7 @@
     "test": "ng test",
     "gen:api": "ng-openapi-gen -c openapi-gen.json",
     "e2e": "node e2e/run.mjs",
-    "test:scenes": "node e2e/scenes/build.mjs && node e2e/scenes/scenes.test.mjs && node e2e/scenes/fee.test.mjs"
+    "test:scenes": "node e2e/scenes/build.mjs && node e2e/scenes/scenes.test.mjs && node e2e/scenes/fee.test.mjs && node e2e/scenes/admin-accounts.test.mjs"
   },
   "private": true,
   "dependencies": {
