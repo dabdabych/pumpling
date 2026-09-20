@@ -17,12 +17,12 @@ webapp/backend/
 │                           #   lottery, observer_internal, rpc)
 ├── shared/                 # cross-layer: jwt_handler, settings, rate_limit,
 │                           #   admin_wallets, blocked_bet_mints, coin_chart,
-│                           #   weights_commitment, purchases_payload, …
+│                           #   weights_commitment, purchases_payload,
+│                           #   orao_vrf (the draw's derivations), …
 ├── migrations/             # SQL migrations (38), applied in order, never rewritten
 ├── migrations_runner.py    # runs the migrations
 ├── create_tables.py        # initialises the schema
 ├── mint_validator.py       # validates coin mint addresses before a commit
-├── vrf-service/            # separate Switchboard VRF service (own Dockerfile, compose: vrf-service)
 └── tests/
 ```
 

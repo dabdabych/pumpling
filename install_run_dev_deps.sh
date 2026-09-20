@@ -8,7 +8,6 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 BACKEND_REQUIREMENTS="$ROOT_DIR/webapp/backend/requirements.txt"
 WORKERS_REQUIREMENTS="$ROOT_DIR/workers/requirements.txt"
 UI_DIR="$ROOT_DIR/webapp/ui"
-VRF_SERVICE_DIR="$ROOT_DIR/webapp/backend/vrf-service"
 
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   echo "Error: Python executable not found: $PYTHON_BIN" >&2
@@ -60,7 +59,6 @@ install_node_dependencies() {
 }
 
 install_node_dependencies "$UI_DIR" "frontend"
-install_node_dependencies "$VRF_SERVICE_DIR" "VRF service"
 
 echo
 echo "Done. Dependencies for run_dev.sh are installed."

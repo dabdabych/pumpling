@@ -6,7 +6,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$ROOT_DIR/webapp/backend"
 UI_DIR="$ROOT_DIR/webapp/ui"
 WORKERS_DIR="$ROOT_DIR/workers"
-VRF_SERVICE_DIR="$BACKEND_DIR/vrf-service"
 LOG_DIR="$ROOT_DIR/.local-run-logs"
 
 PYTHON_BIN="${PYTHON_BIN:-}"
@@ -16,9 +15,6 @@ BACKEND_URL="http://${BACKEND_HOST}:${BACKEND_PORT}"
 UI_HOST="${UI_HOST:-localhost}"
 UI_PORT="${UI_PORT:-3200}"
 UI_URL="http://${UI_HOST}:${UI_PORT}"
-VRF_SERVICE_HOST="${VRF_SERVICE_HOST:-localhost}"
-VRF_SERVICE_PORT="${VRF_SERVICE_HOST_PORT:-8788}"
-VRF_SERVICE_URL="http://${VRF_SERVICE_HOST}:${VRF_SERVICE_PORT}"
 
 mkdir -p "$LOG_DIR"
 
@@ -101,15 +97,6 @@ ensure_port_is_free() {
 
 ensure_port_is_free "$BACKEND_PORT" "Backend"
 ensure_port_is_free "$UI_PORT" "Frontend"
-
-START_VRF_SERVICE=false
-if [[ -n "${SWITCHBOARD_SIGNER_KEYPAIR_JSON:-}" ]]; then
-  START_VRF_SERVICE=true
-  ensure_port_is_free "$VRF_SERVICE_PORT" "VRF service"
-else
-  echo "Warning: SWITCHBOARD_SIGNER_KEYPAIR_JSON is not set; vrf-service will not start." >&2
-  echo "         Non-empty lotteries cannot complete phase 2 without it." >&2
-fi
 
 START_LOTTERY_PHASE_WORKER=false
 if [[ "${PHASE2_AUTOMATION_ENABLED:-true}" == "true" ]]; then
@@ -208,45 +195,8 @@ wait_for_ui() {
   done
 }
 
-wait_for_vrf_service() {
-  local started_at
-  started_at="$(date +%s)"
-
-  while true; do
-    if curl -fsS "$VRF_SERVICE_URL/health" >/dev/null 2>&1; then
-      echo "VRF service is ready at $VRF_SERVICE_URL"
-      return 0
-    fi
-
-    local now
-    now="$(date +%s)"
-    if (( now - started_at >= STARTUP_TIMEOUT_SECONDS )); then
-      echo "Error: VRF service did not become ready within ${STARTUP_TIMEOUT_SECONDS}s" >&2
-      echo "VRF service log tail:" >&2
-      tail -n 50 "$LOG_DIR/vrf-service.log" >&2 || true
-      return 1
-    fi
-
-    sleep 1
-  done
-}
-
 BACKEND_PYTHONPATH="$BACKEND_DIR"
 WORKERS_PYTHONPATH="$WORKERS_DIR:$BACKEND_DIR"
-
-if [[ "$START_VRF_SERVICE" == "true" ]]; then
-  start_background_process \
-    "vrf-service" \
-    "$VRF_SERVICE_DIR" \
-    env PORT="$VRF_SERVICE_PORT" \
-    SOLANA_RPC_URL="$LOCAL_SOLANA_RPC_URL" \
-    SWITCHBOARD_SIGNER_KEYPAIR_JSON="$SWITCHBOARD_SIGNER_KEYPAIR_JSON" \
-    SWITCHBOARD_QUEUE="${SWITCHBOARD_QUEUE:-}" \
-    VRF_SERVICE_API_KEY="${VRF_SERVICE_API_KEY:-}" \
-    npm start
-
-  wait_for_vrf_service
-fi
 
 start_background_process \
   "backend" \
@@ -255,7 +205,6 @@ start_background_process \
   LOTTERY_PROGRAM_ID="$LOCAL_LOTTERY_PROGRAM_ID" \
   PROGRAM_IDL_PATH="$LOCAL_PROGRAM_IDL_PATH" \
   SOLANA_HTTP_ENDPOINT="$LOCAL_SOLANA_RPC_URL" \
-  VRF_SERVICE_BASE_URL="$VRF_SERVICE_URL" \
   "$PYTHON_BIN" -m uvicorn main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" --reload
 
 wait_for_backend
@@ -304,7 +253,6 @@ if [[ "$START_LOTTERY_PHASE_WORKER" == "true" ]]; then
     LOTTERY_PROGRAM_ID="$LOCAL_LOTTERY_PROGRAM_ID" \
     PROGRAM_IDL_PATH="$LOCAL_PROGRAM_IDL_PATH" \
     SOLANA_HTTP_ENDPOINT="$LOCAL_SOLANA_RPC_URL" \
-    VRF_SERVICE_BASE_URL="$VRF_SERVICE_URL" \
     LOTTERY_ADMIN_SIGNER_KEYPAIR_JSON="$LOCAL_LOTTERY_ADMIN_SIGNER_KEYPAIR_JSON" \
     LOTTERY_ADMIN_SIGNER_KEYPAIR_PATH="$LOCAL_LOTTERY_ADMIN_SIGNER_KEYPAIR_PATH" \
     LOTTERY_ADMIN_SIGNER_KEYPAIRS_JSON="$LOCAL_LOTTERY_ADMIN_SIGNER_KEYPAIRS_JSON" \
@@ -324,11 +272,6 @@ echo "Local services are running."
 echo "Backend: $BACKEND_URL"
 echo "Frontend: $UI_URL"
 echo "Program:  $LOCAL_LOTTERY_PROGRAM_ID"
-if [[ "$START_VRF_SERVICE" == "true" ]]; then
-  echo "VRF:      $VRF_SERVICE_URL"
-else
-  echo "VRF:      not started (SWITCHBOARD_SIGNER_KEYPAIR_JSON is missing)"
-fi
 if [[ "$START_LOTTERY_PHASE_WORKER" == "true" ]]; then
   echo "Lifecycle: automatic"
 else

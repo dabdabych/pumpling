@@ -63,6 +63,12 @@ from shared.settings import AppSettings, get_settings
 # reach for the emergency path before the program would accept it anyway;
 # keeping the two in step just avoids a pointless failing transaction.
 EMERGENCY_FULFILL_DELAY_SECONDS = 120
+
+# `Lottery::SPACE` in the program: the Anchor discriminator plus the struct.
+# The parser below reads the account by hand, so this is the only thing that
+# notices when the struct moves.
+LOTTERY_ACCOUNT_SIZE = 349
+
 _ROUND_8 = Decimal("0.00000001")
 _ZERO = Decimal("0")
 _LAMPORTS_PER_SOL = Decimal("1000000000")
@@ -1170,8 +1176,17 @@ async def _close_lottery_onchain(
 
 
 def _parse_onchain_lottery_account(raw_data: bytes) -> OnchainLotteryState:
-    if len(raw_data) < 8 + 301:
-        raise RuntimeError(f"Lottery account data is too short: {len(raw_data)} bytes")
+    # Exactly the size, not at least it. The pre-ORAO account was nine bytes
+    # longer and differed from `vrf_force` onwards, so it reads cleanly under
+    # these offsets and hands back a request seed the round never asked for.
+    # Both layouts carry the same Anchor discriminator, since that is a hash of
+    # the type name, so the length is the only thing that separates them.
+    if len(raw_data) != LOTTERY_ACCOUNT_SIZE:
+        raise RuntimeError(
+            f"Lottery account is {len(raw_data)} bytes, expected {LOTTERY_ACCOUNT_SIZE}. "
+            "Either the program was redeployed with a different layout or this is an "
+            "account from before the ORAO migration."
+        )
 
     status_map = {
         0: "Open",
@@ -1305,35 +1320,41 @@ def _phase2_error_kind(exc: Exception) -> str:
         "network",
         "urlopen error",
         "failed to fetch",
-        "vrf-service is unavailable",
     )
     if any(marker in message for marker in transport_markers):
         return "transport"
 
-    state_markers = (
-        "randomnessnotresolved",
-        "randomnesstooold",
-        "randomnesstoostale",
-        "vrfnotready",
-        "vrfrequestnotbound",
-        "vrfrequestalreadybound",
-        "randomnessrequestmismatch",
-        "randomnessaccountalreadyresolved",
-        "wrongphase",
-        "vrfalreadycalled",
-        "vrfretrytooearly",
-        "vrfretrylimitreached",
-        "same randomness account",
-        "samerandomnessaccount",
-        "invalidrandomnessaccount",
-        "invalidrandomnessaccountowner",
-        "invalidrandomnessaccountdata",
-        "randomnessaccountmismatch",
-    )
-    if any(marker in message for marker in state_markers):
+    if any(marker in message for marker in _STATE_MARKERS):
         return "state"
 
     return "unknown"
+
+
+# Every error the program can return about the draw, as the error name appears
+# in the message with the case taken out. They all mean "this round is not in
+# the state you thought", which is worth reading rather than retrying blindly.
+#
+# Kept in step with `LotteryError` in the program, and checked against the IDL
+# by `tests/test_phase_error_kinds.py`: after the ORAO migration this list still
+# held six Switchboard names that no longer exist, and missed the renamed
+# `RandomnessAlreadyResolved` entirely.
+_STATE_MARKERS = (
+    "wrongphase",
+    "vrfnotready",
+    "vrfalreadycalled",
+    "randomnessnotresolved",
+    "randomnessalreadyresolved",
+    "randomnessaccountmismatch",
+    "randomnessrequestmismatch",
+    "invalidrandomnessaccountowner",
+    "invalidrandomnessaccountdata",
+    "invalidslothashessysvar",
+    "seedslotnotfound",
+    "seedslottooold",
+    "weightshashalreadyset",
+    "invalidweightshash",
+    "invalidvrfseed",
+)
 
 
 def _attempt_slot_open(
@@ -2585,12 +2606,12 @@ async def main() -> None:
     _install_signal_handlers(stop_event)
 
     logging.info(
-        "Starting lottery lifecycle worker (signers=%s, rpc=%s, interval=%ss, cap_threshold=%s, initial_wait=%ss, start_purchases_delay=%ss, execution_countdown=%ss, close_buffer=%ss)",
+        "Starting lottery lifecycle worker (signers=%s, rpc=%s, interval=%ss, cap_threshold=%s, emergency_delay=%ss, start_purchases_delay=%ss, execution_countdown=%ss, close_buffer=%ss)",
         ",".join(str(pubkey) for pubkey in signer_pubkeys),
         settings.solana_http_endpoint,
         settings.phase2_poll_interval_seconds,
         settings.phase2_cap_threshold_sol,
-        settings.phase2_initial_wait_seconds,
+        EMERGENCY_FULFILL_DELAY_SECONDS,
         settings.start_purchases_delay_seconds,
         settings.execution_countdown_seconds,
         settings.close_lottery_buffer_seconds,

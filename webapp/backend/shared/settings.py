@@ -13,22 +13,12 @@ class AppSettings:
     lottery_program_id: str
     lottery_admin_pubkey: str
     lottery_admin_pubkeys: str
-    switchboard_randomness_account: str
     program_idl_path: str
-    vrf_service_base_url: str
-    vrf_service_api_key: str
-    vrf_service_timeout_seconds: float
     solana_http_endpoint: str
     phase2_worker_log_level: str
     phase2_automation_enabled: bool
     phase2_poll_interval_seconds: float
     phase2_cap_threshold_sol: Decimal
-    phase2_initial_wait_seconds: int
-    phase2_request_retry_interval_seconds: float
-    phase2_request_retry_backoff_max_seconds: float
-    phase2_initial_fulfill_window_seconds: int
-    phase2_initial_fulfill_attempts: int
-    phase2_retry_window_seconds: int
     phase2_skip_log_cooldown_seconds: float
     start_purchases_delay_seconds: int
     execution_countdown_seconds: int
@@ -37,7 +27,6 @@ class AppSettings:
     lottery_admin_signer_keypair_path: str
     lottery_admin_signer_keypairs_json: str
     lottery_admin_signer_keypair_paths: str
-    lottery_admin_vrf_config_json: str
     telegram_error_bot_token: str
     telegram_error_chat_id: str
     telegram_notification_log_level: str
@@ -45,7 +34,6 @@ class AppSettings:
     offchain_api_base_url: str
     offchain_api_key: str
     offchain_api_timeout_seconds: float
-    vrf_reveal_min_delay_seconds: int
     helius_das_base_url: str
     helius_api_key: str
     dexscreener_user_agent: str
@@ -274,7 +262,6 @@ def get_settings() -> AppSettings:
         or _env_str("ADMIN_PUBKEY")
         or default_admin_pubkey
     )
-    vrf_reveal_min_delay_seconds = _env_int_non_negative("VRF_REVEAL_MIN_DELAY_SECONDS", 60)
     network = _resolve_network()
     return AppSettings(
         network=network,
@@ -285,25 +272,12 @@ def get_settings() -> AppSettings:
             or _env_str("ADMIN_PUBKEYS")
             or "4TJdM678kP4hS6KMEoh79T3tANUNctHs7bE62MQSz72F,CVsNzQNYgiebatxi2a8tBAvkFSXshg3seXgPR7DAziLq,EGDo2JhA2c3QPDQLKV9Umgfn3srkYvRKmfXPAYasDLeJ"
         ),
-        switchboard_randomness_account=_env_str("SWITCHBOARD_RANDOMNESS_ACCOUNT"),
         program_idl_path=_env_str("PROGRAM_IDL_PATH"),
-        vrf_service_base_url=_env_str("VRF_SERVICE_BASE_URL", "http://localhost:8788"),
-        vrf_service_api_key=_env_str("VRF_SERVICE_API_KEY"),
-        vrf_service_timeout_seconds=_env_float("VRF_SERVICE_TIMEOUT_SECONDS", 20.0),
         solana_http_endpoint=_env_str("SOLANA_HTTP_ENDPOINT", _default_solana_http_endpoint(network)),
         phase2_worker_log_level=_env_str("PHASE2_WORKER_LOG_LEVEL", _env_str("WORKER_LOG_LEVEL", "INFO")).upper(),
         phase2_automation_enabled=_env_bool("PHASE2_AUTOMATION_ENABLED", True),
         phase2_poll_interval_seconds=_env_float("PHASE2_POLL_INTERVAL_SECONDS", 1.0),
         phase2_cap_threshold_sol=_env_decimal_positive("PHASE2_CAP_THRESHOLD_SOL", "110.95"),
-        phase2_initial_wait_seconds=_env_int_non_negative(
-            "PHASE2_INITIAL_WAIT_SECONDS",
-            vrf_reveal_min_delay_seconds,
-        ),
-        phase2_request_retry_interval_seconds=_env_float("PHASE2_REQUEST_RETRY_INTERVAL_SECONDS", 1.0),
-        phase2_request_retry_backoff_max_seconds=_env_float("PHASE2_REQUEST_RETRY_BACKOFF_MAX_SECONDS", 8.0),
-        phase2_initial_fulfill_window_seconds=_env_int_non_negative("PHASE2_INITIAL_FULFILL_WINDOW_SECONDS", 10),
-        phase2_initial_fulfill_attempts=_env_int_non_negative("PHASE2_INITIAL_FULFILL_ATTEMPTS", 5),
-        phase2_retry_window_seconds=_env_int_non_negative("PHASE2_RETRY_WINDOW_SECONDS", 20),
         phase2_skip_log_cooldown_seconds=_env_float_non_negative("PHASE2_SKIP_LOG_COOLDOWN_SECONDS", 60.0),
         start_purchases_delay_seconds=_env_int_non_negative("START_PURCHASES_DELAY_SECONDS", 5),
         execution_countdown_seconds=_env_int_non_negative(
@@ -317,7 +291,6 @@ def get_settings() -> AppSettings:
         lottery_admin_signer_keypair_path=_env_str("LOTTERY_ADMIN_SIGNER_KEYPAIR_PATH"),
         lottery_admin_signer_keypairs_json=_env_str("LOTTERY_ADMIN_SIGNER_KEYPAIRS_JSON"),
         lottery_admin_signer_keypair_paths=_env_str("LOTTERY_ADMIN_SIGNER_KEYPAIR_PATHS"),
-        lottery_admin_vrf_config_json=_env_str("LOTTERY_ADMIN_VRF_CONFIG_JSON"),
         # The fallback names BOT_TOKEN/TARGET_CHAT_ID are left over from the old
         # production setup: if only those are set, the alerts must not vanish silently.
         telegram_error_bot_token=_env_str("TELEGRAM_ERROR_BOT_TOKEN") or _env_str("BOT_TOKEN"),
@@ -327,7 +300,6 @@ def get_settings() -> AppSettings:
         offchain_api_base_url=_env_str("OFFCHAIN_API_BASE_URL", "http://localhost:7657"),
         offchain_api_key=_env_str("OFFCHAIN_API_KEY"),
         offchain_api_timeout_seconds=_env_float("OFFCHAIN_API_TIMEOUT_SECONDS", 60.0),
-        vrf_reveal_min_delay_seconds=vrf_reveal_min_delay_seconds,
         helius_das_base_url=_env_str("HELIUS_DAS_BASE_URL", "https://mainnet.helius-rpc.com"),
         helius_api_key=_env_str("HELIUS_API_KEY"),
         dexscreener_user_agent=_env_str(

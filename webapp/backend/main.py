@@ -11,7 +11,6 @@ from presentation.lottery.lottery_router import router as lottery_router
 from presentation.events.events_router import router as events_router
 from presentation.rpc.rpc_router import router as rpc_router
 from presentation.chat.chat_router import router as chat_router, ws_router as chat_ws_router
-from shared.settings import get_settings
 from shared.rate_limit import rate_limit_middleware
 from create_tables import create_tables
 from migrations_runner import run_migrations
@@ -71,11 +70,6 @@ def ensure_tables_exist() -> None:
     create_tables()
     run_migrations()
 
-    settings = get_settings()
-    logger.info(
-        "VRF client configured (vrf_service_base_url=%s)",
-        settings.vrf_service_base_url,
-    )
 
 @app.get("/profile", response_model=ProfileResponse)
 async def get_profile(

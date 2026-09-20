@@ -136,7 +136,7 @@ const d1 = await read();
 await p.waitForTimeout(2500);
 const d2 = await read();
 ok(JSON.stringify(d1.drawWidths) === JSON.stringify(d2.drawWidths), `the draw slide stands still (${d1.drawWidths} -> ${d2.drawWidths})`);
-ok(d2.drawState === 'draw by Switchboard', `the draw slide keeps its caption (${d2.drawState})`);
+ok(d2.drawState === 'draw by ORAO VRF', `the draw slide keeps its caption (${d2.drawState})`);
 if (S) {
   await p.screenshot({ path: `${S}/pw/shots/how-step3.png` });
   execSync(`sips -s format jpeg -s formatOptions 65 -Z 950 ${S}/pw/shots/how-step3.png --out ${S}/pw/shots/how-step3.jpg >/dev/null && rm ${S}/pw/shots/how-step3.png`);

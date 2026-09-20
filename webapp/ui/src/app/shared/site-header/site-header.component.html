@@ -2,7 +2,20 @@
   <div class="site-header__frame">
     <div class="site-header__shadow" aria-hidden="true"></div>
     <div class="site-header__bar">
-      <a routerLink="/" class="site-header__brand" aria-label="pumpling home" (mouseenter)="logoMascot.onHover()">
+      <!-- A plain href, so the browser loads the main page afresh instead of the
+           router swapping it in.
+
+           The main page pins its first screen, and it decides whether to pin by
+           measuring a frame after it appears. Coming back from an inner page,
+           that frame can land while the old page is still in the document, and
+           then the story pins to a place the page has already left: the mascot
+           and the cards scroll away and the story stops halfway. It has been
+           fixed once by settling the measurements, but the mark is the way most
+           people leave a pool, and a fresh load cannot get this wrong at all.
+
+           A real link, not a click handler, so middle-click and ctrl-click still
+           open a tab the way they should. -->
+      <a href="/" class="site-header__brand" aria-label="pumpling home" (mouseenter)="logoMascot.onHover()">
         <app-mascot-logo #logoMascot [size]="40" data-splash-target></app-mascot-logo>
         <span class="site-header__word">pumpling</span>
       </a>

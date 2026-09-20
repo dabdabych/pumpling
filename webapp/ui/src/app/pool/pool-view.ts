@@ -93,10 +93,10 @@ export function buildPoolView(snapshot: PoolSnapshot, nowMs: number, feed?: Purc
       };
     case 'locked': {
       const running = snapshot.draw === 'running';
-      // The draw takes minutes, and without a counter it is unclear how much
-      // longer to wait. Nobody knows the exact duration: Switchboard sometimes
-      // does not answer the first time. So we count down to the expected moment,
-      // and once it has passed we say "any moment now" instead of showing a negative.
+      // The draw takes a few seconds, and without a counter it is unclear how
+      // much longer to wait. The exact duration is nobody's to promise: it is
+      // an oracle answering. So we count down to the expected moment, and once
+      // it has passed we say "any moment now" instead of showing a negative.
       const drawLeftMs = msUntil(snapshot.drawEndsAtMs, nowMs);
       const overdue = drawLeftMs !== null && drawLeftMs <= 0;
       const drawSpanMs = snapshot.drawStartedAtMs !== null && snapshot.drawEndsAtMs !== null
@@ -107,11 +107,11 @@ export function buildPoolView(snapshot: PoolSnapshot, nowMs: number, feed?: Purc
         chip: { label: 'Locked', tone: 'locked' },
         title: { lead: 'The pool', plate: 'is locked' },
         lede: running
-          ? 'No more SOL can go in. The draw is running on Switchboard. It sets each coin\'s share of the buy.'
+          ? 'No more SOL can go in. The draw is running on ORAO VRF. It sets each coin\'s share of the buy.'
           : 'No more SOL can go in. The draw starts in a moment and sets each coin\'s share of the buy.',
         timer: drawLeftMs !== null && !overdue
           ? { label: 'Draw ends in', value: `~${formatShortClock(drawLeftMs)}`, note: null, ticking: true }
-          : { label: 'Draw', value: overdue ? 'Any moment now' : (running ? 'In progress' : 'Starting'), note: overdue ? 'Switchboard is taking another pass' : null, ticking: false },
+          : { label: 'Draw', value: overdue ? 'Any moment now' : (running ? 'In progress' : 'Starting'), note: overdue ? 'The oracle is taking longer than usual' : null, ticking: false },
         progress: drawSpanMs !== null && drawSpanMs > 0 && drawLeftMs !== null
           ? linear('Draw', percent(drawSpanMs - drawLeftMs, drawSpanMs))
           : capProgress,

@@ -37,9 +37,9 @@ docker compose up -d loki grafana
 - Grafana: http://localhost:3001 (user `admin`, password from `GRAFANA_PASSWORD` in `.env`)
 - Loki: http://localhost:3100
 
-Note: `docker-compose.yml` needs `SWITCHBOARD_SIGNER_KEYPAIR_JSON` for
-`.env` even when you only bring up some of the services (`dummy` will do
-locally).
+Note: `docker-compose.yml` validates the whole env file even when you bring up
+only some of the services, so `.env` has to be complete. The buyer needs
+`KEEPER_SECRET_KEY`.
 
 To pour synthetic logs in and check the dashboards:
 ```bash

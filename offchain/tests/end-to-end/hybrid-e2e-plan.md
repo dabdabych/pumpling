@@ -71,7 +71,7 @@ We pick **one from each category**, so the dashboards show venue routing:
 
 ## Pre-flight checklist
 
-- [ ] `.env` filled in: `KEEPER_SECRET_KEY`, `API_KEY`, `RPC_MAINNET` (the Helius free tier is fine), `SWITCHBOARD_SIGNER_KEYPAIR_JSON` (dummy is fine for a buyer-only run)
+- [ ] `.env` filled in: `KEEPER_SECRET_KEY`, `API_KEY`, `RPC_MAINNET` (the Helius free tier is fine)
 - [ ] The keeper holds ≥ 0.4 SOL (option A) or ≥ 0.7 SOL (option B), with headroom for fees
 - [ ] The Loki docker driver is installed: `docker plugin ls | grep loki` (if not → `docker plugin install grafana/loki-docker-driver:latest --alias loki --grant-all-permissions`)
 - [ ] The buyer image is built: `docker compose build buyer`
