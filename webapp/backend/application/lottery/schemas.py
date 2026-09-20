@@ -146,7 +146,7 @@ class ActiveLotterySummaryResponse(BaseModel):
     proceeding_purchases_started_at: Optional[datetime] = None
     execution_countdown_seconds: int = 65 * 60
     #: Roughly how long the draw takes: the page runs its countdown from it.
-    draw_seconds: int = 115
+    draw_seconds: int = 12
     #: When the next pool opens. Known once the buying starts: the window plus the pause.
     next_pool_at: Optional[datetime] = None
     max_total: Optional[float] = None
@@ -332,23 +332,24 @@ class MintAllowTokenResponse(BaseModel):
     pair_url: Optional[str] = None
 
 
-class Phase2PrepareResponse(BaseModel):
-    randomness_account: str
+class Phase2AccountsResponse(BaseModel):
+    """What the admin browser needs to sign `start_second_phase` itself.
+
+    The request seed is derived here and never in the browser: the same
+    derivation already exists in the program and in the worker, and a third
+    copy in TypeScript is one more place for the three to disagree.
+    """
+
+    lottery_pda: str
+    weights_hash: str
+    seed_slot: int
+    vrf_request: str
+    vrf_network_state: str
+    vrf_treasury: str
+    vrf_program: str
+    recent_slothashes: str
 
 
-class Phase2RequestRandomnessResponse(BaseModel):
-    randomness_account: str
-    request_id: str
-
-
-class Phase2RevealRequest(BaseModel):
-    randomness_account: Optional[str] = None
-
-
-class Phase2RevealResponse(BaseModel):
-    randomness_account: str
-    reveal_signature: str
-    value_hex: Optional[str] = None
 
 
 class OffchainVrfRequest(BaseModel):
@@ -377,17 +378,3 @@ class RunPurchasesResponse(BaseModel):
     offchain_response: Dict[str, Any]
 
 
-class RetryRandomnessCheckResponse(BaseModel):
-    lottery_id: int
-    should_call_retry_randomness: bool
-    can_retry_now: bool
-    reasons: List[str]
-    next_retry_available_in_seconds: int
-    onchain_status: Optional[str] = None
-    onchain_vrf_called: Optional[bool] = None
-    onchain_vrf_ready_ts: Optional[int] = None
-    onchain_vrf_retry_count: Optional[int] = None
-    max_vrf_retries: int
-    randomness_account: Optional[str] = None
-    randomness_revealed: Optional[bool] = None
-    randomness_reveal_slot: Optional[int] = None

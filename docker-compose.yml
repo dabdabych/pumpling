@@ -34,10 +34,6 @@ services:
       - LOTTERY_PROGRAM_ID=${LOTTERY_PROGRAM_ID:-${PROGRAM_ID:-4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH}}
       - LOTTERY_ADMIN_PUBKEY=${LOTTERY_ADMIN_PUBKEY:-${ADMIN_PUBKEY:-4TJdM678kP4hS6KMEoh79T3tANUNctHs7bE62MQSz72F}}
       - LOTTERY_ADMIN_PUBKEYS=${LOTTERY_ADMIN_PUBKEYS:-${ADMIN_PUBKEYS:-4TJdM678kP4hS6KMEoh79T3tANUNctHs7bE62MQSz72F,CVsNzQNYgiebatxi2a8tBAvkFSXshg3seXgPR7DAziLq,EGDo2JhA2c3QPDQLKV9Umgfn3srkYvRKmfXPAYasDLeJ}}
-      - SWITCHBOARD_RANDOMNESS_ACCOUNT=${SWITCHBOARD_RANDOMNESS_ACCOUNT:-}
-      - VRF_SERVICE_BASE_URL=${VRF_SERVICE_BASE_URL:-http://vrf-service:8787}
-      - VRF_SERVICE_API_KEY=${VRF_SERVICE_API_KEY:-}
-      - VRF_SERVICE_TIMEOUT_SECONDS=${VRF_SERVICE_TIMEOUT_SECONDS:-20.0}
       - NETWORK=${NETWORK:-mainnet}
       - SOLANA_HTTP_ENDPOINT=${SOLANA_HTTP_ENDPOINT:-https://api.mainnet-beta.solana.com/}
       - WALLET_AUTH_CHAIN=${WALLET_AUTH_CHAIN:-solana/mainnet}
@@ -71,8 +67,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      vrf-service:
-        condition: service_started
       buyer:
         condition: service_started
     restart: unless-stopped
@@ -83,28 +77,6 @@ services:
       frontend:
         aliases:
           - lottery-api
-
-  vrf-service:
-    build:
-      context: ./webapp/backend/vrf-service
-      dockerfile: Dockerfile
-    image: lottery-vrf-service:0.0.1
-    container_name: lottery-vrf-service
-    environment:
-      - PORT=${VRF_SERVICE_PORT:-8787}
-      - VRF_SERVICE_API_KEY=${VRF_SERVICE_API_KEY:-}
-      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-${SOLANA_HTTP_ENDPOINT:-https://api.mainnet-beta.solana.com/}}
-      - SWITCHBOARD_ON_DEMAND_PROGRAM_ID=${SWITCHBOARD_ON_DEMAND_PROGRAM_ID:-SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv}
-      - SWITCHBOARD_QUEUE=${SWITCHBOARD_QUEUE:-}
-      - SWITCHBOARD_SIGNER_KEYPAIR_JSON=${SWITCHBOARD_SIGNER_KEYPAIR_JSON?required}
-      - VRF_FALLBACK_ATTEMPTS=${VRF_FALLBACK_ATTEMPTS:-2}
-      - RANDOMNESS_ACCOUNT_READY_TIMEOUT_MS=${RANDOMNESS_ACCOUNT_READY_TIMEOUT_MS:-20000}
-      - RANDOMNESS_ACCOUNT_READY_POLL_MS=${RANDOMNESS_ACCOUNT_READY_POLL_MS:-500}
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:${VRF_SERVICE_HOST_PORT:-8788}:${VRF_SERVICE_PORT:-8787}"
-    expose:
-      - "${VRF_SERVICE_PORT:-8787}"
 
   events-worker:
     image: lottery-api:0.0.1
@@ -200,10 +172,6 @@ services:
       - LOTTERY_ADMIN_PUBKEYS=${LOTTERY_ADMIN_PUBKEYS:-${ADMIN_PUBKEYS:-4TJdM678kP4hS6KMEoh79T3tANUNctHs7bE62MQSz72F,CVsNzQNYgiebatxi2a8tBAvkFSXshg3seXgPR7DAziLq,EGDo2JhA2c3QPDQLKV9Umgfn3srkYvRKmfXPAYasDLeJ}}
       - PROGRAM_IDL_PATH=${PROGRAM_IDL_PATH:-/app/idl/lottery.json}
       - SOLANA_HTTP_ENDPOINT=${SOLANA_HTTP_ENDPOINT:-https://api.mainnet-beta.solana.com/}
-      - SWITCHBOARD_ON_DEMAND_PROGRAM_ID=${SWITCHBOARD_ON_DEMAND_PROGRAM_ID:-SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv}
-      - VRF_SERVICE_BASE_URL=${VRF_SERVICE_BASE_URL:-http://vrf-service:8787}
-      - VRF_SERVICE_API_KEY=${VRF_SERVICE_API_KEY:-}
-      - VRF_SERVICE_TIMEOUT_SECONDS=${VRF_SERVICE_TIMEOUT_SECONDS:-20.0}
       - OFFCHAIN_API_BASE_URL=${OFFCHAIN_API_BASE_URL:-http://buyer:7657}
       - OFFCHAIN_API_KEY=${OFFCHAIN_API_KEY:-${API_KEY:-}}
       - OFFCHAIN_API_TIMEOUT_SECONDS=${PHASE_WORKER_OFFCHAIN_API_TIMEOUT_SECONDS:-10.0}
@@ -246,8 +214,6 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
-      vrf-service:
-        condition: service_started
       buyer:
         condition: service_started
     volumes:

@@ -105,7 +105,6 @@ commitment cannot reach mainnet.
 | `contracts/` | Rust, Anchor | the on-chain program `lottery_v_1_0` |
 | `webapp/ui/` | Angular | the site: main page, pool page, personal history, archive |
 | `webapp/backend/` | Python, FastAPI | API, accounts, commits, coin checks, round state |
-| `webapp/backend/vrf-service/` | Node | randomness signing service |
 | `workers/` | Python, asyncio | round lifecycle, on-chain events, backfill |
 | `offchain/` | TypeScript | the buyer: batched purchases, delivery, refunds |
 | `infra/` | Loki, Grafana | dashboards and alert rules |

@@ -11,7 +11,6 @@ from solana.rpc.async_api import AsyncClient
 from domain.lottery.services.lottery_service import LotteryService
 from domain.lottery.repositories.lottery_repository import LotteryRepository
 from infrastructure.lottery.database_lottery_repository import DatabaseLotteryRepository
-from infrastructure.lottery.switchboard_vrf_client import VrfServiceClient, build_vrf_service_client
 from infrastructure.lottery.offchain_api_client import OffchainApiClient, build_offchain_api_client
 from infrastructure.database.database import SessionLocal, get_db
 from infrastructure.database.models.user_model import UserModel
@@ -19,8 +18,7 @@ from infrastructure.database.models.allowed_mint_model import AllowedMintModel
 from infrastructure.database.models.token_metadata_model import TokenMetadataModel
 from infrastructure.database.models.lottery_model import LotteryModel
 from infrastructure.database.models.smart_contract_event_model import SmartContractEventModel
-from application.lottery.schemas import LotteryListResponse, LotteryEntryResponse, PricePointResponse, CoinResponse, CreateLotteryRequest, LotteryResponse, PagedLotteryResponse, ProblemDetails, CreateBetRequest, BetParticipationResponse, VrfPreviewResponse, MintAllowTokenRequest, MintAllowTokenResponse, Phase2PrepareResponse, Phase2RequestRandomnessResponse, Phase2RevealRequest, Phase2RevealResponse, RunPurchasesPayload, RunPurchasesResponse, OffchainVrfRequest, ActiveLotterySummaryResponse, LotteryWinnerResultResponse, LotteryArchiveListResponse, LotteryArchiveItemResponse, LotteryArchiveEntryResponse, LotteryCycleControlResponse, LotteryCycleControlsResponse, HypeCountdownResponse
-from application.lottery.schemas import RetryRandomnessCheckResponse
+from application.lottery.schemas import LotteryListResponse, LotteryEntryResponse, PricePointResponse, CoinResponse, CreateLotteryRequest, LotteryResponse, PagedLotteryResponse, ProblemDetails, CreateBetRequest, BetParticipationResponse, VrfPreviewResponse, MintAllowTokenRequest, MintAllowTokenResponse, Phase2AccountsResponse, RunPurchasesPayload, RunPurchasesResponse, OffchainVrfRequest, ActiveLotterySummaryResponse, LotteryWinnerResultResponse, LotteryArchiveListResponse, LotteryArchiveItemResponse, LotteryArchiveEntryResponse, LotteryCycleControlResponse, LotteryCycleControlsResponse, HypeCountdownResponse
 from application.lottery.schemas import PurchaseFeedResponse, PurchaseFeedCoinResponse, PurchaseFeedItemResponse
 from application.lottery.schemas import CoinChartResponse, CoinChartPointResponse
 from application.lottery.schemas import MyCommitsResponse, MyCommitRoundResponse, MyCommitCoinResponse
@@ -485,10 +483,6 @@ def get_lottery_service(lottery_repository: LotteryRepository = Depends(get_lott
     return LotteryService(lottery_repository)
 
 
-def get_vrf_service_client() -> VrfServiceClient:
-    return build_vrf_service_client()
-
-
 def get_offchain_api_client() -> OffchainApiClient:
     return build_offchain_api_client()
 
@@ -820,8 +814,8 @@ def _build_dexscreener_headers() -> dict[str, str]:
         "Accept": "application/json",
         "Accept-Language": "en-US,en;q=0.9",
         "User-Agent": (
-            "qres-crypto/1.0 "
-            "(contact: info.qrescrypto@gmail.com)"
+            "pumpling/1.0 "
+            "(contact: pumpling.xyz@gmail.com)"
         ),
     }
 
@@ -1206,30 +1200,31 @@ def _parse_lottery_account(raw_data: bytes) -> dict[str, object]:
     take(8)   # deposits_count
     take(16)  # total_deposited
     weights_hash = take(32)
-    vrf_ready_ts = int.from_bytes(take(8), byteorder="little", signed=True)
+    vrf_requested_ts = int.from_bytes(take(8), byteorder="little", signed=True)
     vrf_seed = take(32)
     vrf_seed_hex = vrf_seed.hex() if vrf_seed != bytes(32) else None
     vrf_called = bool(int.from_bytes(take(1), byteorder="little", signed=False))
     vrf_randomness_account = str(Pubkey.from_bytes(take(32)))
-    take(8)   # vrf_phase2_slot
-    vrf_retry_count = int.from_bytes(take(1), byteorder="little", signed=False)
-    # Next come the randomness request fields and the shares algorithm
-    # fingerprint. The round verification page reads them, and older rounds may
-    # not have them: the account is shorter then, so we read carefully.
+    # The request seed the program derived, the slot whose hash went into it,
+    # and the shares algorithm fingerprint. All three belong on the
+    # verification page: without the seed and the slot the choice of randomness
+    # account cannot be rechecked. Older rounds have a shorter account, so the
+    # tail is read carefully.
     try:
-        take(8)   # vrf_request_seed_slot
-        take(32)  # vrf_request_seed_slothash
+        vrf_force = take(32)
+        vrf_seed_slot = int.from_bytes(take(8), byteorder="little", signed=False)
         algorithm_hash = take(32)
     except Exception:  # noqa: BLE001
-        algorithm_hash = b""
+        vrf_force, vrf_seed_slot, algorithm_hash = b"", 0, b""
 
     return {
         "status_raw": status_raw,
         "status": status_map.get(status_raw, f"Unknown({status_raw})"),
         "vrf_called": vrf_called,
         "vrf_seed": vrf_seed_hex,
-        "vrf_ready_ts": vrf_ready_ts,
-        "vrf_retry_count": vrf_retry_count,
+        "vrf_requested_ts": vrf_requested_ts,
+        "vrf_force": vrf_force.hex() if len(vrf_force) == 32 and vrf_force != bytes(32) else None,
+        "vrf_seed_slot": vrf_seed_slot or None,
         "vrf_randomness_account": vrf_randomness_account,
         "weights_hash": weights_hash.hex() if weights_hash and weights_hash != bytes(32) else None,
         "vrf_algorithm_hash": algorithm_hash.hex() if len(algorithm_hash) == 32 and algorithm_hash != bytes(32) else None,
@@ -1325,23 +1320,27 @@ def _validate_deposit_event_matches_request(
         raise HTTPException(status_code=400, detail="Transaction amount does not match request")
 
 
+# What ORAO takes to answer, allowing for a slow moment. Their own figure is
+# under a second; this is the number the countdown is built on, not a timeout.
+_ORAO_FULFILMENT_SECONDS = 5
+
+
 def _expected_draw_seconds() -> int:
     """Roughly how long the draw takes: from the pool closing to the buying starting.
 
-    It adds up from what the settings define: the mandatory pause before
-    Switchboard reveals the randomness, the window of the first attempt to
-    collect it, a couple of retries (which is what a live round usually shows),
-    and the delay before buying.
+    Under Switchboard this was a couple of minutes, most of it a mandatory
+    pause before the randomness could be revealed and two retries on top.
+    ORAO has neither: the request goes out in the same transaction that closes
+    the pool, the answer lands a second or so later, and what is left is the
+    worker noticing and the pause before buying starts.
 
-    Measured on devnet on 2026-09-18: 2 minutes 36 seconds with two VRF retries.
-    The page needs the number to run a countdown; when it runs out the page
-    honestly says "any moment now" rather than showing a negative.
+    The page runs a countdown on this. When it runs out the page says "any
+    moment now" rather than showing a negative, so erring short is safe.
     """
     settings = get_settings()
     return int(
-        settings.phase2_initial_wait_seconds
-        + settings.phase2_initial_fulfill_window_seconds
-        + settings.phase2_retry_window_seconds * 2
+        settings.phase2_poll_interval_seconds * 2
+        + _ORAO_FULFILMENT_SECONDS
         + settings.start_purchases_delay_seconds
     )
 
@@ -1976,6 +1975,8 @@ def get_lottery_verification(lottery_id: int, db: Session = Depends(get_db)):
     * the fingerprint of the shares algorithm stored in the round, and the path
       to the file it is computed from.
     """
+    from infrastructure.database.models.bet_participation_model import BetParticipationModel
+
     lottery = db.query(LotteryModel).filter(LotteryModel.id == lottery_id).first()
     if not lottery:
         raise HTTPException(status_code=404, detail="Lottery not found")
@@ -2093,7 +2094,6 @@ async def close_lottery(
     lottery_id: int,
     lottery_service: LotteryService = Depends(get_lottery_service),
     lottery_repository: LotteryRepository = Depends(get_lottery_repository),
-    vrf_client: VrfServiceClient = Depends(get_vrf_service_client),
     current_user_id: int = Depends(require_admin_user)
 ):
     """
@@ -2105,7 +2105,9 @@ async def close_lottery(
             raise HTTPException(status_code=404, detail="Lottery not found")
 
         if existing_lottery.status != LotteryStatus.CLOSED and existing_lottery.randomness_account:
-            vrf_client.close_randomness_account(existing_lottery.randomness_account)
+            # The ORAO request account stays where it is. It is theirs, it
+            # cannot be closed, and it is the round's proof: the seed and the
+            # value that came back stay readable for as long as the chain does.
             await lottery_repository.update_lottery_randomness_account(lottery_id, None)
 
         lottery = await lottery_service.close_lottery(lottery_id)
@@ -2125,7 +2127,6 @@ async def close_lottery(
 async def mark_phase2_started(
     lottery_id: int,
     lottery_service: LotteryService = Depends(get_lottery_service),
-    vrf_client: VrfServiceClient = Depends(get_vrf_service_client),
     current_user_id: int = Depends(require_admin_user),
     request: Request = None,
 ):
@@ -2140,15 +2141,11 @@ async def mark_phase2_started(
             request.client.host if request and request.client else None,
         )
         lottery = await lottery_service.mark_phase2_started(lottery_id)
+        # The randomness was asked for in the same transaction that closed the
+        # round, so there is nothing to request here. The account is recorded
+        # for the verification page, and a round can be marked started before
+        # the event that carries it has been read.
         randomness_account = lottery.randomness_account
-        if not randomness_account:
-            raise HTTPException(
-                status_code=400,
-                detail="randomness_account is missing on lottery. Run phase2-prepare first.",
-            )
-
-        # Request randomness immediately after the backend marks Phase II started.
-        vrf_client.request_randomness(randomness_account)
         logger.info(
             "phase2started succeeded (lottery_id=%s, status=%s, randomness_account=%s, second_phase_started_at=%s)",
             lottery_id,
@@ -2163,36 +2160,6 @@ async def mark_phase2_started(
             raise HTTPException(status_code=404, detail=message)
         raise HTTPException(status_code=400, detail=message)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update lottery status: {str(e)}")
-
-
-@router.post("/{lottery_id}/vrf-binded", response_model=LotteryResponse)
-async def mark_vrf_binded(
-    lottery_id: int,
-    lottery_service: LotteryService = Depends(get_lottery_service),
-    current_user_id: int = Depends(require_admin_user)
-):
-    """
-    Mark lottery as vrf_binded. Requires authentication.
-    """
-    try:
-        logger.info("vrf-binded started (lottery_id=%s)", lottery_id)
-        lottery = await lottery_service.mark_vrf_binded(lottery_id)
-        logger.info(
-            "vrf-binded succeeded (lottery_id=%s, status=%s, randomness_account=%s)",
-            lottery_id,
-            lottery.status.value,
-            lottery.randomness_account,
-        )
-        return _to_lottery_response(lottery)
-    except ValueError as e:
-        message = str(e)
-        logger.warning("vrf-binded validation failed (lottery_id=%s, error=%s)", lottery_id, message)
-        if "not found" in message.lower():
-            raise HTTPException(status_code=404, detail=message)
-        raise HTTPException(status_code=400, detail=message)
-    except Exception as e:
-        logger.exception("vrf-binded failed (lottery_id=%s)", lottery_id)
         raise HTTPException(status_code=500, detail=f"Failed to update lottery status: {str(e)}")
 
 
@@ -2277,392 +2244,75 @@ async def mark_offchain_vrf(
         raise HTTPException(status_code=500, detail=f"Failed to update lottery offchain VRF flag: {str(e)}")
 
 
+@router.get("/{lottery_id}/phase2-accounts", response_model=Phase2AccountsResponse)
+async def phase2_accounts(
+    lottery_id: int,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(require_admin_user),
+):
+    """The account list for signing `start_second_phase` from the admin area.
+
+    The request seed comes from the round's address, the weights commitment and
+    the hash of a recent slot. All three are worked out here so the derivation
+    stays in one language: the program has a copy and the worker has a copy,
+    and a third one in the browser would be a third chance for them to drift.
+
+    The slot goes stale. The program refuses anything older than 128 slots,
+    roughly a minute, which is long enough to sign and send and short enough
+    that the hash cannot be picked out of history.
+    """
+    from shared import orao_vrf
+    from infrastructure.database.models.bet_participation_model import BetParticipationModel
+
+    lottery = db.query(LotteryModel).filter(LotteryModel.id == lottery_id).first()
+    if not lottery:
+        raise HTTPException(status_code=404, detail="Lottery not found")
+
+    settings = get_settings()
+    lottery_pda, _vault_pda, _admin = _derive_lottery_account_summary(int(lottery_id), settings)
+    if not lottery_pda:
+        raise HTTPException(status_code=409, detail="Lottery PDA could not be derived")
+
+    rows = (
+        db.query(
+            BetParticipationModel.meme_coin_address,
+            func.sum(BetParticipationModel.sol_amount).label("total_sol"),
+        )
+        .filter(BetParticipationModel.lottery_id == lottery_id)
+        .filter(active_bet_condition(BetParticipationModel))
+        .group_by(BetParticipationModel.meme_coin_address)
+        .all()
+    )
+    commitment = build_weights_commitment([(str(mint), Decimal(str(total))) for mint, total in rows])
+    if not commitment:
+        raise HTTPException(status_code=409, detail="The round has no commits, so there is nothing to draw")
+    weights_hash = bytes.fromhex(commitment[1])
+
+    try:
+        client = Client(settings.solana_http_endpoint.strip())
+        sysvar = client.get_account_info(orao_vrf.SLOT_HASHES_SYSVAR)
+        entry = orao_vrf.parse_slot_hashes(bytes(sysvar.value.data), back=2)
+        network = client.get_account_info(orao_vrf.network_state_address())
+        treasury = orao_vrf.parse_treasury(bytes(network.value.data))
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("phase2-accounts: on-chain read failed (lottery_id=%s)", lottery_id)
+        raise HTTPException(status_code=503, detail=f"Could not read the chain: {exc}")
+
+    force = orao_vrf.derive_force(Pubkey.from_string(lottery_pda), weights_hash, entry.hash)
+
+    return Phase2AccountsResponse(
+        lottery_pda=lottery_pda,
+        weights_hash=weights_hash.hex(),
+        seed_slot=entry.slot,
+        vrf_request=str(orao_vrf.request_address(force)),
+        vrf_network_state=str(orao_vrf.network_state_address()),
+        vrf_treasury=str(treasury),
+        vrf_program=str(orao_vrf.ORAO_PROGRAM_ID),
+        recent_slothashes=str(orao_vrf.SLOT_HASHES_SYSVAR),
+    )
+
+
 # TODO: Remove this method; it should not be called as a separate frontend step.
-@router.post("/{lottery_id}/phase2-prepare", response_model=Phase2PrepareResponse)
-async def prepare_phase2(
-    lottery_id: int,
-    lottery_repository: LotteryRepository = Depends(get_lottery_repository),
-    vrf_client: VrfServiceClient = Depends(get_vrf_service_client),
-    current_user_id: int = Depends(require_admin_user),
-):
-    try:
-        logger.info("phase2-prepare started (lottery_id=%s)", lottery_id)
-        lottery = await lottery_repository.get_lottery_by_id(lottery_id)
-        if not lottery:
-            logger.warning("phase2-prepare lottery not found (lottery_id=%s)", lottery_id)
-            raise HTTPException(status_code=404, detail="Lottery not found")
-
-        settings = get_settings()
-        admin_pubkeys = _configured_admin_pubkeys(settings)
-        if not admin_pubkeys:
-            raise HTTPException(
-                status_code=500,
-                detail="No admin pubkeys configured (LOTTERY_ADMIN_PUBKEYS / LOTTERY_ADMIN_PUBKEY)",
-            )
-
-        try:
-            lottery_pda, _, lottery_admin_pubkey = _derive_existing_lottery_pda(
-                lottery_id=lottery_id,
-                program_id_raw=settings.lottery_program_id,
-                admin_pubkeys_raw=admin_pubkeys,
-                rpc_endpoint=settings.solana_http_endpoint.strip(),
-            )
-            logger.info(
-                "phase2-prepare resolved lottery PDA (lottery_id=%s, lottery_pda=%s, admin_pubkey=%s)",
-                lottery_id,
-                lottery_pda,
-                lottery_admin_pubkey,
-            )
-        except Exception as exc:
-            logger.exception(
-                "phase2-prepare failed to resolve lottery PDA (lottery_id=%s, program_id=%s, admin_pubkeys=%s)",
-                lottery_id,
-                settings.lottery_program_id,
-                admin_pubkeys,
-            )
-            raise HTTPException(
-                status_code=500,
-                detail="Invalid LOTTERY_PROGRAM_ID / LOTTERY_ADMIN_PUBKEYS or lottery PDA not found",
-            ) from exc
-
-        old_randomness_account = (lottery.randomness_account or "").strip()
-        if old_randomness_account:
-            logger.info(
-                "phase2-prepare closing previous randomness account (lottery_id=%s, randomness_account=%s)",
-                lottery_id,
-                old_randomness_account,
-            )
-            close_succeeded = False
-            last_close_error: Exception | None = None
-            for attempt in range(1, 4):
-                try:
-                    vrf_client.close_randomness_account(old_randomness_account)
-                    close_succeeded = True
-                    logger.info(
-                        "phase2-prepare closed previous randomness account (lottery_id=%s, randomness_account=%s, attempt=%s)",
-                        lottery_id,
-                        old_randomness_account,
-                        attempt,
-                    )
-                    break
-                except Exception as exc:
-                    last_close_error = exc
-                    logger.warning(
-                        "phase2-prepare close randomness attempt failed (lottery_id=%s, randomness_account=%s, attempt=%s/3, error=%s)",
-                        lottery_id,
-                        old_randomness_account,
-                        attempt,
-                        exc,
-                    )
-                    if attempt < 3:
-                        await asyncio.sleep(1.0)
-
-            if not close_succeeded:
-                logger.warning(
-                    "phase2-prepare continuing despite close failures (lottery_id=%s, randomness_account=%s, last_error=%s)",
-                    lottery_id,
-                    old_randomness_account,
-                    last_close_error,
-                )
-
-        randomness_account = vrf_client.create_randomness_account()
-        if not randomness_account:
-            logger.error("phase2-prepare empty randomness account (lottery_id=%s)", lottery_id)
-            raise HTTPException(status_code=500, detail="Switchboard returned empty randomness account")
-
-        updated_lottery = await lottery_repository.update_lottery_randomness_account(lottery_id, randomness_account)
-        if not updated_lottery:
-            logger.error(
-                "phase2-prepare failed to persist randomness account (lottery_id=%s, randomness_account=%s)",
-                lottery_id,
-                randomness_account,
-            )
-            raise HTTPException(status_code=500, detail="Failed to persist randomness account for lottery")
-
-        logger.info(
-            "phase2-prepare succeeded (lottery_id=%s, randomness_account=%s, second_phase_started_at=%s)",
-            lottery_id,
-            randomness_account,
-            updated_lottery.second_phase_started_at if updated_lottery else None,
-        )
-
-        return Phase2PrepareResponse(
-            randomness_account=randomness_account,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("phase2-prepare failed (lottery_id=%s)", lottery_id)
-        raise HTTPException(status_code=500, detail=f"Failed to prepare phase II: {str(e)}")
-
-
-@router.post("/{lottery_id}/phase2-request-randomness", response_model=Phase2RequestRandomnessResponse)
-async def request_phase2_randomness(
-    lottery_id: int,
-    lottery_repository: LotteryRepository = Depends(get_lottery_repository),
-    vrf_client: VrfServiceClient = Depends(get_vrf_service_client),
-    current_user_id: int = Depends(require_admin_user),
-):
-    del current_user_id
-    try:
-        logger.info("phase2-request-randomness started (lottery_id=%s)", lottery_id)
-        lottery = await lottery_repository.get_lottery_by_id(lottery_id)
-        if not lottery:
-            logger.warning("phase2-request-randomness lottery not found (lottery_id=%s)", lottery_id)
-            raise HTTPException(status_code=404, detail="Lottery not found")
-
-        randomness_account = (lottery.randomness_account or "").strip()
-        if not randomness_account:
-            logger.warning("phase2-request-randomness randomness account missing (lottery_id=%s)", lottery_id)
-            raise HTTPException(
-                status_code=400,
-                detail="randomness_account is missing on lottery. Run phase2-prepare first.",
-            )
-
-        try:
-            Pubkey.from_string(randomness_account)
-        except Exception as exc:
-            logger.warning(
-                "phase2-request-randomness invalid randomness account (lottery_id=%s, randomness_account=%s)",
-                lottery_id,
-                randomness_account,
-            )
-            raise HTTPException(status_code=400, detail="Invalid randomness_account") from exc
-
-        request_id = vrf_client.request_randomness(randomness_account)
-        if not request_id:
-            logger.error(
-                "phase2-request-randomness empty request_id (lottery_id=%s, randomness_account=%s)",
-                lottery_id,
-                randomness_account,
-            )
-            raise HTTPException(status_code=500, detail="Switchboard returned empty request_id")
-
-        logger.info(
-            "phase2-request-randomness succeeded (lottery_id=%s, randomness_account=%s, request_id=%s)",
-            lottery_id,
-            randomness_account,
-            request_id,
-        )
-        return Phase2RequestRandomnessResponse(
-            randomness_account=randomness_account,
-            request_id=request_id,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("phase2-request-randomness failed (lottery_id=%s)", lottery_id)
-        raise HTTPException(status_code=500, detail=f"Failed to request phase II randomness: {str(e)}")
-
-
-@router.post("/{lottery_id}/phase2-reveal", response_model=Phase2RevealResponse)
-async def reveal_phase2_randomness(
-    lottery_id: int,
-    payload: Phase2RevealRequest,
-    lottery_repository: LotteryRepository = Depends(get_lottery_repository),
-    vrf_client: VrfServiceClient = Depends(get_vrf_service_client),
-    current_user_id: int = Depends(require_admin_user),
-):
-    del current_user_id
-    try:
-        logger.info("phase2-reveal started (lottery_id=%s)", lottery_id)
-        lottery = await lottery_repository.get_lottery_by_id(lottery_id)
-        if not lottery:
-            logger.warning("phase2-reveal lottery not found (lottery_id=%s)", lottery_id)
-            raise HTTPException(status_code=404, detail="Lottery not found")
-
-        settings = get_settings()
-        min_delay_seconds = settings.vrf_reveal_min_delay_seconds
-        if min_delay_seconds > 0:
-            second_phase_started_at = lottery.second_phase_started_at
-            if second_phase_started_at:
-                second_phase_started_at_utc = (
-                    second_phase_started_at
-                    if second_phase_started_at.tzinfo
-                    else second_phase_started_at.replace(tzinfo=timezone.utc)
-                )
-                elapsed_seconds = (datetime.now(timezone.utc) - second_phase_started_at_utc).total_seconds()
-                if elapsed_seconds < min_delay_seconds:
-                    remaining_seconds = int(min_delay_seconds - elapsed_seconds + 0.999)
-                    logger.warning(
-                        "phase2-reveal blocked by min delay (lottery_id=%s, elapsed=%.2fs, min_delay=%ss, remaining=%ss)",
-                        lottery_id,
-                        elapsed_seconds,
-                        min_delay_seconds,
-                        remaining_seconds,
-                    )
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            f"Reveal is not available yet. "
-                            f"Try again in {remaining_seconds} seconds "
-                            f"(VRF_REVEAL_MIN_DELAY_SECONDS={min_delay_seconds})."
-                        ),
-                    )
-            else:
-                logger.info(
-                    "phase2-reveal delay check skipped: second_phase_started_at is null (lottery_id=%s, min_delay=%ss)",
-                    lottery_id,
-                    min_delay_seconds,
-                )
-
-        randomness_account = payload.randomness_account or lottery.randomness_account or get_settings().switchboard_randomness_account
-        if not randomness_account:
-            logger.warning("phase2-reveal randomness account missing (lottery_id=%s)", lottery_id)
-            raise HTTPException(
-                status_code=400,
-                detail="randomness_account is required in request body, lottery state, or SWITCHBOARD_RANDOMNESS_ACCOUNT env",
-            )
-
-        try:
-            Pubkey.from_string(randomness_account)
-        except Exception as exc:
-            logger.warning(
-                "phase2-reveal invalid randomness account (lottery_id=%s, randomness_account=%s)",
-                lottery_id,
-                randomness_account,
-            )
-            raise HTTPException(status_code=400, detail="Invalid randomness_account") from exc
-
-        reveal_signature, value_hex = vrf_client.reveal_randomness(randomness_account)
-        if not reveal_signature:
-            logger.error(
-                "phase2-reveal empty reveal signature (lottery_id=%s, randomness_account=%s)",
-                lottery_id,
-                randomness_account,
-            )
-            raise HTTPException(status_code=500, detail="Switchboard returned empty reveal signature")
-        logger.info(
-            "phase2-reveal succeeded (lottery_id=%s, randomness_account=%s, reveal_signature=%s, value_hex=%s)",
-            lottery_id,
-            randomness_account,
-            reveal_signature,
-            value_hex,
-        )
-
-        if value_hex:
-            normalized_seed = value_hex[2:] if value_hex.startswith("0x") else value_hex
-            await lottery_repository.update_lottery_vrf_seed(lottery_id, normalized_seed.lower())
-
-        return Phase2RevealResponse(
-            randomness_account=randomness_account,
-            reveal_signature=reveal_signature,
-            value_hex=value_hex,
-        )
-    except HTTPException:
-        raise
-    except RuntimeError as e:
-        message = str(e)
-        logger.exception(
-            "phase2-reveal runtime error (lottery_id=%s, randomness_account=%s)",
-            lottery_id,
-            payload.randomness_account,
-        )
-        if "not configured" in message.lower():
-            raise HTTPException(status_code=503, detail=message)
-        raise HTTPException(status_code=500, detail=f"Failed to reveal randomness: {message}")
-    except Exception as e:
-        logger.exception("phase2-reveal failed (lottery_id=%s)", lottery_id)
-        raise HTTPException(status_code=500, detail=f"Failed to reveal randomness: {str(e)}")
-
-
-@router.get("/{lottery_id}/retry-randomness-check", response_model=RetryRandomnessCheckResponse)
-async def retry_randomness_check(
-    lottery_id: int,
-    lottery_repository: LotteryRepository = Depends(get_lottery_repository),
-    vrf_client: VrfServiceClient = Depends(get_vrf_service_client),
-    current_user_id: int = Depends(require_admin_user),
-):
-    del current_user_id
-    try:
-        settings = get_settings()
-        lottery = await lottery_repository.get_lottery_by_id(lottery_id)
-        if not lottery:
-            raise HTTPException(status_code=404, detail="Lottery not found")
-
-        admin_pubkeys = _configured_admin_pubkeys(settings)
-        if not admin_pubkeys:
-            raise HTTPException(
-                status_code=500,
-                detail="No admin pubkeys configured (LOTTERY_ADMIN_PUBKEYS / LOTTERY_ADMIN_PUBKEY)",
-            )
-        lottery_pda, raw, lottery_admin_pubkey = _derive_existing_lottery_pda(
-            lottery_id=lottery_id,
-            program_id_raw=settings.lottery_program_id,
-            admin_pubkeys_raw=admin_pubkeys,
-            rpc_endpoint=settings.solana_http_endpoint.strip(),
-        )
-        onchain = _parse_lottery_account(raw)
-        logger.info(
-            "retry-randomness-check resolved lottery PDA (lottery_id=%s, lottery_pda=%s, admin_pubkey=%s)",
-            lottery_id,
-            lottery_pda,
-            lottery_admin_pubkey,
-        )
-
-        now_ts = int(datetime.now(timezone.utc).timestamp())
-        vrf_ready_ts = _to_int(onchain.get("vrf_ready_ts")) or 0
-        vrf_retry_count = _to_int(onchain.get("vrf_retry_count")) or 0
-        vrf_called = bool(onchain.get("vrf_called"))
-        onchain_status = str(onchain.get("status") or "")
-        randomness_account = str(onchain.get("vrf_randomness_account") or lottery.randomness_account or "").strip() or None
-
-        reasons: list[str] = []
-        if onchain_status != "PendingVrf":
-            reasons.append(f"on-chain status is {onchain_status}, expected PendingVrf")
-        if vrf_called:
-            reasons.append("vrf_called is true")
-        if now_ts < vrf_ready_ts:
-            reasons.append("vrf_ready_ts has not passed yet")
-        if vrf_retry_count >= MAX_VRF_RETRIES_ONCHAIN:
-            reasons.append("vrf_retry_count reached MAX_VRF_RETRIES")
-        if not randomness_account:
-            reasons.append("randomness account is empty")
-
-        reveal_slot: int | None = None
-        randomness_revealed: bool | None = None
-        if randomness_account:
-            try:
-                randomness_payload = vrf_client.get_randomness_account_data(randomness_account)
-                data = randomness_payload.get("data")
-                if isinstance(data, dict):
-                    reveal_slot = _to_int(data.get("reveal_slot"))
-                    if reveal_slot is None:
-                        reveal_slot = _to_int(data.get("revealSlot"))
-                    randomness_revealed = bool(reveal_slot is not None and reveal_slot > 0)
-            except Exception as exc:
-                reasons.append(f"failed to read randomness account data: {exc}")
-
-        can_retry_now = len(reasons) == 0
-        should_retry = can_retry_now
-        if can_retry_now and randomness_revealed:
-            should_retry = False
-            reasons.append("randomness is already revealed, call fulfill_randomness instead of retry_randomness")
-
-        next_retry_available_in_seconds = max(0, vrf_ready_ts - now_ts)
-
-        return RetryRandomnessCheckResponse(
-            lottery_id=lottery_id,
-            should_call_retry_randomness=should_retry,
-            can_retry_now=can_retry_now,
-            reasons=reasons,
-            next_retry_available_in_seconds=next_retry_available_in_seconds,
-            onchain_status=onchain_status,
-            onchain_vrf_called=vrf_called,
-            onchain_vrf_ready_ts=vrf_ready_ts,
-            onchain_vrf_retry_count=vrf_retry_count,
-            max_vrf_retries=MAX_VRF_RETRIES_ONCHAIN,
-            randomness_account=randomness_account,
-            randomness_revealed=randomness_revealed,
-            randomness_reveal_slot=reveal_slot,
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("retry-randomness-check failed (lottery_id=%s)", lottery_id)
-        raise HTTPException(status_code=500, detail=f"Failed to check retry_randomness conditions: {exc}")
-
-
 @router.post("/{lottery_id}/proceeding-purchases", response_model=LotteryResponse)
 async def mark_proceeding_purchases(
     lottery_id: int,

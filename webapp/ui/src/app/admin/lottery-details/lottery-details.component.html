@@ -163,48 +163,6 @@
               <div *ngIf="phaseTwoSuccess" class="success-message">{{ phaseTwoSuccess }}</div>
             </div>
 
-            <div *ngSwitchCase="'bindVrf'">
-              <div class="form-row">
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>Randomness Account</mat-label>
-                  <input matInput type="text" [value]="lottery.randomness_account || ''" placeholder="Set during Phase II prepare" disabled>
-                </mat-form-field>
-              </div>
-              <div class="phase2-ops">
-                <div class="phase2-ops-title">When you click Bind VRF Request:</div>
-                <ul>
-                  <li>On-chain: call <code>bindVrfRequest</code> for the current randomness account.</li>
-                  <li>On-chain: store the request seed slot and slothash in lottery state.</li>
-                  <li>Backend: mark lottery status as <code>vrf_binded</code>.</li>
-                </ul>
-              </div>
-              <div class="phase2-ops">
-                <div class="phase2-ops-title">When you click Retry Randomness:</div>
-                <ul>
-                  <li>Backend: prepare a new randomness account (close old, create new, persist).</li>
-                  <li>On-chain: call <code>retryRandomness</code> with the new randomness account.</li>
-                  <li>Backend: request randomness commit for the new account.</li>
-                </ul>
-              </div>
-              <div class="button-row">
-                <button mat-raised-button
-                        color="primary"
-                        (click)="onBindVrfRequest()"
-                        [disabled]="!canBindVrfRequest() || isBindingVrfRequest || !lottery.randomness_account">
-                  {{ isBindingVrfRequest ? 'Binding...' : 'Bind VRF Request' }}
-                </button>
-                <button mat-stroked-button
-                        color="warn"
-                        (click)="onBindVrfRetryRandomnessClick()"
-                        [disabled]="!canBindVrfRequest() || isBindingVrfRequest || isRetryingRandomness || !lottery.randomness_account">
-                  {{ isRetryingRandomness ? 'Retrying...' : 'Retry Randomness' }}
-                </button>
-              </div>
-              <div *ngIf="retryRandomnessError" class="error-message">{{ retryRandomnessError }}</div>
-              <div *ngIf="retryRandomnessSuccess" class="success-message">{{ retryRandomnessSuccess }}</div>
-              <div *ngIf="bindVrfError" class="error-message">{{ bindVrfError }}</div>
-              <div *ngIf="bindVrfSuccess" class="success-message">{{ bindVrfSuccess }}</div>
-            </div>
 
             <div *ngSwitchCase="'pendingVrf'">
               <div class="form-row">
@@ -221,14 +179,6 @@
                   <li>Backend: mark lottery status as <code>vrf_fulfilled</code>.</li>
                 </ul>
               </div>
-              <div class="phase2-ops">
-                <div class="phase2-ops-title">When you click Retry Randomness:</div>
-                <ul>
-                  <li>Backend: prepare a new randomness account (close old, create new, persist).</li>
-                  <li>On-chain: call <code>retryRandomness</code> with the new randomness account.</li>
-                  <li>Backend: request randomness commit for the new account.</li>
-                </ul>
-              </div>
               <div class="button-row">
                 <button mat-raised-button
                         color="primary"
@@ -236,18 +186,10 @@
                         [disabled]="!canFulfillVrf() || isFulfillingVrf">
                   {{ isFulfillingVrf ? 'Fulfilling Randomness...' : 'Fulfill Randomness' }}
                 </button>
-                <button mat-stroked-button
-                        color="warn"
-                        (click)="onBindVrfRetryRandomnessClick()"
-                        [disabled]="!canRetryRandomness() || isRetryingRandomness || isFulfillingVrf">
-                  {{ isRetryingRandomness ? 'Retrying...' : 'Retry Randomness' }}
-                </button>
               </div>
               <div *ngIf="getFulfillCooldownRemainingSeconds() > 0" class="cooldown-message">
                 Fulfill randomness is not available yet. Try again in {{ getFulfillCooldownRemainingSeconds() }} seconds.
               </div>
-              <div *ngIf="retryRandomnessError" class="error-message">{{ retryRandomnessError }}</div>
-              <div *ngIf="retryRandomnessSuccess" class="success-message">{{ retryRandomnessSuccess }}</div>
               <div *ngIf="vrfError" class="error-message">{{ vrfError }}</div>
               <div *ngIf="vrfSuccess" class="success-message">{{ vrfSuccess }}</div>
             </div>

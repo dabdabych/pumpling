@@ -88,7 +88,10 @@ export const DEFAULT_CAP_SOL = 111;
 /** A fallback buying window length; the real one arrives in execution_countdown_seconds. */
 export const DEFAULT_BUY_WINDOW_SECONDS = 65 * 60;
 /** A fallback draw length; the real one arrives in draw_seconds. */
-export const DEFAULT_DRAW_SECONDS = 115;
+// The fallback when the server does not say. Under ORAO the draw is the
+// request landing, an answer a second later and the pause before buying; the
+// old 115 came from Switchboard's mandatory reveal pause and its retries.
+export const DEFAULT_DRAW_SECONDS = 12;
 
 const OPENING_STATUSES = new Set(['id_generated']);
 const OPEN_STATUSES = new Set(['created']);

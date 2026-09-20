@@ -1,12 +1,9 @@
 import { ChangeDetectorRef, Component, NgZone, OnDestroy, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { getLotteryByIdLotteryLotteryIdGet } from '../../api-client/fn/lottery/get-lottery-by-id-lottery-lottery-id-get';
-import { preparePhase2LotteryLotteryIdPhase2PreparePost } from '../../api-client/fn/lottery/prepare-phase-2-lottery-lottery-id-phase-2-prepare-post';
+import { phase2AccountsLotteryLotteryIdPhase2AccountsGet } from '../../api-client/fn/lottery/phase-2-accounts-lottery-lottery-id-phase-2-accounts-get';
 import { markPhase2StartedLotteryLotteryIdPhase2StartedPost } from '../../api-client/fn/lottery/mark-phase-2-started-lottery-lottery-id-phase-2-started-post';
-import { revealPhase2RandomnessLotteryLotteryIdPhase2RevealPost } from '../../api-client/fn/lottery/reveal-phase-2-randomness-lottery-lottery-id-phase-2-reveal-post';
-import { requestPhase2RandomnessLotteryLotteryIdPhase2RequestRandomnessPost } from '../../api-client/fn/lottery/request-phase-2-randomness-lottery-lottery-id-phase-2-request-randomness-post';
 import { markVrfFulfilledLotteryLotteryIdVrfFulfilledPost } from '../../api-client/fn/lottery/mark-vrf-fulfilled-lottery-lottery-id-vrf-fulfilled-post';
-import { markVrfBindedLotteryLotteryIdVrfBindedPost } from '../../api-client/fn/lottery/mark-vrf-binded-lottery-lottery-id-vrf-binded-post';
 import { markOffchainVrfLotteryLotteryIdOffchainVrfPost } from '../../api-client/fn/lottery/mark-offchain-vrf-lottery-lottery-id-offchain-vrf-post';
 import { markProceedingPurchasesLotteryLotteryIdProceedingPurchasesPost } from '../../api-client/fn/lottery/mark-proceeding-purchases-lottery-lottery-id-proceeding-purchases-post';
 import { runPurchasesPayloadPreviewLotteryLotteryIdRunPurchasesPayloadGet } from '../../api-client/fn/lottery/run-purchases-payload-preview-lottery-lottery-id-run-purchases-payload-get';
@@ -73,11 +70,6 @@ export class LotteryDetailsComponent implements OnInit, OnDestroy {
       id: 'open',
       label: 'Open (Deposits)',
       description: 'Accepting bets and deposits from users.'
-    },
-    {
-      id: 'bindVrf',
-      label: 'Phase || Started',
-      description: 'Bind the requested VRF seed to this lottery before fulfill.'
     },
     {
       id: 'pendingVrf',
@@ -252,19 +244,28 @@ export class LotteryDetailsComponent implements OnInit, OnDestroy {
     this.setPhaseTwoLoading(true);
 
     try {
+      // The server works out the request seed and hands back the accounts. It
+      // is deliberately not derived here: the program has that formula and so
+      // does the worker, and a third copy in the browser would be a third
+      // chance for the three to disagree.
       const prepared = await firstValueFrom(
-        this.api.invoke(preparePhase2LotteryLotteryIdPhase2PreparePost, { lottery_id: this.lottery.id })
+        this.api.invoke(phase2AccountsLotteryLotteryIdPhase2AccountsGet, { lottery_id: this.lottery.id })
       );
-      if (!prepared?.randomness_account) {
-        throw new Error('Backend did not return randomness account.');
+      if (!prepared?.vrf_request) {
+        throw new Error('Backend did not return the randomness request account.');
       }
 
       const tx = await program.methods
-        .startSecondPhase(Array.from(weightsHash), new BN(waitSeconds))
+        .startSecondPhase(Array.from(Buffer.from(prepared.weights_hash, 'hex')), new BN(prepared.seed_slot))
         .accounts({
           lottery: pdas.lottery,
           admin: activeAdminPubkey,
-          randomnessAccountData: new PublicKey(prepared.randomness_account),
+          vrfRequest: new PublicKey(prepared.vrf_request),
+          vrfNetworkState: new PublicKey(prepared.vrf_network_state),
+          vrfTreasury: new PublicKey(prepared.vrf_treasury),
+          vrfProgram: new PublicKey(prepared.vrf_program),
+          recentSlothashes: new PublicKey(prepared.recent_slothashes),
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
 
@@ -373,21 +374,14 @@ export class LotteryDetailsComponent implements OnInit, OnDestroy {
         return;
       }
 
-      const revealResponse = await firstValueFrom(
-        this.api.invoke(revealPhase2RandomnessLotteryLotteryIdPhase2RevealPost, {
-          lottery_id: this.lottery.id,
-          body: { randomness_account: this.lottery.randomness_account }
-        })
-      );
-      if (!revealResponse?.reveal_signature) {
-        throw new Error('Backend did not return reveal_signature.');
-      }
-
+      // Nothing to reveal any more: ORAO writes the value into the request
+      // account by itself, and this instruction only takes it. It needs no
+      // admin signature either, so anyone could push the round along.
       const tx = await program.methods
         .fulfillRandomness()
         .accounts({
           lottery: pdas.lottery,
-          randomnessAccountData: new PublicKey(this.lottery.randomness_account),
+          vrfRequest: new PublicKey(this.lottery.randomness_account),
         })
         .rpc();
 
@@ -399,7 +393,7 @@ export class LotteryDetailsComponent implements OnInit, OnDestroy {
             this.selectedPhaseIndex = this.getPhaseIndexFromStatus(this.lottery.status || '');
             this.currentPhaseLabel = this.phaseSteps[this.selectedPhaseIndex]?.label ?? 'Open';
           }
-          this.vrfSuccess = `VRF revealed (${revealResponse.reveal_signature}) and fulfilled. Tx: ${tx}`;
+          this.vrfSuccess = `Randomness taken from ORAO. Tx: ${tx}`;
           this.cdr.detectChanges();
         });
       } catch {
@@ -410,7 +404,7 @@ export class LotteryDetailsComponent implements OnInit, OnDestroy {
             this.currentPhaseLabel = this.phaseSteps[this.selectedPhaseIndex]?.label ?? 'Open';
           }
           this.vrfError = 'VRF fulfilled on-chain, but failed to update backend status.';
-          this.vrfSuccess = `VRF revealed (${revealResponse.reveal_signature}) and fulfilled. Tx: ${tx}`;
+          this.vrfSuccess = `Randomness taken from ORAO. Tx: ${tx}`;
           this.cdr.detectChanges();
         });
       }
@@ -421,292 +415,6 @@ export class LotteryDetailsComponent implements OnInit, OnDestroy {
       });
     } finally {
       this.setVrfLoading(false);
-    }
-  }
-
-  async onRetryRandomness(): Promise<void> {
-    if (this.isRetryingRandomness) {
-      return;
-    }
-
-    this.ngZone.run(() => {
-      this.retryRandomnessError = null;
-      this.retryRandomnessSuccess = null;
-    });
-
-    if (!this.lottery) {
-      this.retryRandomnessError = 'Lottery data is not loaded.';
-      return;
-    }
-
-    const status = (this.lottery.status || '').toLowerCase();
-    if (
-      status !== 'phase2started'
-      && status !== 'pending_vrf'
-      && status !== 'pendingvrf'
-      && status !== 'vrf_binded'
-      && status !== 'vrfbinded'
-    ) {
-      this.retryRandomnessError = 'Retry randomness is available only in pending VRF phase.';
-      return;
-    }
-
-    this.setRetryRandomnessLoading(true);
-    try {
-      let walletAddress: string;
-      try {
-        walletAddress = await this.walletService.connect();
-      } catch (error: any) {
-        if (isWalletFlowInterruption(error)) {
-          return;
-        }
-        this.retryRandomnessError = error?.message || 'Please install Phantom or Solflare wallet extension.';
-        return;
-      }
-
-      if (!isAllowedAdminWallet(walletAddress)) {
-        this.retryRandomnessError = 'Only the admin wallet can retry randomness.';
-        return;
-      }
-      const activeAdminPubkey = new PublicKey(walletAddress);
-
-      const program = this.getLotteryProgram();
-      if (!program) {
-        this.retryRandomnessError = 'Failed to initialize lottery program.';
-        return;
-      }
-
-      const pdas = this.deriveLotteryPdas(this.lottery.id, activeAdminPubkey);
-      if (!pdas) {
-        this.retryRandomnessError = 'Failed to derive lottery accounts.';
-        return;
-      }
-
-      const previousRandomnessAccount = (this.lottery.randomness_account || '').trim();
-      const prepared = await firstValueFrom(this.api.invoke(preparePhase2LotteryLotteryIdPhase2PreparePost, { lottery_id: this.lottery.id }));
-      if (!prepared?.randomness_account) {
-        throw new Error('Backend did not return randomness account for retry.');
-      }
-
-      const retryTx = await (program.methods as any)
-        .retryRandomness(null)
-        .accounts({
-          lottery: pdas.lottery,
-          admin: activeAdminPubkey,
-          randomnessAccountData: new PublicKey(prepared.randomness_account),
-        })
-        .rpc();
-
-      const requestResult = await firstValueFrom(
-        this.api.invoke(requestPhase2RandomnessLotteryLotteryIdPhase2RequestRandomnessPost, { lottery_id: this.lottery.id })
-      );
-
-      this.ngZone.run(() => {
-        if (this.lottery) {
-          this.lottery.randomness_account = prepared.randomness_account;
-          // After retry, bind must be executed again with the new randomness account.
-          this.lottery.status = 'phase2started' as any;
-          const bindVrfPhaseIndex = this.phaseSteps.findIndex((step) => step.id === 'bindVrf');
-          this.selectedPhaseIndex = bindVrfPhaseIndex >= 0
-            ? bindVrfPhaseIndex
-            : this.getPhaseIndexFromStatus(this.lottery.status);
-          this.currentPhaseLabel = this.phaseSteps[this.selectedPhaseIndex]?.label ?? 'Open';
-        }
-        this.retryRandomnessSuccess = `Retry randomness scheduled. Tx: ${retryTx}. Request id: ${requestResult.request_id}. Old randomness account: ${previousRandomnessAccount || 'n/a'}. New randomness account: ${prepared.randomness_account}. Re-bind VRF request for new randomness account.`;
-        this.cdr.detectChanges();
-      });
-    } catch (error: any) {
-      console.error('Retry randomness error:', error);
-      const rawErrorMessage = String(
-        error?.message
-        || error?.error?.message
-        || error?.error?.detail
-        || ''
-      );
-      const isRetryLimitReached = rawErrorMessage.includes('VrfRetryLimitReached')
-        || rawErrorMessage.includes('VRF retry limit reached');
-      if (isRetryLimitReached && this.lottery?.id) {
-        const isConfirmed = await this.systemDialog.confirm(
-          'VRF retry limit reached. Switch this lottery to offchain VRF mode?',
-          { confirm: { title: 'Switch to Offchain VRF', color: 'warn' } }
-        );
-        if (isConfirmed) {
-          try {
-            let walletAddress: string;
-            try {
-              walletAddress = await this.walletService.connect();
-            } catch (connectError: any) {
-              if (isWalletFlowInterruption(connectError)) {
-                return;
-              }
-              this.retryRandomnessError = connectError?.message || 'Please install Phantom or Solflare wallet extension.';
-              throw connectError;
-            }
-
-            if (!isAllowedAdminWallet(walletAddress)) {
-              throw new Error('Only the admin wallet can switch to offchain VRF.');
-            }
-            const activeAdminPubkey = new PublicKey(walletAddress);
-
-            const program = this.getLotteryProgram();
-            if (!program) {
-              throw new Error('Failed to initialize lottery program.');
-            }
-
-            const pdas = this.deriveLotteryPdas(this.lottery.id, activeAdminPubkey);
-            if (!pdas) {
-              throw new Error('Failed to derive lottery accounts.');
-            }
-
-            const emergencySeed = new Uint8Array(32);
-            crypto.getRandomValues(emergencySeed);
-            emergencySeed[0] |= 0xF0;
-            const emergencySeedHex = Array.from(emergencySeed).map((b) => b.toString(16).padStart(2, '0')).join('');
-
-            await (program.methods as any)
-              .emergencyFulfillRandomness(Array.from(emergencySeed))
-              .accounts({
-                lottery: pdas.lottery,
-                admin: activeAdminPubkey,
-              })
-              .rpc();
-
-            const updated = await firstValueFrom(
-              this.api.invoke(markOffchainVrfLotteryLotteryIdOffchainVrfPost, {
-                lottery_id: this.lottery.id,
-                body: { seed_hex: emergencySeedHex }
-              })
-            );
-            this.ngZone.run(() => {
-              if (this.lottery && updated) {
-                this.lottery = updated;
-                this.selectedPhaseIndex = this.getPhaseIndexFromStatus(updated.status || '');
-                this.currentPhaseLabel = this.phaseSteps[this.selectedPhaseIndex]?.label ?? 'Open';
-              }
-              this.cdr.detectChanges();
-            });
-          } catch (markError) {
-            console.error('Mark offchain VRF flag error:', markError);
-          }
-        }
-      }
-      this.ngZone.run(() => {
-        this.retryRandomnessError = error?.message || 'Failed to retry randomness.';
-        this.cdr.detectChanges();
-      });
-    } finally {
-      this.setRetryRandomnessLoading(false);
-    }
-  }
-
-  async onBindVrfRetryRandomnessClick(): Promise<void> {
-    this.ngZone.run(() => {
-      this.retryRandomnessError = null;
-      this.retryRandomnessSuccess = null;
-    });
-
-    if (!this.isPhaseTwoStarted()) {
-      this.retryRandomnessError = 'Phase II has not started yet.';
-      return;
-    }
-
-    await this.onRetryRandomness();
-  }
-
-  async onBindVrfRequest(): Promise<void> {
-    if (this.isBindingVrfRequest) {
-      return;
-    }
-
-    this.ngZone.run(() => {
-      this.bindVrfError = null;
-      this.bindVrfSuccess = null;
-    });
-
-    if (!this.isPhaseTwoStarted()) {
-      this.bindVrfError = 'Phase II has not started yet.';
-      return;
-    }
-
-    if (!this.lottery) {
-      this.bindVrfError = 'Lottery data is not loaded.';
-      return;
-    }
-
-    if (!this.lottery.randomness_account) {
-      this.bindVrfError = 'randomness_account is missing on this lottery.';
-      return;
-    }
-
-    this.setBindVrfLoading(true);
-
-    try {
-      let walletAddress: string;
-      try {
-        walletAddress = await this.walletService.connect();
-      } catch (error: any) {
-        if (isWalletFlowInterruption(error)) {
-          return;
-        }
-        this.bindVrfError = error?.message || 'Please install Phantom or Solflare wallet extension.';
-        return;
-      }
-
-      if (!isAllowedAdminWallet(walletAddress)) {
-        this.bindVrfError = 'Only the admin wallet can bind VRF request.';
-        return;
-      }
-      const activeAdminPubkey = new PublicKey(walletAddress);
-
-      const program = this.getLotteryProgram();
-      if (!program) {
-        this.bindVrfError = 'Failed to initialize lottery program.';
-        return;
-      }
-
-      const pdas = this.deriveLotteryPdas(this.lottery.id, activeAdminPubkey);
-      if (!pdas) {
-        this.bindVrfError = 'Failed to derive lottery accounts.';
-        return;
-      }
-
-      const tx = await program.methods
-        .bindVrfRequest()
-        .accounts({
-          lottery: pdas.lottery,
-          admin: activeAdminPubkey,
-          randomnessAccountData: new PublicKey(this.lottery.randomness_account),
-        })
-        .rpc();
-
-      try {
-        const updated = await firstValueFrom(this.api.invoke(markVrfBindedLotteryLotteryIdVrfBindedPost, { lottery_id: this.lottery.id }));
-        this.ngZone.run(() => {
-          if (this.lottery) {
-            this.lottery = updated || this.lottery;
-            if (!this.lottery.status) {
-              this.lottery.status = 'vrf_binded' as any;
-            }
-            this.selectedPhaseIndex = this.getPhaseIndexFromStatus(this.lottery.status || '');
-            this.currentPhaseLabel = this.phaseSteps[this.selectedPhaseIndex]?.label ?? 'Open';
-          }
-          this.bindVrfSuccess = `VRF request bound. Tx: ${tx}`;
-          this.cdr.detectChanges();
-        });
-      } catch {
-        this.ngZone.run(() => {
-          this.bindVrfError = 'VRF request bound on-chain, but failed to update backend status.';
-          this.bindVrfSuccess = `VRF request bound. Tx: ${tx}`;
-          this.cdr.detectChanges();
-        });
-      }
-    } catch (error: any) {
-      console.error('Bind VRF request error:', error);
-      this.ngZone.run(() => {
-        this.bindVrfError = error.message || 'Failed to bind VRF request.';
-      });
-    } finally {
-      this.setBindVrfLoading(false);
     }
   }
 
@@ -988,16 +696,6 @@ export class LotteryDetailsComponent implements OnInit, OnDestroy {
       || normalized === 'pending_vrf'
       || normalized === 'pendingvrf';
     return isPendingVrfPhase && !this.lottery?.is_offchain_vrf && this.getFulfillCooldownRemainingSeconds() === 0;
-  }
-
-  canRetryRandomness(): boolean {
-    const normalized = (this.lottery?.status || '').toLowerCase();
-    const isRetryPhase = normalized === 'phase2started'
-      || normalized === 'pending_vrf'
-      || normalized === 'pendingvrf'
-      || normalized === 'vrf_binded'
-      || normalized === 'vrfbinded';
-    return isRetryPhase && !this.lottery?.is_offchain_vrf;
   }
 
   canRunPurchasesActions(): boolean {

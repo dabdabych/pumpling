@@ -61,7 +61,6 @@ def configure_logging() -> None:
     root_logger.setLevel(logging.INFO)
 
     logging.getLogger("presentation.lottery.lottery_router").setLevel(logging.INFO)
-    logging.getLogger("infrastructure.lottery.switchboard_vrf_client").setLevel(logging.INFO)
     logging.getLogger("domain.lottery.services.lottery_service").setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)

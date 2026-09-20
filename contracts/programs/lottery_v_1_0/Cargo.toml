@@ -26,5 +26,15 @@ idl-build = [
 [dependencies]
 anchor-lang = "0.31.1"
 anchor-spl  = "0.31.1"
-switchboard-on-demand = "=0.8.0"
+# ORAO VRF. `cpi` pulls in the request instruction and the account types; the
+# pin is exact because the randomness account layout is something we parse
+# ourselves, and a silent bump there would change what a round is drawn from.
+#
+# 0.6.1 rather than the newest 0.7.0 on purpose: 0.7 is built against
+# anchor-lang 0.32, and two Anchor versions in one program do not share types,
+# so the CPI would not typecheck. 0.6.1 targets 0.31.1, which is ours.
+orao-solana-vrf = { version = "=0.6.1", default-features = false, features = ["cpi"] }
+# Writes the contact details into an ELF section of the program, where
+# explorers and security researchers look for them.
+solana-security-txt = "1.1.3"
 

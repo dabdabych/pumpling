@@ -8,11 +8,11 @@ export interface ActiveLotterySummaryResponse {
   draw_seconds?: number;
   end_date?: (string | null);
   execution_countdown_seconds?: number;
-  next_pool_at?: (string | null);
   id: number;
   lottery_pda?: (string | null);
   lottery_type?: string;
   max_total?: (number | null);
+  next_pool_at?: (string | null);
   proceeding_purchases_started_at?: (string | null);
   second_phase_started_at?: (string | null);
   status: string;

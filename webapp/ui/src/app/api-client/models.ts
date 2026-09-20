@@ -25,6 +25,7 @@ export type { LotteryCycleControlsResponse } from './models/lottery-cycle-contro
 export type { LotteryEntryResponse } from './models/lottery-entry-response';
 export type { LotteryListResponse } from './models/lottery-list-response';
 export type { LotteryResponse } from './models/lottery-response';
+export type { LotteryVerificationResponse } from './models/lottery-verification-response';
 export type { LotteryWinnerResultResponse } from './models/lottery-winner-result-response';
 export type { MessageAuthorResponse } from './models/message-author-response';
 export type { MintAllowTokenRequest } from './models/mint-allow-token-request';
@@ -39,10 +40,7 @@ export type { PagedUserResponse } from './models/paged-user-response';
 export type { PasswordResetConfirmRequest } from './models/password-reset-confirm-request';
 export type { PasswordResetRequest } from './models/password-reset-request';
 export type { PasswordResetResponse } from './models/password-reset-response';
-export type { Phase2PrepareResponse } from './models/phase-2-prepare-response';
-export type { Phase2RequestRandomnessResponse } from './models/phase-2-request-randomness-response';
-export type { Phase2RevealRequest } from './models/phase-2-reveal-request';
-export type { Phase2RevealResponse } from './models/phase-2-reveal-response';
+export type { Phase2AccountsResponse } from './models/phase-2-accounts-response';
 export type { PricePointResponse } from './models/price-point-response';
 export type { ProblemDetails } from './models/problem-details';
 export type { ProfileResponse } from './models/profile-response';
@@ -50,7 +48,6 @@ export type { PurchaseFeedCoinResponse } from './models/purchase-feed-coin-respo
 export type { PurchaseFeedItemResponse } from './models/purchase-feed-item-response';
 export type { PurchaseFeedResponse } from './models/purchase-feed-response';
 export type { ReplyPreviewResponse } from './models/reply-preview-response';
-export type { RetryRandomnessCheckResponse } from './models/retry-randomness-check-response';
 export type { RunPurchasesPayload } from './models/run-purchases-payload';
 export type { RunPurchasesRecipient } from './models/run-purchases-recipient';
 export type { RunPurchasesResponse } from './models/run-purchases-response';

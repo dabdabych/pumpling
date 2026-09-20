@@ -23,13 +23,26 @@ from solana.rpc.async_api import AsyncClient
 from solana.rpc.types import TxOpts
 from solders.keypair import Keypair
 from solders.pubkey import Pubkey
+from solders.system_program import ID as SYSTEM_PROGRAM_ID
 from sqlalchemy import and_, func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from telegram_error_handler import TelegramLogHandler
 
+# Used to recognise a transport failure by type. Both come with solana-py; if a
+# future install drops them, the message markers below still apply.
+try:  # pragma: no cover - import guard
+    import httpx as _httpx
+except ImportError:  # pragma: no cover
+    _httpx = None
+try:  # pragma: no cover - import guard
+    from solana.exceptions import SolanaRpcException as _SolanaRpcException
+except ImportError:  # pragma: no cover
+    _SolanaRpcException = None
+
 import events_worker
+from shared import orao_vrf
 from domain.lottery.entities.lottery import LotteryStatus
 from infrastructure.database.database import SessionLocal
 from infrastructure.database.models.bet_participation_model import BetParticipationModel
@@ -37,7 +50,6 @@ from infrastructure.database.models.lottery_model import LotteryModel
 from infrastructure.database.models.smart_contract_event_model import SmartContractEventModel
 from infrastructure.database.models.user_model import UserModel
 from infrastructure.lottery.offchain_api_client import build_offchain_api_client
-from infrastructure.lottery.switchboard_vrf_client import VrfServiceClient
 from domain.auth.entities.user import UserRole
 from shared.admin_wallets import configured_admin_pubkeys
 from shared.bet_confirmation import active_bet_condition
@@ -47,14 +59,10 @@ from shared.purchases_payload import build_run_purchases_payload
 from shared.settings import AppSettings, get_settings
 
 
-MAX_VRF_RETRIES_ONCHAIN = 2
-SWITCHBOARD_ON_DEMAND_PROGRAM_ID = Pubkey.from_string(
-    os.getenv(
-        "SWITCHBOARD_ON_DEMAND_PROGRAM_ID",
-        "SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv",
-    )
-)
-
+# Mirrors EMERGENCY_FULFILL_DELAY_SECONDS in the program. The worker will not
+# reach for the emergency path before the program would accept it anyway;
+# keeping the two in step just avoids a pointless failing transaction.
+EMERGENCY_FULFILL_DELAY_SECONDS = 120
 _ROUND_8 = Decimal("0.00000001")
 _ZERO = Decimal("0")
 _LAMPORTS_PER_SOL = Decimal("1000000000")
@@ -66,9 +74,22 @@ _TERMINAL_STATUSES = {
 _ABANDONED_INIT_CLEANUP_DELAY_SECONDS = int(
     os.getenv("LOTTERY_ABANDONED_INIT_CLEANUP_DELAY_SECONDS", "300")
 )
+#: How long a draft may sit unfinished before the cycle gives up on it.
+#:
+#: A draft is a row with an id and nothing on chain yet. Any status but the
+#: terminal ones blocks the next round, so a draft nobody finishes stops the
+#: product: no new pools, no explanation on the site, and the only symptom is
+#: that nothing happens. Three minutes is far longer than an initialize takes
+#: and far shorter than a person noticing.
+_STUCK_DRAFT_GRACE_SECONDS = int(os.getenv("LOTTERY_STUCK_DRAFT_GRACE_SECONDS", "180"))
+#: A draft whose transaction never landed is not worth re-reading forever. The
+#: blockhash it was signed with dies in about a minute, so after this long there
+#: is nothing left to wait for and the row can be closed.
+_ABANDONED_INIT_GIVE_UP_SECONDS = int(
+    os.getenv("LOTTERY_ABANDONED_INIT_GIVE_UP_SECONDS", "900")
+)
 _AUTOMATION_USER_EMAIL = "automation@qres.local"
 _SKIP_LOG_TIMESTAMPS: dict[str, datetime] = {}
-_REQUEST_RANDOMNESS_STATE: dict[str, tuple[int, datetime]] = {}
 _BUYER_START_STATE: dict[int, tuple[int, datetime]] = {}
 #: When the buyer stopped answering about a round, and when we last complained out loud.
 _BUYER_START_FIRST_FAIL_AT: dict[int, datetime] = {}
@@ -78,7 +99,6 @@ _BUYER_START_LOUD_ATTEMPTS = 2
 #: How often to remind that the buyer is still down.
 _BUYER_START_REMIND_SECONDS = 60 * 60
 _BUYER_STARTED_LOTTERY_IDS: set[int] = set()
-_RETRY_WINDOW_STARTS: dict[tuple[int, int], datetime] = {}
 _VRF_FULFILLED_AT: dict[int, datetime] = {}
 
 
@@ -120,28 +140,20 @@ class OnchainLotteryState:
     fee_bps: int
     deposits_count: int
     total_deposited_lamports: int
-    vrf_ready_ts: int
+    vrf_requested_ts: int
     vrf_seed_hex: Optional[str]
     vrf_called: bool
     randomness_account: str
+    vrf_force: bytes
+    vrf_seed_slot: int
     wallet_fee: str
     wallet_keeper: str
-    vrf_phase2_slot: int
-    vrf_retry_count: int
-    vrf_request_seed_slot: int
-
-
-@dataclass(frozen=True)
-class RandomnessState:
-    seed_slot: int
-    reveal_slot: int
 
 
 @dataclass(frozen=True)
 class AdminRuntime:
     signer_pubkey: Pubkey
     program: Program
-    vrf_client: VrfServiceClient
 
 
 def _settings() -> AppSettings:
@@ -298,42 +310,6 @@ def _load_signer_keypairs() -> list[Keypair]:
             "LOTTERY_ADMIN_SIGNER_KEYPAIRS_JSON/LOTTERY_ADMIN_SIGNER_KEYPAIR_PATHS."
         )
     return list(unique.values())
-
-
-def _load_admin_vrf_config() -> dict[str, dict[str, object]]:
-    raw = _settings().lottery_admin_vrf_config_json
-    if not raw:
-        return {}
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError("LOTTERY_ADMIN_VRF_CONFIG_JSON must be valid JSON") from exc
-    if not isinstance(parsed, dict):
-        raise ValueError("LOTTERY_ADMIN_VRF_CONFIG_JSON must be a JSON object keyed by admin pubkey")
-
-    result: dict[str, dict[str, object]] = {}
-    for raw_pubkey, config in parsed.items():
-        pubkey = str(Pubkey.from_string(str(raw_pubkey).strip()))
-        if not isinstance(config, dict):
-            raise ValueError(f"VRF config for admin {pubkey} must be a JSON object")
-        result[pubkey] = config
-    return result
-
-
-def _build_vrf_client(signer_pubkey: Pubkey, configs: dict[str, dict[str, object]]) -> VrfServiceClient:
-    config = configs.get(str(signer_pubkey), {})
-    base_url = str(config.get("base_url") or "").strip() or None
-    api_key_value = config.get("api_key")
-    api_key = str(api_key_value) if api_key_value is not None else None
-    timeout_value = config.get("timeout_seconds")
-    timeout_seconds = float(timeout_value) if timeout_value is not None else None
-    if timeout_seconds is not None and timeout_seconds <= 0:
-        raise ValueError(f"VRF timeout_seconds for admin {signer_pubkey} must be > 0")
-    return VrfServiceClient(
-        base_url=base_url,
-        api_key=api_key,
-        timeout_seconds=timeout_seconds,
-    )
 
 
 def _load_program(client: AsyncClient, signer: Keypair) -> Program:
@@ -595,14 +571,22 @@ def _ensure_lottery_post_vrf(session: Session, lottery_id: int) -> Optional[Lott
 _build_js_number_string = build_number_string
 
 
-def _vrf_engine_sha256() -> str:
-    """The sha256 of the shares algorithm as it exists on this machine.
+def _vrf_engine_sha256() -> Optional[str]:
+    """The sha256 of the shares algorithm, if this process can see the file.
 
-    Read from the file rather than from configuration, because it is the thing
-    the configuration claims to describe.
+    The worker ships without the backend tree, so more often than not it cannot.
+    Where a copy does turn up it may be an old one left by a previous build, so
+    a disagreement here is worth a complaint and never worth acting on.
     """
-    engine = Path(__file__).resolve().parents[1] / "webapp" / "backend" / "application" / "lottery" / "vrf_engine.py"
-    return hashlib.sha256(engine.read_bytes()).hexdigest()
+    here = Path(__file__).resolve()
+    for root in (here.parent, *here.parents):
+        engine = root / "webapp" / "backend" / "application" / "lottery" / "vrf_engine.py"
+        try:
+            if engine.is_file():
+                return hashlib.sha256(engine.read_bytes()).hexdigest()
+        except OSError:
+            continue
+    return None
 
 
 def _parse_vrf_algorithm_hash(raw_hash: str) -> list[int]:
@@ -618,21 +602,26 @@ def _parse_vrf_algorithm_hash(raw_hash: str) -> list[int]:
     if all(value == 0 for value in values):
         raise ValueError("LOTTERY_AUTOSTART_VRF_ALGORITHM_HASH must be non-zero")
 
-    # The value that goes on chain has to be the hash of the algorithm that
-    # actually runs here. A test keeps the checked-in default honest, but the
+    # The value that goes on chain claims to be the hash of the algorithm that
+    # computes the round. A test keeps the checked-in default honest, but the
     # default is only a fallback: an .env on the server overrides it, and then a
-    # round would declare one algorithm on chain and be computed by another.
-    # Nobody would notice until somebody checked a round and found the
-    # fingerprint did not match. Refuse to open a round instead.
-    try:
-        actual = _vrf_engine_sha256()
-    except OSError:
-        return values
-    if normalized.lower() != actual:
-        raise ValueError(
-            "LOTTERY_AUTOSTART_VRF_ALGORITHM_HASH does not match vrf_engine.py "
-            f"(configured 0x{normalized.lower()}, actual 0x{actual}). "
-            "Run: python3 scripts/vrf_algorithm_hash.py --write"
+    # round declares one algorithm and is computed by another. Nobody would
+    # notice until somebody checked a round and found the fingerprint did not
+    # match.
+    #
+    # Complain, do not refuse. A round that opens with a questionable
+    # fingerprint is worth arguing about; a cycle that stops opening rounds is
+    # the site going quiet, which is how this worker lost a day already.
+    actual = _vrf_engine_sha256()
+    if actual is not None and normalized.lower() != actual:
+        _throttled_log(
+            logging.ERROR,
+            f"vrf-algorithm-hash-mismatch:{normalized.lower()}:{actual}",
+            "LOTTERY_AUTOSTART_VRF_ALGORITHM_HASH does not match the vrf_engine.py this "
+            "machine has (configured 0x%s, file 0x%s). Rounds opened now will declare the "
+            "configured value. Fix with: python3 scripts/vrf_algorithm_hash.py --write",
+            normalized.lower(),
+            actual,
         )
     return values
 
@@ -670,6 +659,51 @@ def _ensure_automation_user(session: Session) -> int:
     session.commit()
     session.refresh(user)
     return int(user.id)
+
+
+def _release_stuck_drafts(session: Session, lottery_type: str, now_utc: datetime) -> int:
+    """Lets the cycle go on when a draft was left unfinished.
+
+    An autostart that fails before it submits anything leaves the row in
+    `id_generated`. That status is not terminal, so the next round never starts.
+    Until now the only way out was a person noticing and editing the database.
+
+    The row moves to `initialize_abandoned`, which is terminal and is also the
+    status the cleanup pass already knows how to reconcile: if the transaction
+    did land after all, that pass finds the account on chain and closes it
+    properly. Logged at error level so it reaches the alert channel: a stuck
+    draft is a symptom, not a routine.
+    """
+    cutoff = now_utc - timedelta(seconds=max(0, _STUCK_DRAFT_GRACE_SECONDS))
+    stuck = (
+        session.query(LotteryModel)
+        .filter(
+            LotteryModel.lottery_type == lottery_type,
+            LotteryModel.status == LotteryStatus.ID_GENERATED,
+            LotteryModel.created_at < cutoff,
+        )
+        .all()
+    )
+    if not stuck:
+        return 0
+    for draft in stuck:
+        draft.status = LotteryStatus.INITIALIZE_ABANDONED
+        draft.close_reason = "initialize_stuck"
+        if getattr(draft, "initialize_abandoned_at", None) is None:
+            draft.initialize_abandoned_at = now_utc
+        if not getattr(draft, "initialize_abandoned_error", None):
+            draft.initialize_abandoned_error = (
+                "draft never reached the chain and blocked the cycle"
+            )
+    session.commit()
+    logging.error(
+        "Released %s stuck draft(s) so the cycle can start again "
+        "(lottery_type=%s, lottery_ids=%s)",
+        len(stuck),
+        lottery_type,
+        ", ".join(str(draft.id) for draft in stuck),
+    )
+    return len(stuck)
 
 
 def _has_non_terminal_lottery(session: Session, lottery_type: str) -> bool:
@@ -813,37 +847,11 @@ def _active_deposits_match_onchain(
     return False
 
 
-async def _ensure_randomness_account(lottery: LotteryModel, vrf_client: VrfServiceClient) -> str:
-    existing = (lottery.randomness_account or "").strip()
-    if existing:
-        return existing
-    return await asyncio.to_thread(vrf_client.create_randomness_account)
-
-
-def _persist_randomness_account(session: Session, lottery: LotteryModel, randomness_account: str) -> None:
-    if lottery.randomness_account == randomness_account:
-        return
-    lottery.randomness_account = randomness_account
-    lottery.vrf_seed = None
-    session.commit()
-    session.refresh(lottery)
-
-
 def _mark_phase2_started(session: Session, lottery: LotteryModel) -> None:
     lottery.status = LotteryStatus.PHASE2STARTED
     lottery.second_phase_started_at = datetime.now(timezone.utc)
     session.commit()
     session.refresh(lottery)
-
-
-def _mark_vrf_binded(session: Session, lottery: LotteryModel) -> None:
-    changed = False
-    if lottery.status != LotteryStatus.VRF_BINDED:
-        lottery.status = LotteryStatus.VRF_BINDED
-        changed = True
-    if changed:
-        session.commit()
-        session.refresh(lottery)
 
 
 def _mark_vrf_fulfilled(
@@ -906,7 +914,6 @@ def _mark_closed(
 async def _close_empty_lottery(
     session: Session,
     lottery: LotteryModel,
-    vrf_client: VrfServiceClient,
     program: Program,
     lottery_pda: Pubkey,
     signer_pubkey: Pubkey,
@@ -918,10 +925,11 @@ async def _close_empty_lottery(
         signer_pubkey=signer_pubkey,
     )
 
+    # Nothing to close on the ORAO side: a request account is theirs, it is not
+    # closable, and the rent above the fulfilled size comes back by itself.
     randomness_account = (lottery.randomness_account or "").strip()
     if randomness_account:
         try:
-            await asyncio.to_thread(vrf_client.close_randomness_account, randomness_account)
             lottery.randomness_account = None
             lottery.vrf_seed = None
         except Exception:
@@ -941,31 +949,6 @@ async def _close_empty_lottery(
 async def _lottery_account_exists(client: AsyncClient, lottery_pda: Pubkey) -> bool:
     response = await client.get_account_info(lottery_pda, commitment="confirmed")
     return response.value is not None
-
-
-async def _wait_for_account_owner(
-    client: AsyncClient,
-    account: Pubkey,
-    expected_owner: Pubkey,
-    *,
-    timeout_seconds: float = 20.0,
-    poll_seconds: float = 0.5,
-) -> None:
-    deadline = asyncio.get_running_loop().time() + timeout_seconds
-    last_owner: Optional[Pubkey] = None
-
-    while asyncio.get_running_loop().time() < deadline:
-        response = await client.get_account_info(account, commitment="confirmed")
-        if response.value is not None:
-            last_owner = response.value.owner
-            if last_owner == expected_owner:
-                return
-        await asyncio.sleep(poll_seconds)
-
-    raise RuntimeError(
-        f"Account {account} was not visible with owner {expected_owner} "
-        f"within {timeout_seconds:g}s (last owner: {last_owner or 'missing'})"
-    )
 
 
 async def _initialize_lottery_onchain(
@@ -1005,80 +988,6 @@ async def _initialize_lottery_onchain(
     return str(signature)
 
 
-async def _start_second_phase(
-    program: Program,
-    lottery_pda: Pubkey,
-    signer_pubkey: Pubkey,
-    randomness_account: str,
-    weights_hash: bytes,
-) -> str:
-    signature = await program.rpc["start_second_phase"](
-        list(weights_hash),
-        _settings().phase2_initial_wait_seconds,
-        ctx=Context(
-            accounts={
-                "lottery": lottery_pda,
-                "admin": signer_pubkey,
-                "randomness_account_data": Pubkey.from_string(randomness_account),
-            }
-        ),
-    )
-    return str(signature)
-
-
-async def _bind_vrf_request(
-    program: Program,
-    lottery_pda: Pubkey,
-    signer_pubkey: Pubkey,
-    randomness_account: str,
-) -> str:
-    signature = await program.rpc["bind_vrf_request"](
-        ctx=Context(
-            accounts={
-                "lottery": lottery_pda,
-                "admin": signer_pubkey,
-                "randomness_account_data": Pubkey.from_string(randomness_account),
-            }
-        ),
-    )
-    return str(signature)
-
-
-async def _fulfill_randomness(
-    program: Program,
-    lottery_pda: Pubkey,
-    randomness_account: str,
-) -> str:
-    signature = await program.rpc["fulfill_randomness"](
-        ctx=Context(
-            accounts={
-                "lottery": lottery_pda,
-                "randomness_account_data": Pubkey.from_string(randomness_account),
-            }
-        ),
-    )
-    return str(signature)
-
-
-async def _retry_randomness(
-    program: Program,
-    lottery_pda: Pubkey,
-    signer_pubkey: Pubkey,
-    randomness_account: str,
-) -> str:
-    signature = await program.rpc["retry_randomness"](
-        None,
-        ctx=Context(
-            accounts={
-                "lottery": lottery_pda,
-                "admin": signer_pubkey,
-                "randomness_account_data": Pubkey.from_string(randomness_account),
-            }
-        ),
-    )
-    return str(signature)
-
-
 def _generate_emergency_seed() -> tuple[list[int], str]:
     seed = bytearray(os.urandom(32))
     seed[0] |= 0xF0
@@ -1086,11 +995,124 @@ def _generate_emergency_seed() -> tuple[list[int], str]:
     return list(seed), seed_hex
 
 
+async def _wait_for_lottery_account(
+    client: AsyncClient,
+    lottery_pda: Pubkey,
+    timeout_seconds: float = 20.0,
+    poll_seconds: float = 0.5,
+) -> None:
+    """Waits until the round account is readable after initialize.
+
+    The transaction is confirmed by then, but a read against another node can
+    still miss it, and the caller goes straight on to write the round into the
+    database as if it were there.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        response = await client.get_account_info(lottery_pda, commitment="confirmed")
+        if response.value is not None:
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"Lottery PDA {lottery_pda} did not appear within {timeout_seconds}s")
+        await asyncio.sleep(poll_seconds)
+
+
+async def _orao_treasury(client: AsyncClient) -> Pubkey:
+    """Where ORAO wants its fee paid.
+
+    Read from their network configuration each time rather than pinned here:
+    ORAO can move the treasury with `update_network`, and a stale constant would
+    fail every request from the moment they did.
+    """
+    response = await client.get_account_info(orao_vrf.network_state_address(), commitment="confirmed")
+    if response.value is None or response.value.data is None:
+        raise RuntimeError("ORAO network state account is missing; is the cluster right?")
+    return orao_vrf.parse_treasury(bytes(response.value.data))
+
+
+async def _recent_slot_entry(client: AsyncClient, back: int = 2) -> orao_vrf.SlotHashEntry:
+    """A slot and its hash, read from the same sysvar the program reads."""
+    response = await client.get_account_info(orao_vrf.SLOT_HASHES_SYSVAR, commitment="confirmed")
+    if response.value is None or response.value.data is None:
+        raise RuntimeError("SlotHashes sysvar is unreadable")
+    return orao_vrf.parse_slot_hashes(bytes(response.value.data), back=back)
+
+
+async def _read_orao_request(client: AsyncClient, request: Pubkey) -> Optional[orao_vrf.RequestState]:
+    """The state of a randomness request, or None while the account is absent."""
+    response = await client.get_account_info(request, commitment="confirmed")
+    if response.value is None or response.value.data is None:
+        return None
+    return orao_vrf.parse_request(bytes(response.value.data))
+
+
+async def _start_second_phase(
+    program: Program,
+    client: AsyncClient,
+    lottery_pda: Pubkey,
+    signer_pubkey: Pubkey,
+    weights_hash: bytes,
+) -> tuple[str, Pubkey, int]:
+    """Closes deposits and files the randomness request, in one transaction.
+
+    The seed is derived here only so the request account can be named in the
+    transaction. The program derives it again from the same three values and
+    refuses anything else, so a disagreement fails the round rather than
+    quietly using ours.
+    """
+    entry = await _recent_slot_entry(client)
+    force = orao_vrf.derive_force(lottery_pda, weights_hash, entry.hash)
+    request = orao_vrf.request_address(force)
+    treasury = await _orao_treasury(client)
+
+    signature = await program.rpc["start_second_phase"](
+        list(weights_hash),
+        entry.slot,
+        ctx=Context(
+            accounts={
+                "lottery": lottery_pda,
+                "admin": signer_pubkey,
+                "vrf_request": request,
+                "vrf_network_state": orao_vrf.network_state_address(),
+                "vrf_treasury": treasury,
+                "vrf_program": orao_vrf.ORAO_PROGRAM_ID,
+                "recent_slothashes": orao_vrf.SLOT_HASHES_SYSVAR,
+                "system_program": SYSTEM_PROGRAM_ID,
+            }
+        ),
+    )
+    return str(signature), request, entry.slot
+
+
+async def _fulfill_randomness(
+    program: Program,
+    lottery_pda: Pubkey,
+    vrf_request: Pubkey,
+) -> str:
+    """Takes the randomness into the round. Needs no admin signature."""
+    signature = await program.rpc["fulfill_randomness"](
+        ctx=Context(
+            accounts={
+                "lottery": lottery_pda,
+                "vrf_request": vrf_request,
+            }
+        ),
+    )
+    return str(signature)
+
+
 async def _emergency_fulfill_randomness(
     program: Program,
     lottery_pda: Pubkey,
     signer_pubkey: Pubkey,
+    vrf_request: Pubkey,
 ) -> tuple[str, str]:
+    """The way out when ORAO has stopped answering.
+
+    The request account goes in because the program reads it and refuses the
+    moment randomness is there. So this cannot turn into a second draw even if
+    the worker asked for one by mistake.
+    """
     seed_bytes, seed_hex = _generate_emergency_seed()
     signature = await program.rpc["emergency_fulfill_randomness"](
         seed_bytes,
@@ -1098,6 +1120,7 @@ async def _emergency_fulfill_randomness(
             accounts={
                 "lottery": lottery_pda,
                 "admin": signer_pubkey,
+                "vrf_request": vrf_request,
             }
         ),
     )
@@ -1182,15 +1205,14 @@ def _parse_onchain_lottery_account(raw_data: bytes) -> OnchainLotteryState:
     deposits_count = int.from_bytes(take(8), byteorder="little", signed=False)
     total_deposited_lamports = int.from_bytes(take(16), byteorder="little", signed=False)
     take(32)  # weights_hash
-    vrf_ready_ts = int.from_bytes(take(8), byteorder="little", signed=True)
+    vrf_requested_ts = int.from_bytes(take(8), byteorder="little", signed=True)
     vrf_seed = take(32)
     vrf_seed_hex = vrf_seed.hex() if vrf_seed != bytes(32) else None
     vrf_called = bool(int.from_bytes(take(1), byteorder="little", signed=False))
     randomness_account = str(Pubkey.from_bytes(take(32)))
-    vrf_phase2_slot = int.from_bytes(take(8), byteorder="little", signed=False)
-    vrf_retry_count = int.from_bytes(take(1), byteorder="little", signed=False)
-    vrf_request_seed_slot = int.from_bytes(take(8), byteorder="little", signed=False)
-    take(32)  # vrf_request_seed_slothash
+    vrf_force = take(32)
+    vrf_seed_slot = int.from_bytes(take(8), byteorder="little", signed=False)
+    take(32)  # vrf_algorithm_hash
 
     return OnchainLotteryState(
         status_raw=status_raw,
@@ -1198,15 +1220,14 @@ def _parse_onchain_lottery_account(raw_data: bytes) -> OnchainLotteryState:
         fee_bps=fee_bps,
         deposits_count=deposits_count,
         total_deposited_lamports=total_deposited_lamports,
-        vrf_ready_ts=vrf_ready_ts,
+        vrf_requested_ts=vrf_requested_ts,
         vrf_seed_hex=vrf_seed_hex,
         vrf_called=vrf_called,
         randomness_account=randomness_account,
+        vrf_force=vrf_force,
+        vrf_seed_slot=vrf_seed_slot,
         wallet_fee=wallet_fee,
         wallet_keeper=wallet_keeper,
-        vrf_phase2_slot=vrf_phase2_slot,
-        vrf_retry_count=vrf_retry_count,
-        vrf_request_seed_slot=vrf_request_seed_slot,
     )
 
 
@@ -1218,47 +1239,54 @@ async def _fetch_onchain_lottery_state(client: AsyncClient, lottery_pda: Pubkey)
     return _parse_onchain_lottery_account(raw_data)
 
 
-def _extract_randomness_field(data: dict[str, object], *keys: str) -> int:
-    for key in keys:
-        value = data.get(key)
-        if value is None:
-            continue
-        try:
-            return int(str(value).strip())
-        except Exception:
-            continue
-    return 0
+def _exception_chain(exc: BaseException) -> list[BaseException]:
+    """The exception and everything it was raised from.
+
+    solana-py wraps the real failure and its own `str()` is empty, so looking at
+    the outermost message alone tells you nothing. The cause carries the HTTP
+    status.
+    """
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    current: Optional[BaseException] = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    return chain
 
 
-def _parse_randomness_state(payload: dict[str, object]) -> RandomnessState:
-    data = payload.get("data")
-    if not isinstance(data, dict):
-        return RandomnessState(seed_slot=0, reveal_slot=0)
-    return RandomnessState(
-        seed_slot=_extract_randomness_field(data, "seed_slot", "seedSlot"),
-        reveal_slot=_extract_randomness_field(data, "reveal_slot", "revealSlot"),
-    )
+def _is_transport_exception(exc: BaseException) -> bool:
+    """A failure of the connection rather than of the round, by type.
 
-
-def _extract_randomness_value_hex(payload: dict[str, object]) -> Optional[str]:
-    candidate_keys = ("value_hex", "valueHex", "result_hex", "resultHex")
-    for key in candidate_keys:
-        value = payload.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-
-    data = payload.get("data")
-    if isinstance(data, dict):
-        for key in candidate_keys:
-            value = data.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-
-    return None
+    A 429 from the RPC provider arrives as an empty SolanaRpcException wrapping
+    an httpx error. A classifier reading the message saw an empty string, called
+    it unknown, and the draft was left blocked for a human — which on the devnet
+    stand meant no new rounds at all until somebody noticed hours later.
+    """
+    if _httpx is not None and isinstance(exc, _httpx.TransportError):
+        return True
+    if _SolanaRpcException is not None and isinstance(exc, _SolanaRpcException):
+        return True
+    return isinstance(exc, (asyncio.TimeoutError, ConnectionError, OSError))
 
 
 def _phase2_error_kind(exc: Exception) -> str:
-    message = str(exc).lower()
+    chain = _exception_chain(exc)
+    # When the provider answered at all, its status decides: 429 and the 5xx
+    # family are the connection, everything else is us or the program and
+    # deserves to be read rather than retried blindly.
+    statuses = [
+        item.response.status_code
+        for item in chain
+        if _httpx is not None and isinstance(item, _httpx.HTTPStatusError)
+    ]
+    if statuses:
+        if any(status == 429 or status >= 500 for status in statuses):
+            return "transport"
+    elif any(_is_transport_exception(item) for item in chain):
+        return "transport"
+    message = " ".join(str(item) for item in chain).lower()
 
     transport_markers = (
         "timeout",
@@ -1323,38 +1351,6 @@ def _attempt_slot_open(
     if elapsed_seconds >= spacing_seconds * max_attempts:
         return False
     return elapsed_seconds % spacing_seconds == 0
-
-
-def _request_randomness_due(randomness_account: str, now_utc: datetime) -> bool:
-    state = _REQUEST_RANDOMNESS_STATE.get(randomness_account)
-    if not state:
-        return True
-    attempt_count, last_attempt = state
-    settings = _settings()
-    backoff_seconds = min(
-        settings.phase2_request_retry_backoff_max_seconds,
-        settings.phase2_request_retry_interval_seconds * (2 ** max(0, attempt_count - 1)),
-    )
-    if (now_utc - last_attempt).total_seconds() < backoff_seconds:
-        return False
-    return True
-
-
-async def _request_randomness_if_due(
-    randomness_account: str,
-    vrf_client: VrfServiceClient,
-    now_utc: datetime,
-) -> bool:
-    if not _request_randomness_due(randomness_account, now_utc):
-        return False
-    try:
-        await asyncio.to_thread(vrf_client.request_randomness, randomness_account)
-    except Exception:
-        previous_count = _REQUEST_RANDOMNESS_STATE.get(randomness_account, (0, now_utc))[0]
-        _REQUEST_RANDOMNESS_STATE[randomness_account] = (previous_count + 1, now_utc)
-        raise
-    _REQUEST_RANDOMNESS_STATE[randomness_account] = (0, now_utc)
-    return True
 
 
 def _buyer_start_due(lottery_id: int, now_utc: datetime) -> bool:
@@ -1479,39 +1475,6 @@ async def _start_buyer_if_due(
     )
 
 
-def _latest_retry_event_created_at(
-    session: Session,
-    lottery_pubkey: str,
-    retry_count: int,
-) -> Optional[datetime]:
-    events = (
-        session.query(SmartContractEventModel)
-        .filter(SmartContractEventModel.event_name == "VrfRetryScheduled")
-        .order_by(SmartContractEventModel.created_at.desc())
-        .limit(64)
-        .all()
-    )
-    for event in events:
-        data = event.data
-        if not isinstance(data, dict):
-            continue
-        if str(data.get("lottery") or "").strip() != lottery_pubkey:
-            continue
-        try:
-            event_retry_count = int(data.get("retry_count"))
-        except Exception:
-            continue
-        if event_retry_count != retry_count:
-            continue
-        created_at = event.created_at
-        if created_at is None:
-            return None
-        if created_at.tzinfo is None:
-            return created_at.replace(tzinfo=timezone.utc)
-        return created_at.astimezone(timezone.utc)
-    return None
-
-
 def _latest_event_created_at(
     session: Session,
     event_names: tuple[str, ...],
@@ -1559,9 +1522,6 @@ def _sync_phase2_metadata_from_onchain(
     if onchain.vrf_seed_hex and lottery.vrf_seed != onchain.vrf_seed_hex:
         lottery.vrf_seed = onchain.vrf_seed_hex
         changed = True
-    if onchain.vrf_request_seed_slot > 0 and lottery.status == LotteryStatus.PHASE2STARTED:
-        lottery.status = LotteryStatus.VRF_BINDED
-        changed = True
     if onchain.status == "ReadyToDraw" and lottery.status != LotteryStatus.VRF_FULFILLED:
         lottery.status = LotteryStatus.VRF_FULFILLED
         changed = True
@@ -1569,26 +1529,6 @@ def _sync_phase2_metadata_from_onchain(
         lottery.status = LotteryStatus.PROCEEDING_PURCHASES
         if lottery.proceeding_purchases_started_at is None:
             lottery.proceeding_purchases_started_at = datetime.now(timezone.utc)
-        changed = True
-    if changed:
-        session.commit()
-        session.refresh(lottery)
-
-
-def _sync_retry_randomness_account(
-    session: Session,
-    lottery: LotteryModel,
-    randomness_account: str,
-) -> None:
-    changed = False
-    if lottery.randomness_account != randomness_account:
-        lottery.randomness_account = randomness_account
-        changed = True
-    if lottery.status != LotteryStatus.PHASE2STARTED:
-        lottery.status = LotteryStatus.PHASE2STARTED
-        changed = True
-    if lottery.vrf_seed:
-        lottery.vrf_seed = None
         changed = True
     if changed:
         session.commit()
@@ -1661,107 +1601,6 @@ def _list_abandoned_initialize_candidates(session: Session) -> list[AbandonedIni
     ]
 
 
-async def _try_bind_vrf_request(
-    session: Session,
-    lottery: LotteryModel,
-    program: Program,
-    lottery_pda: Pubkey,
-    signer_pubkey: Pubkey,
-    randomness_account: str,
-) -> None:
-    signature = await _bind_vrf_request(program, lottery_pda, signer_pubkey, randomness_account)
-    _mark_vrf_binded(session, lottery)
-    logging.info(
-        "VRF bind succeeded (lottery_id=%s, tx=%s, randomness_account=%s)",
-        lottery.id,
-        signature,
-        randomness_account,
-    )
-
-
-async def _try_reveal_and_fulfill(
-    session: Session,
-    lottery: LotteryModel,
-    program: Program,
-    lottery_pda: Pubkey,
-    randomness_account: str,
-    vrf_client: VrfServiceClient,
-    randomness_state: RandomnessState,
-    randomness_payload: dict[str, object],
-) -> None:
-    if not lottery.vrf_seed:
-        payload_seed = _normalize_seed_hex(_extract_randomness_value_hex(randomness_payload))
-        if payload_seed:
-            lottery.vrf_seed = payload_seed
-            session.commit()
-            session.refresh(lottery)
-
-    if randomness_state.reveal_slot <= 0:
-        reveal_signature, value_hex = await asyncio.to_thread(vrf_client.reveal_randomness, randomness_account)
-        normalized_seed = _normalize_seed_hex(value_hex)
-        if normalized_seed and lottery.vrf_seed != normalized_seed:
-            lottery.vrf_seed = normalized_seed
-            session.commit()
-            session.refresh(lottery)
-        logging.info(
-            "VRF reveal succeeded (lottery_id=%s, randomness_account=%s, reveal_signature=%s)",
-            lottery.id,
-            randomness_account,
-            reveal_signature,
-        )
-
-    fulfill_signature = await _fulfill_randomness(program, lottery_pda, randomness_account)
-    _mark_vrf_fulfilled(session, lottery, _normalize_seed_hex(lottery.vrf_seed), offchain=False)
-    logging.info(
-        "VRF fulfill succeeded (lottery_id=%s, tx=%s, randomness_account=%s)",
-        lottery.id,
-        fulfill_signature,
-        randomness_account,
-    )
-
-
-async def _execute_retry_randomness(
-    session: Session,
-    lottery: LotteryModel,
-    client: AsyncClient,
-    program: Program,
-    lottery_pda: Pubkey,
-    signer_pubkey: Pubkey,
-    vrf_client: VrfServiceClient,
-    current_retry_count: int,
-) -> None:
-    new_randomness_account = await asyncio.to_thread(vrf_client.create_randomness_account)
-    try:
-        await _wait_for_account_owner(
-            client,
-            Pubkey.from_string(new_randomness_account),
-            SWITCHBOARD_ON_DEMAND_PROGRAM_ID,
-        )
-        retry_signature = await _retry_randomness(program, lottery_pda, signer_pubkey, new_randomness_account)
-    except Exception:
-        try:
-            await asyncio.to_thread(vrf_client.close_randomness_account, new_randomness_account)
-        except Exception:
-            logging.exception(
-                "Failed to clean up unused randomness account after retry transaction failure "
-                "(lottery_id=%s, randomness_account=%s)",
-                lottery.id,
-                new_randomness_account,
-            )
-        raise
-    _sync_retry_randomness_account(session, lottery, new_randomness_account)
-    await asyncio.to_thread(vrf_client.request_randomness, new_randomness_account)
-    retry_started_at = datetime.now(timezone.utc)
-    _REQUEST_RANDOMNESS_STATE[new_randomness_account] = (0, retry_started_at)
-    _RETRY_WINDOW_STARTS[(lottery.id, current_retry_count + 1)] = retry_started_at
-    logging.info(
-        "VRF retry scheduled (lottery_id=%s, tx=%s, randomness_account=%s)",
-        lottery.id,
-        retry_signature,
-        new_randomness_account,
-    )
-
-
 async def _execute_emergency_fulfill(
     session: Session,
     lottery: LotteryModel,
@@ -1810,6 +1649,30 @@ async def _process_abandoned_initialize_candidate(
 
         lottery_pda = _lottery_pda_for_signer(candidate.lottery_id, signer_pubkey)
         if not await _lottery_account_exists(client, lottery_pda):
+            # After a while there is nothing left to wait for: the blockhash the
+            # initialize was signed with is long dead, so the transaction can no
+            # longer land. Closing the row stops a read of the chain per row per
+            # cycle, forever. A dozen of them on the devnet stand was a steady
+            # drip into the rate limit we then ran out of.
+            reference = (
+                getattr(lottery, "initialize_abandoned_at", None)
+                or getattr(lottery, "created_at", None)
+            )
+            age_seconds = None
+            if reference is not None:
+                if reference.tzinfo is None:
+                    reference = reference.replace(tzinfo=timezone.utc)
+                age_seconds = (datetime.now(timezone.utc) - reference).total_seconds()
+            if age_seconds is not None and age_seconds > _ABANDONED_INIT_GIVE_UP_SECONDS:
+                _mark_closed(session, lottery, close_reason="initialize_never_landed")
+                logging.info(
+                    "Abandoned initialize cleanup gave up: the transaction never reached the chain "
+                    "(lottery_id=%s, pda=%s, age_minutes=%s)",
+                    candidate.lottery_id,
+                    lottery_pda,
+                    int(age_seconds // 60),
+                )
+                return
             _throttled_log(
                 logging.INFO,
                 f"abandoned-init-missing-pda:{candidate.lottery_id}",
@@ -1890,7 +1753,6 @@ async def _process_phase1_candidate(
     client: AsyncClient,
     program: Program,
     signer_pubkey: Pubkey,
-    vrf_client: VrfServiceClient,
 ) -> None:
     session = SessionLocal()
     lock_acquired = False
@@ -1980,7 +1842,6 @@ async def _process_phase1_candidate(
             await _close_empty_lottery(
                 session=session,
                 lottery=lottery,
-                vrf_client=vrf_client,
                 program=program,
                 lottery_pda=lottery_pda,
                 signer_pubkey=signer_pubkey,
@@ -2014,24 +1875,19 @@ async def _process_phase1_candidate(
             )
             return
 
-        randomness_account = await _ensure_randomness_account(lottery, vrf_client)
-        _persist_randomness_account(session, lottery, randomness_account)
-        await _wait_for_account_owner(
-            client,
-            Pubkey.from_string(randomness_account),
-            SWITCHBOARD_ON_DEMAND_PROGRAM_ID,
-        )
-
-        signature = await _start_second_phase(
+        # One transaction: the round closes and the randomness is asked for
+        # together, so there is no window where deposits are shut and nothing
+        # has been requested.
+        signature, request, seed_slot = await _start_second_phase(
             program=program,
+            client=client,
             lottery_pda=lottery_pda,
             signer_pubkey=signer_pubkey,
-            randomness_account=randomness_account,
             weights_hash=weights_hash,
         )
+        randomness_account = str(request)
+        lottery.randomness_account = randomness_account
         _mark_phase2_started(session, lottery)
-        await asyncio.to_thread(vrf_client.request_randomness, randomness_account)
-        _REQUEST_RANDOMNESS_STATE[randomness_account] = (0, datetime.now(timezone.utc))
         logging.info(
             "Phase 2 auto-start succeeded (lottery_id=%s, tx=%s, randomness_account=%s, second_phase_started_at=%s)",
             candidate.lottery_id,
@@ -2057,7 +1913,6 @@ async def _process_phase2_candidate(
     client: AsyncClient,
     program: Program,
     signer_pubkey: Pubkey,
-    vrf_client: VrfServiceClient,
 ) -> None:
     settings = _settings()
     session = SessionLocal()
@@ -2097,226 +1952,66 @@ async def _process_phase2_candidate(
         if onchain.status != "PendingVrf" or onchain.vrf_called:
             return
 
-        randomness_account = onchain.randomness_account.strip() or (lottery.randomness_account or "").strip()
-        if not randomness_account:
-            raise RuntimeError(f"Phase 2 lottery {candidate.lottery_id} has no randomness account")
-        if lottery.randomness_account != randomness_account:
-            _persist_randomness_account(session, lottery, randomness_account)
-
-        now_utc = datetime.now(timezone.utc)
-        ready_at = datetime.fromtimestamp(onchain.vrf_ready_ts, tz=timezone.utc)
-
-        randomness_payload = await asyncio.to_thread(vrf_client.get_randomness_account_data, randomness_account)
-        randomness_state = _parse_randomness_state(randomness_payload)
-        payload_seed = _normalize_seed_hex(_extract_randomness_value_hex(randomness_payload))
-        if payload_seed and lottery.vrf_seed != payload_seed:
-            lottery.vrf_seed = payload_seed
+        request = Pubkey.from_string(onchain.randomness_account.strip())
+        if lottery.randomness_account != str(request):
+            lottery.randomness_account = str(request)
             session.commit()
             session.refresh(lottery)
-        request_bound = onchain.vrf_request_seed_slot > 0
 
-        if now_utc < ready_at:
-            if not request_bound:
-                if randomness_state.seed_slot > onchain.vrf_phase2_slot:
-                    try:
-                        await _try_bind_vrf_request(
-                            session=session,
-                            lottery=lottery,
-                            program=program,
-                            lottery_pda=lottery_pda,
-                            signer_pubkey=signer_pubkey,
-                            randomness_account=randomness_account,
-                        )
-                    except Exception as exc:
-                        kind = _phase2_error_kind(exc)
-                        if kind in {"transport", "state"}:
-                            logging.warning(
-                                "VRF bind attempt deferred (lottery_id=%s, randomness_account=%s, kind=%s, error=%s)",
-                                candidate.lottery_id,
-                                randomness_account,
-                                kind,
-                                exc,
-                            )
-                            return
-                        raise
-                else:
-                    requested = await _request_randomness_if_due(randomness_account, vrf_client, now_utc)
-                    if requested:
-                        logging.info(
-                            "VRF request re-issued before bind deadline (lottery_id=%s, randomness_account=%s)",
-                            candidate.lottery_id,
-                            randomness_account,
-                        )
-            return
-
-        if onchain.vrf_retry_count == 0 and not request_bound:
-            if onchain.vrf_retry_count < MAX_VRF_RETRIES_ONCHAIN:
-                await _execute_retry_randomness(
-                    session=session,
-                    lottery=lottery,
-                    client=client,
-                    program=program,
-                    lottery_pda=lottery_pda,
-                    signer_pubkey=signer_pubkey,
-                    vrf_client=vrf_client,
-                    current_retry_count=onchain.vrf_retry_count,
-                )
-            else:
-                await _execute_emergency_fulfill(
-                    session=session,
-                    lottery=lottery,
-                    program=program,
-                    lottery_pda=lottery_pda,
-                    signer_pubkey=signer_pubkey,
-                )
-            return
-
-        if onchain.vrf_retry_count == 0:
-            window_start = ready_at
-            fulfill_due = randomness_state.reveal_slot > 0 and _attempt_slot_open(
-                window_start=window_start,
-                now_utc=now_utc,
-                spacing_seconds=1,
-                max_attempts=settings.phase2_initial_fulfill_window_seconds,
+        state = await _read_orao_request(client, request)
+        if state is not None and state.seed != onchain.vrf_force:
+            # The request account is a PDA of the seed, so this cannot happen
+            # by accident. If it ever did, drawing from it would be drawing
+            # from somebody else's randomness.
+            raise RuntimeError(
+                f"ORAO request {request} carries a seed this round did not ask for "
+                f"(lottery_id={candidate.lottery_id})"
             )
-            reveal_due = _attempt_slot_open(
-                window_start=window_start,
-                now_utc=now_utc,
-                spacing_seconds=2,
-                max_attempts=settings.phase2_initial_fulfill_attempts,
+
+        if state is not None and state.fulfilled:
+            signature = await _fulfill_randomness(program, lottery_pda, request)
+            seed_hex = orao_vrf.fold_randomness(state.randomness).hex()
+            _mark_vrf_fulfilled(session, lottery, seed_hex, offchain=False)
+            logging.info(
+                "Draw taken from ORAO (lottery_id=%s, tx=%s, request=%s, seed=%s)",
+                candidate.lottery_id,
+                signature,
+                request,
+                seed_hex,
             )
-            if fulfill_due or reveal_due:
-                try:
-                    await _try_reveal_and_fulfill(
-                        session=session,
-                        lottery=lottery,
-                        program=program,
-                        lottery_pda=lottery_pda,
-                        randomness_account=randomness_account,
-                        vrf_client=vrf_client,
-                        randomness_state=randomness_state,
-                        randomness_payload=randomness_payload,
-                    )
-                    return
-                except Exception as exc:
-                    kind = _phase2_error_kind(exc)
-                    if kind in {"transport", "state"}:
-                        logging.warning(
-                            "Initial reveal/fulfill attempt deferred (lottery_id=%s, randomness_account=%s, kind=%s, error=%s)",
-                            candidate.lottery_id,
-                            randomness_account,
-                            kind,
-                            exc,
-                        )
-                    else:
-                        raise
-
-            if now_utc >= window_start + timedelta(seconds=settings.phase2_initial_fulfill_window_seconds):
-                await _execute_retry_randomness(
-                    session=session,
-                    lottery=lottery,
-                    client=client,
-                    program=program,
-                    lottery_pda=lottery_pda,
-                    signer_pubkey=signer_pubkey,
-                    vrf_client=vrf_client,
-                    current_retry_count=onchain.vrf_retry_count,
-                )
             return
 
-        retry_started_at = _latest_retry_event_created_at(session, str(lottery_pda), onchain.vrf_retry_count)
-        if retry_started_at is None:
-            retry_started_at = _RETRY_WINDOW_STARTS.get((candidate.lottery_id, onchain.vrf_retry_count))
-        if retry_started_at is None:
-            retry_started_at = now_utc
-
-        if now_utc >= retry_started_at + timedelta(seconds=settings.phase2_retry_window_seconds):
-            if onchain.vrf_retry_count < MAX_VRF_RETRIES_ONCHAIN:
-                await _execute_retry_randomness(
-                    session=session,
-                    lottery=lottery,
-                    client=client,
-                    program=program,
-                    lottery_pda=lottery_pda,
-                    signer_pubkey=signer_pubkey,
-                    vrf_client=vrf_client,
-                    current_retry_count=onchain.vrf_retry_count,
-                )
-            else:
-                await _execute_emergency_fulfill(
-                    session=session,
-                    lottery=lottery,
-                    program=program,
-                    lottery_pda=lottery_pda,
-                    signer_pubkey=signer_pubkey,
-                )
+        # Still waiting. ORAO answers in about a second, so anything past the
+        # delay means the network is down rather than busy.
+        now_utc = datetime.now(timezone.utc)
+        requested_at = datetime.fromtimestamp(onchain.vrf_requested_ts, tz=timezone.utc)
+        waited = (now_utc - requested_at).total_seconds()
+        if waited < EMERGENCY_FULFILL_DELAY_SECONDS:
+            _throttled_log(
+                logging.INFO,
+                f"vrf-waiting:{candidate.lottery_id}",
+                "Waiting for ORAO (lottery_id=%s, request=%s, waited=%ss)",
+                candidate.lottery_id,
+                request,
+                int(waited),
+            )
             return
 
-        if not request_bound:
-            if randomness_state.seed_slot > onchain.vrf_phase2_slot:
-                try:
-                    await _try_bind_vrf_request(
-                        session=session,
-                        lottery=lottery,
-                        program=program,
-                        lottery_pda=lottery_pda,
-                        signer_pubkey=signer_pubkey,
-                        randomness_account=randomness_account,
-                    )
-                except Exception as exc:
-                    kind = _phase2_error_kind(exc)
-                    if kind in {"transport", "state"}:
-                        logging.warning(
-                            "Retry bind attempt deferred (lottery_id=%s, retry_count=%s, randomness_account=%s, kind=%s, error=%s)",
-                            candidate.lottery_id,
-                            onchain.vrf_retry_count,
-                            randomness_account,
-                            kind,
-                            exc,
-                        )
-                        return
-                    raise
-            else:
-                requested = await _request_randomness_if_due(randomness_account, vrf_client, now_utc)
-                if requested:
-                    logging.info(
-                        "VRF request re-issued after retry (lottery_id=%s, retry_count=%s, randomness_account=%s)",
-                        candidate.lottery_id,
-                        onchain.vrf_retry_count,
-                        randomness_account,
-                    )
-            return
-
-        if _attempt_slot_open(
-            window_start=retry_started_at,
-            now_utc=now_utc,
-            spacing_seconds=1,
-            max_attempts=settings.phase2_retry_window_seconds,
-        ):
-            try:
-                await _try_reveal_and_fulfill(
-                    session=session,
-                    lottery=lottery,
-                    program=program,
-                    lottery_pda=lottery_pda,
-                    randomness_account=randomness_account,
-                    vrf_client=vrf_client,
-                    randomness_state=randomness_state,
-                    randomness_payload=randomness_payload,
-                )
-            except Exception as exc:
-                kind = _phase2_error_kind(exc)
-                if kind in {"transport", "state"}:
-                    logging.warning(
-                        "Retry reveal/fulfill attempt deferred (lottery_id=%s, retry_count=%s, randomness_account=%s, kind=%s, error=%s)",
-                        candidate.lottery_id,
-                        onchain.vrf_retry_count,
-                        randomness_account,
-                        kind,
-                        exc,
-                    )
-                    return
-                raise
+        # The program checks this again and refuses if randomness has arrived
+        # in the meantime, so the worst this can do is fail.
+        signature, seed_hex = await _emergency_fulfill_randomness(
+            program, lottery_pda, signer_pubkey, request
+        )
+        _mark_vrf_fulfilled(session, lottery, seed_hex, offchain=True)
+        logging.error(
+            "ORAO did not answer within %ss; the round was drawn with a local seed "
+            "(lottery_id=%s, tx=%s, request=%s). This is visible on the verification "
+            "page as randomness_source=emergency.",
+            EMERGENCY_FULFILL_DELAY_SECONDS,
+            candidate.lottery_id,
+            signature,
+            request,
+        )
     except Exception:
         session.rollback()
         raise
@@ -2486,6 +2181,7 @@ async def _autostart_lottery_type(
     lottery_id: Optional[int] = None
     transaction_submitted = False
     try:
+        _release_stuck_drafts(session, lottery_type, datetime.now(timezone.utc))
         was_cycle_enabled = is_cycle_enabled(session, lottery_type)
         has_blocking_lottery = _has_non_terminal_lottery(session, lottery_type)
         cycle_control = reconcile_hype_countdown(
@@ -2573,13 +2269,7 @@ async def _autostart_lottery_type(
             wallet_keeper=wallet_keeper,
         )
         transaction_submitted = True
-        await _wait_for_account_owner(
-            client,
-            lottery_pda,
-            Pubkey.from_string(settings.lottery_program_id),
-            timeout_seconds=20.0,
-            poll_seconds=0.5,
-        )
+        await _wait_for_lottery_account(client, lottery_pda)
 
         lottery.status = LotteryStatus.CREATED
         session.commit()
@@ -2602,30 +2292,32 @@ async def _autostart_lottery_type(
             ).first()
             if draft is not None:
                 kind = _phase2_error_kind(exc)
-                if kind == "transport":
-                    now_utc = datetime.now(timezone.utc)
-                    draft.status = LotteryStatus.INITIALIZE_ABANDONED
-                    draft.close_reason = "initialize_abandoned"
-                    draft.initialize_abandoned_at = now_utc
-                    draft.initialize_abandoned_error = str(exc)[:1000]
-                    session.commit()
-                    logging.warning(
-                        "Lottery autostart initialize result is unknown after transport error; "
-                        "marking attempt as abandoned so the next cycle can start "
-                        "(lottery_id=%s, lottery_type=%s, error=%s)",
-                        lottery_id,
-                        lottery_type,
-                        exc,
-                    )
-                else:
-                    logging.error(
-                        "Lottery autostart failed before confirmed submission; keeping draft blocked "
-                        "for manual inspection (lottery_id=%s, lottery_type=%s, kind=%s, error=%s)",
-                        lottery_id,
-                        lottery_type,
-                        kind,
-                        exc,
-                    )
+                # The draft is released whatever went wrong. Nothing was
+                # submitted, so there is nothing to protect, and a draft left in
+                # place stops every following round: the status is not terminal
+                # and the cycle reads it as a round in progress. Keeping one for
+                # a human to look at cost the devnet stand a day of silence.
+                now_utc = datetime.now(timezone.utc)
+                draft.status = LotteryStatus.INITIALIZE_ABANDONED
+                draft.close_reason = "initialize_abandoned"
+                draft.initialize_abandoned_at = now_utc
+                # The type, not only the message: solana-py wrappers print as an
+                # empty string and the log said `error=` and nothing else.
+                draft.initialize_abandoned_error = f"{type(exc).__name__}: {exc}".strip()[:1000]
+                session.commit()
+                # A connection that blinked is routine and goes out as a warning.
+                # Anything else is worth waking someone for, and error level is
+                # what reaches the alert channel.
+                logging.log(
+                    logging.WARNING if kind == "transport" else logging.ERROR,
+                    "Lottery autostart failed before submission; draft abandoned so the next cycle "
+                    "can start (lottery_id=%s, lottery_type=%s, kind=%s, error=%s: %s)",
+                    lottery_id,
+                    lottery_type,
+                    kind,
+                    type(exc).__name__,
+                    exc,
+                )
         raise
     finally:
         session.close()
@@ -2819,7 +2511,6 @@ async def _run_iteration(
                     client,
                     runtime.program,
                     runtime.signer_pubkey,
-                    runtime.vrf_client,
                 )
         except Exception as exc:  # noqa: BLE001
             logging.exception("Phase 2 auto-start failed (lottery_id=%s): %s", candidate.lottery_id, exc)
@@ -2833,7 +2524,6 @@ async def _run_iteration(
                     client,
                     runtime.program,
                     runtime.signer_pubkey,
-                    runtime.vrf_client,
                 )
         except Exception as exc:  # noqa: BLE001
             logging.exception("Phase 2 automation failed (lottery_id=%s): %s", candidate.lottery_id, exc)
@@ -2871,7 +2561,6 @@ async def main() -> None:
 
     signers = _load_signer_keypairs()
     signer_pubkeys = [signer.pubkey() for signer in signers]
-    vrf_configs = _load_admin_vrf_config()
     signer_pubkey_strings = {str(pubkey) for pubkey in signer_pubkeys}
     configured_pubkeys = set(configured_admin_pubkeys(settings))
     missing_admin_signers = [
@@ -2891,12 +2580,6 @@ async def main() -> None:
             "Lifecycle signer pubkeys are missing from LOTTERY_ADMIN_PUBKEYS: %s. "
             "Add them so backend and event reconciliation can resolve their lotteries.",
             ",".join(unlisted_signers),
-        )
-    unknown_vrf_configs = sorted(set(vrf_configs) - signer_pubkey_strings)
-    if unknown_vrf_configs:
-        logging.warning(
-            "Per-admin VRF config has no matching lifecycle signer: %s",
-            ",".join(unknown_vrf_configs),
         )
     stop_event = asyncio.Event()
     _install_signal_handlers(stop_event)
@@ -2918,16 +2601,11 @@ async def main() -> None:
             AdminRuntime(
                 signer_pubkey=signer.pubkey(),
                 program=_load_program(client, signer),
-                vrf_client=_build_vrf_client(signer.pubkey(), vrf_configs),
             )
             for signer in signers
         ]
         for runtime in runtimes:
-            logging.info(
-                "Lifecycle admin runtime ready (signer=%s, vrf_service=%s)",
-                runtime.signer_pubkey,
-                runtime.vrf_client.base_url,
-            )
+            logging.info("Lifecycle admin runtime ready (signer=%s)", runtime.signer_pubkey)
         while not stop_event.is_set():
             try:
                 await _run_iteration(client, runtimes)

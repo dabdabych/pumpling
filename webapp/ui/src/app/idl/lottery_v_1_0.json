@@ -8,36 +8,6 @@
   },
   "instructions": [
     {
-      "name": "bind_vrf_request",
-      "discriminator": [
-        156,
-        207,
-        104,
-        99,
-        56,
-        8,
-        151,
-        226
-      ],
-      "accounts": [
-        {
-          "name": "lottery",
-          "writable": true
-        },
-        {
-          "name": "admin",
-          "signer": true,
-          "relations": [
-            "lottery"
-          ]
-        },
-        {
-          "name": "randomness_account_data"
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "close_lottery",
       "discriminator": [
         253,
@@ -160,6 +130,14 @@
     },
     {
       "name": "emergency_fulfill_randomness",
+      "docs": [
+        "The way out if ORAO itself stops answering.",
+        "",
+        "It cannot be used to dislike a result. The program reads the request",
+        "account and refuses the moment randomness is there, so the only state",
+        "this instruction accepts is one an outsider can check: the wait has gone",
+        "by and the request is still empty."
+      ],
       "discriminator": [
         44,
         138,
@@ -181,6 +159,14 @@
           "relations": [
             "lottery"
           ]
+        },
+        {
+          "name": "vrf_request",
+          "docs": [
+            "The request must be produced for inspection: the handler refuses once",
+            "ORAO has answered, and it cannot tell without reading it.",
+            ""
+          ]
         }
       ],
       "args": [
@@ -197,6 +183,13 @@
     },
     {
       "name": "fulfill_randomness",
+      "docs": [
+        "Takes the randomness ORAO produced for this round and writes it in.",
+        "",
+        "Permissionless on purpose: the result is already fixed by the time this",
+        "runs, so anybody may push the round forward and nobody has to wait for",
+        "us to do it."
+      ],
       "discriminator": [
         235,
         105,
@@ -213,7 +206,7 @@
           "writable": true
         },
         {
-          "name": "randomness_account_data"
+          "name": "vrf_request"
         }
       ],
       "args": []
@@ -377,43 +370,6 @@
       "args": []
     },
     {
-      "name": "retry_randomness",
-      "discriminator": [
-        150,
-        38,
-        239,
-        219,
-        143,
-        192,
-        79,
-        104
-      ],
-      "accounts": [
-        {
-          "name": "lottery",
-          "writable": true
-        },
-        {
-          "name": "admin",
-          "signer": true,
-          "relations": [
-            "lottery"
-          ]
-        },
-        {
-          "name": "randomness_account_data"
-        }
-      ],
-      "args": [
-        {
-          "name": "wait_seconds",
-          "type": {
-            "option": "i64"
-          }
-        }
-      ]
-    },
-    {
       "name": "start_purchases_phase",
       "discriminator": [
         123,
@@ -493,13 +449,125 @@
         },
         {
           "name": "admin",
+          "docs": [
+            "Pays the ORAO fee and the request account's rent, and is the `client`",
+            "ORAO records, so the rent that comes back on fulfilment comes back here."
+          ],
+          "writable": true,
           "signer": true,
           "relations": [
             "lottery"
           ]
         },
         {
-          "name": "randomness_account_data"
+          "name": "vrf_request",
+          "docs": [
+            "The request account ORAO will create.",
+            "",
+            "Its address is a PDA of the seed the handler derives, and the handler",
+            "checks it against that derivation before the CPI. The check lives there",
+            "rather than in a seeds constraint because the seed depends on a sysvar",
+            "read, and a constraint that cannot fail cleanly is worse than an",
+            "explicit one that can.",
+            ""
+          ],
+          "writable": true
+        },
+        {
+          "name": "vrf_network_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  114,
+                  97,
+                  111,
+                  45,
+                  118,
+                  114,
+                  102,
+                  45,
+                  110,
+                  101,
+                  116,
+                  119,
+                  111,
+                  114,
+                  107,
+                  45,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103,
+                  117,
+                  114,
+                  97,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                7,
+                71,
+                177,
+                26,
+                250,
+                145,
+                180,
+                209,
+                249,
+                34,
+                242,
+                123,
+                14,
+                186,
+                193,
+                218,
+                178,
+                59,
+                33,
+                41,
+                164,
+                190,
+                243,
+                79,
+                50,
+                164,
+                123,
+                88,
+                245,
+                206,
+                252,
+                120
+              ]
+            }
+          }
+        },
+        {
+          "name": "vrf_treasury",
+          "writable": true
+        },
+        {
+          "name": "vrf_program",
+          "address": "VRFzZoJdhFWL8rkvu87LpKM3RbcVezpMEc6X5GVDr7y"
+        },
+        {
+          "name": "recent_slothashes",
+          "address": "SysvarS1otHashes111111111111111111111111111"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
@@ -513,10 +581,8 @@
           }
         },
         {
-          "name": "wait_seconds",
-          "type": {
-            "option": "i64"
-          }
+          "name": "seed_slot",
+          "type": "u64"
         }
       ]
     },
@@ -592,6 +658,19 @@
         214,
         112,
         3
+      ]
+    },
+    {
+      "name": "NetworkState",
+      "discriminator": [
+        212,
+        237,
+        148,
+        56,
+        97,
+        245,
+        51,
+        169
       ]
     }
   ],
@@ -701,19 +780,6 @@
       ]
     },
     {
-      "name": "VrfBinded",
-      "discriminator": [
-        216,
-        186,
-        125,
-        52,
-        33,
-        195,
-        74,
-        210
-      ]
-    },
-    {
       "name": "VrfFulfilled",
       "discriminator": [
         133,
@@ -724,19 +790,6 @@
         239,
         83,
         72
-      ]
-    },
-    {
-      "name": "VrfRetryScheduled",
-      "discriminator": [
-        204,
-        166,
-        98,
-        178,
-        2,
-        221,
-        51,
-        218
       ]
     }
   ],
@@ -823,148 +876,108 @@
     },
     {
       "code": 6016,
-      "name": "InvalidPhase2Wait",
-      "msg": "Invalid wait duration for second phase"
-    },
-    {
-      "code": 6017,
       "name": "NotEndedYet",
       "msg": "Entry period has not ended yet"
     },
     {
-      "code": 6018,
+      "code": 6017,
       "name": "VrfNotReady",
       "msg": "VRF is not ready yet"
     },
     {
-      "code": 6019,
+      "code": 6018,
       "name": "VrfAlreadyCalled",
       "msg": "VRF already called"
     },
     {
-      "code": 6020,
+      "code": 6019,
       "name": "InsufficientVaultBalance",
       "msg": "Insufficient vault balance"
     },
     {
-      "code": 6021,
+      "code": 6020,
       "name": "InvalidVrfSeed",
       "msg": "Invalid VRF seed (zero)"
     },
     {
-      "code": 6022,
+      "code": 6021,
       "name": "DurationTooLong",
       "msg": "Lottery duration is too long"
     },
     {
-      "code": 6023,
+      "code": 6022,
       "name": "AlreadyPaused",
       "msg": "Lottery is already paused"
     },
     {
-      "code": 6024,
+      "code": 6023,
       "name": "NotPaused",
       "msg": "Lottery is not paused"
     },
     {
-      "code": 6025,
+      "code": 6024,
       "name": "NotInPurchasesPhase",
       "msg": "Lottery is not in purchases phase"
     },
     {
-      "code": 6026,
+      "code": 6025,
       "name": "InvalidVaultOwner",
       "msg": "Vault must be owned by the System Program"
     },
     {
-      "code": 6027,
+      "code": 6026,
       "name": "InvalidVaultData",
       "msg": "Vault must have zero data"
     },
     {
-      "code": 6028,
-      "name": "InvalidRandomnessAccount",
-      "msg": "Invalid randomness account"
-    },
-    {
-      "code": 6029,
+      "code": 6027,
       "name": "RandomnessAccountMismatch",
       "msg": "Randomness account does not match lottery state"
     },
     {
-      "code": 6030,
+      "code": 6028,
       "name": "InvalidRandomnessAccountData",
       "msg": "Failed to parse randomness account"
     },
     {
-      "code": 6031,
+      "code": 6029,
       "name": "RandomnessNotResolved",
       "msg": "Randomness is not resolved"
     },
     {
-      "code": 6032,
+      "code": 6030,
       "name": "InvalidRandomnessAccountOwner",
       "msg": "Randomness account owner is invalid"
     },
     {
-      "code": 6033,
-      "name": "RandomnessAccountAlreadyResolved",
-      "msg": "Randomness account already has a revealed value"
-    },
-    {
-      "code": 6034,
-      "name": "RandomnessTooOld",
-      "msg": "Randomness account uses data from before phase 2"
-    },
-    {
-      "code": 6035,
-      "name": "RandomnessTooStale",
-      "msg": "Randomness result is older than the allowed freshness window"
-    },
-    {
-      "code": 6036,
-      "name": "VrfRetryLimitReached",
-      "msg": "VRF retry limit reached"
-    },
-    {
-      "code": 6037,
-      "name": "VrfRetryTooEarly",
-      "msg": "VRF retry can only be called after vrf_ready_ts"
-    },
-    {
-      "code": 6038,
-      "name": "SameRandomnessAccount",
-      "msg": "Retry must use a new randomness account"
-    },
-    {
-      "code": 6039,
-      "name": "VrfRetriesNotExhausted",
-      "msg": "Emergency seed is allowed only after max VRF retries"
-    },
-    {
-      "code": 6040,
-      "name": "VrfRequestNotBound",
-      "msg": "VRF request metadata is not bound yet"
-    },
-    {
-      "code": 6041,
-      "name": "VrfRequestAlreadyBound",
-      "msg": "VRF request metadata is already bound"
-    },
-    {
-      "code": 6042,
+      "code": 6031,
       "name": "RandomnessRequestMismatch",
       "msg": "Randomness data does not match the bound request metadata"
     },
     {
-      "code": 6043,
-      "name": "InvalidVrfAlgorithmHash",
-      "msg": "Invalid VRF algorithm hash (zero value)"
+      "code": 6032,
+      "name": "RandomnessAlreadyResolved",
+      "msg": "Randomness has already been produced for this round"
     },
     {
-      "code": 6044,
-      "name": "BlockedBetMint",
-      "msg": "USDC and SOL/wSOL cannot be used as lottery bet tokens"
+      "code": 6033,
+      "name": "InvalidSlotHashesSysvar",
+      "msg": "Recent slot hashes sysvar is missing or malformed"
+    },
+    {
+      "code": 6034,
+      "name": "SeedSlotNotFound",
+      "msg": "Seed slot is not present in the slot hashes sysvar"
+    },
+    {
+      "code": 6035,
+      "name": "SeedSlotTooOld",
+      "msg": "Seed slot is too far in the past"
+    },
+    {
+      "code": 6036,
+      "name": "InvalidVrfAlgorithmHash",
+      "msg": "Invalid VRF algorithm hash (zero value)"
     }
   ],
   "types": [
@@ -1015,8 +1028,11 @@
             }
           },
           {
-            "name": "retry_count",
-            "type": "u8"
+            "name": "requested_ts",
+            "docs": [
+              "When the round asked ORAO, so the silence before this is measurable."
+            ],
+            "type": "i64"
           },
           {
             "name": "ts",
@@ -1116,7 +1132,10 @@
             }
           },
           {
-            "name": "vrf_ready_ts",
+            "name": "vrf_requested_ts",
+            "docs": [
+              "When the randomness was asked for. The emergency path counts from here."
+            ],
             "type": "i64"
           },
           {
@@ -1133,29 +1152,33 @@
             "type": "bool"
           },
           {
-            "name": "vrf_randomness_account",
+            "name": "vrf_request",
+            "docs": [
+              "The ORAO request account this round is bound to. A PDA of `vrf_force`,",
+              "stored so the binding is readable without recomputing anything."
+            ],
             "type": "pubkey"
           },
           {
-            "name": "vrf_phase2_slot",
-            "type": "u64"
-          },
-          {
-            "name": "vrf_retry_count",
-            "type": "u8"
-          },
-          {
-            "name": "vrf_request_seed_slot",
-            "type": "u64"
-          },
-          {
-            "name": "vrf_request_seed_slothash",
+            "name": "vrf_force",
+            "docs": [
+              "The request seed the program derived. Kept on chain so a verifier can",
+              "recompute it and confirm the round could not have shopped for another."
+            ],
             "type": {
               "array": [
                 "u8",
                 32
               ]
             }
+          },
+          {
+            "name": "vrf_seed_slot",
+            "docs": [
+              "The slot whose hash went into `vrf_force`. Without it the derivation",
+              "cannot be reproduced, so it is part of the proof, not bookkeeping."
+            ],
+            "type": "u64"
           },
           {
             "name": "vrf_algorithm_hash",
@@ -1242,6 +1265,94 @@
       }
     },
     {
+      "name": "NetworkConfiguration",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "request_fee",
+            "type": "u64"
+          },
+          {
+            "name": "fulfillment_authorities",
+            "type": {
+              "vec": "pubkey"
+            }
+          },
+          {
+            "name": "token_fee_config",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "OraoTokenFeeConfig"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "NetworkState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "config",
+            "type": {
+              "defined": {
+                "name": "NetworkConfiguration"
+              }
+            }
+          },
+          {
+            "name": "num_received",
+            "docs": [
+              "Total number of received requests."
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OraoTokenFeeConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "docs": [
+              "ORAO token mint address."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "docs": [
+              "ORAO token treasury account."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "fee",
+            "docs": [
+              "Fee in ORAO SPL token smallest units."
+            ],
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
       "name": "PauseStatusChanged",
       "type": {
         "kind": "struct",
@@ -1277,19 +1388,38 @@
           },
           {
             "name": "randomness_account",
+            "docs": [
+              "The ORAO request account, a PDA of `force`."
+            ],
             "type": "pubkey"
           },
           {
-            "name": "vrf_ready_ts",
-            "type": "i64"
+            "name": "force",
+            "docs": [
+              "The derived request seed. Published so the derivation can be rechecked",
+              "without reading the round account."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
           },
           {
-            "name": "phase2_slot",
+            "name": "seed_slot",
+            "docs": [
+              "The slot whose hash seeded `force`."
+            ],
             "type": "u64"
           },
           {
-            "name": "retry_count",
-            "type": "u8"
+            "name": "requested_ts",
+            "type": "i64"
+          },
+          {
+            "name": "requested_slot",
+            "type": "u64"
           }
         ]
       }
@@ -1335,35 +1465,6 @@
       }
     },
     {
-      "name": "VrfBinded",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "lottery",
-            "type": "pubkey"
-          },
-          {
-            "name": "randomness_account",
-            "type": "pubkey"
-          },
-          {
-            "name": "seed_slot",
-            "type": "u64"
-          },
-          {
-            "name": "seed_slothash",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          }
-        ]
-      }
-    },
-    {
       "name": "VrfFulfilled",
       "type": {
         "kind": "struct",
@@ -1380,30 +1481,6 @@
                 32
               ]
             }
-          }
-        ]
-      }
-    },
-    {
-      "name": "VrfRetryScheduled",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "lottery",
-            "type": "pubkey"
-          },
-          {
-            "name": "randomness_account",
-            "type": "pubkey"
-          },
-          {
-            "name": "phase2_slot",
-            "type": "u64"
-          },
-          {
-            "name": "retry_count",
-            "type": "u8"
           }
         ]
       }

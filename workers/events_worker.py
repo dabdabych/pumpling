@@ -44,8 +44,6 @@ _LOTTERY_PUBKEY_CACHE: Dict[str, int] = {}
 _EVENT_DISCRIMINATOR_LEN = 8
 _EVENT_DISCRIMINATORS: Dict[str, bytes] = {
     "PhaseChanged": hashlib.sha256(b"event:PhaseChanged").digest()[:_EVENT_DISCRIMINATOR_LEN],
-    "VrfBinded": hashlib.sha256(b"event:VrfBinded").digest()[:_EVENT_DISCRIMINATOR_LEN],
-    "VrfRetryScheduled": hashlib.sha256(b"event:VrfRetryScheduled").digest()[:_EVENT_DISCRIMINATOR_LEN],
 }
 
 def _resolve_idl_path() -> Path:
@@ -382,14 +380,6 @@ def _decode_fallback_events_from_logs(logs: List[str]) -> List[tuple[str, Dict[s
             parsed = _decode_phase_changed_payload(payload)
             if parsed:
                 decoded.append(("PhaseChanged", parsed))
-        elif discriminator == _EVENT_DISCRIMINATORS["VrfBinded"]:
-            parsed = _decode_vrf_binded_payload(payload)
-            if parsed:
-                decoded.append(("VrfBinded", parsed))
-        elif discriminator == _EVENT_DISCRIMINATORS["VrfRetryScheduled"]:
-            parsed = _decode_vrf_retry_scheduled_payload(payload)
-            if parsed:
-                decoded.append(("VrfRetryScheduled", parsed))
         elif discriminator == DEPOSIT_EVENT_DISCRIMINATOR:
             parsed_deposit = decode_deposit_event(raw)
             if parsed_deposit:
@@ -425,65 +415,6 @@ def _decode_phase_changed_payload(payload: bytes) -> Optional[Dict[str, Any]]:
     if status is None:
         return None
     return {"lottery": lottery, "status": status}
-
-
-def _decode_vrf_binded_payload(payload: bytes) -> Optional[Dict[str, Any]]:
-    # VrfBinded layout:
-    # lottery: Pubkey (32)
-    # randomness_account: Pubkey (32)
-    # seed_slot: u64 (8 little-endian)
-    # seed_slothash: [u8; 32]
-    expected_len = 32 + 32 + 8 + 32
-    if len(payload) < expected_len:
-        return None
-
-    offset = 0
-    lottery_bytes = payload[offset:offset + 32]
-    offset += 32
-    randomness_account_bytes = payload[offset:offset + 32]
-    offset += 32
-    seed_slot_bytes = payload[offset:offset + 8]
-    offset += 8
-    seed_slothash_bytes = payload[offset:offset + 32]
-
-    try:
-        lottery = str(Pubkey.from_bytes(lottery_bytes))
-        randomness_account = str(Pubkey.from_bytes(randomness_account_bytes))
-    except Exception:
-        return None
-
-    seed_slot = int.from_bytes(seed_slot_bytes, byteorder="little", signed=False)
-    seed_slothash = list(seed_slothash_bytes)
-    return {
-        "lottery": lottery,
-        "randomness_account": randomness_account,
-        "seed_slot": seed_slot,
-        "seed_slothash": seed_slothash,
-    }
-
-
-def _decode_vrf_retry_scheduled_payload(payload: bytes) -> Optional[Dict[str, Any]]:
-    # VrfRetryScheduled layout:
-    # lottery: Pubkey (32)
-    # randomness_account: Pubkey (32)
-    # phase2_slot: u64 (8 little-endian)
-    # retry_count: u8 (1)
-    expected_len = 32 + 32 + 8 + 1
-    if len(payload) < expected_len:
-        return None
-
-    try:
-        lottery = str(Pubkey.from_bytes(payload[:32]))
-        randomness_account = str(Pubkey.from_bytes(payload[32:64]))
-    except Exception:
-        return None
-
-    return {
-        "lottery": lottery,
-        "randomness_account": randomness_account,
-        "phase2_slot": int.from_bytes(payload[64:72], byteorder="little", signed=False),
-        "retry_count": payload[72],
-    }
 
 
 def _serialize_value(value: Any) -> Any:
@@ -530,8 +461,6 @@ def _persist_event(event_name: str, signature: Optional[str], event_data: Any, r
         session.commit()
         _handle_lottery_initialized(session, event_name, event_data)
         _handle_phase2_started(session, event_name, event_data)
-        _handle_vrf_retry_scheduled(session, event_name, event_data)
-        _handle_vrf_binded(session, event_name, event_data)
         _handle_emergency_seed_used(session, event_name, event_data)
         _handle_vrf_fulfilled(session, event_name, event_data)
         _handle_purchases_phase_started(session, event_name, event_data)
@@ -552,8 +481,6 @@ def _persist_event(event_name: str, signature: Optional[str], event_data: Any, r
                 )
                 _handle_lottery_initialized(session, event_name, event_data)
                 _handle_phase2_started(session, event_name, event_data)
-                _handle_vrf_retry_scheduled(session, event_name, event_data)
-                _handle_vrf_binded(session, event_name, event_data)
                 _handle_emergency_seed_used(session, event_name, event_data)
                 _handle_vrf_fulfilled(session, event_name, event_data)
                 _handle_purchases_phase_started(session, event_name, event_data)
@@ -815,71 +742,6 @@ def _handle_phase2_started(session, event_name: str, event_data: Any) -> None:
     logging.info("Lottery %s status updated to phase2started.", lottery_id)
 
 
-def _handle_vrf_retry_scheduled(session, event_name: str, event_data: Any) -> None:
-    if event_name != "VrfRetryScheduled":
-        return
-
-    lottery_pubkey = _extract_pubkey(_get_event_field(event_data, "lottery"))
-    randomness_account = _extract_pubkey(_get_event_field(event_data, "randomness_account"))
-    if not lottery_pubkey:
-        logging.warning("VrfRetryScheduled missing lottery pubkey; skipping status update.")
-        return
-
-    lottery_id = _resolve_lottery_id_by_pubkey(session, lottery_pubkey)
-    if lottery_id is None:
-        logging.warning("No matching lottery id for on-chain lottery %s", lottery_pubkey)
-        return
-
-    lottery = session.query(LotteryModel).filter(LotteryModel.id == lottery_id).first()
-    if not lottery:
-        logging.warning("Lottery %s not found in DB; skipping retry update.", lottery_id)
-        return
-
-    if lottery.status == LotteryStatus.PHASE2STARTED:
-        changed = False
-        if randomness_account and lottery.randomness_account != str(randomness_account):
-            lottery.randomness_account = str(randomness_account)
-            changed = True
-        if not getattr(lottery, "second_phase_started_at", None):
-            lottery.second_phase_started_at = datetime.now(timezone.utc)
-            changed = True
-        if changed:
-            session.commit()
-            logging.info(
-                "Lottery %s already phase2started; updated retry fields (randomness_account=%s).",
-                lottery_id,
-                lottery.randomness_account,
-            )
-        else:
-            logging.info("Lottery %s already phase2started; skipping retry update.", lottery_id)
-        return
-
-    if lottery.status not in {
-        LotteryStatus.ID_GENERATED,
-        LotteryStatus.CREATED,
-        LotteryStatus.PHASE2STARTED,
-        LotteryStatus.VRF_BINDED,
-    }:
-        logging.info(
-            "Lottery %s status is %s; skipping retry update.",
-            lottery_id,
-            getattr(lottery.status, "value", lottery.status),
-        )
-        return
-
-    lottery.status = LotteryStatus.PHASE2STARTED
-    if randomness_account:
-        lottery.randomness_account = str(randomness_account)
-    if not getattr(lottery, "second_phase_started_at", None):
-        lottery.second_phase_started_at = datetime.now(timezone.utc)
-    session.commit()
-    logging.info(
-        "Lottery %s updated from VrfRetryScheduled (status=phase2started, randomness_account=%s).",
-        lottery_id,
-        lottery.randomness_account,
-    )
-
-
 def _handle_vrf_fulfilled(session, event_name: str, event_data: Any) -> None:
     if event_name != "VrfFulfilled":
         return
@@ -969,42 +831,6 @@ def _handle_emergency_seed_used(session, event_name: str, event_data: Any) -> No
         bool(getattr(lottery, "is_offchain_vrf", False)),
         bool(seed_hex),
     )
-
-
-def _handle_vrf_binded(session, event_name: str, event_data: Any) -> None:
-    if event_name != "VrfBinded":
-        return
-
-    lottery_pubkey = _extract_pubkey(_get_event_field(event_data, "lottery"))
-    if not lottery_pubkey:
-        logging.warning("VrfBinded missing lottery pubkey; skipping status update.")
-        return
-
-    lottery_id = _resolve_lottery_id_by_pubkey(session, lottery_pubkey)
-    if lottery_id is None:
-        logging.warning("No matching lottery id for on-chain lottery %s", lottery_pubkey)
-        return
-
-    lottery = session.query(LotteryModel).filter(LotteryModel.id == lottery_id).first()
-    if not lottery:
-        logging.warning("Lottery %s not found in DB; skipping status update.", lottery_id)
-        return
-
-    if lottery.status == LotteryStatus.VRF_BINDED:
-        logging.info("Lottery %s already vrf_binded; skipping update.", lottery_id)
-        return
-
-    if lottery.status not in {LotteryStatus.PHASE2STARTED, LotteryStatus.VRF_BINDED}:
-        logging.info(
-            "Lottery %s status is %s; skipping vrf_binded update.",
-            lottery_id,
-            getattr(lottery.status, "value", lottery.status),
-        )
-        return
-
-    lottery.status = LotteryStatus.VRF_BINDED
-    session.commit()
-    logging.info("Lottery %s status updated to vrf_binded.", lottery_id)
 
 
 def _handle_purchases_phase_started(session, event_name: str, event_data: Any) -> None:

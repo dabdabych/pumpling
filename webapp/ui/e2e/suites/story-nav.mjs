@@ -132,6 +132,39 @@ ok(
   `the first swipe after the last stop moves the page (${atLastStop} -> ${afterLastStop})`
 );
 
+// 5. Coming back to the first screen must not take it out of the story.
+//
+// Restoring the first screen after a transition used to kill the tweens on the
+// cards by target, and `gsap.killTweensOf` reaches inside the story timeline,
+// which owns three of them. After one return to the hero the story could no
+// longer move those cards: they stayed lit over "What is it" and "How it works"
+// with their text printed across the panel's own. One trip was enough, and it
+// never healed short of a reload — so the walk here is trip, return, walk on.
+const heroCard = () => p.evaluate(() => {
+  const card = document.querySelector('.qres-hero-card');
+  if (!card) return null;
+  const box = card.getBoundingClientRect();
+  return {
+    opacity: +(+getComputedStyle(card).opacity).toFixed(2),
+    onScreen: box.top < window.innerHeight && box.bottom > 0
+  };
+});
+
+for (const label of ['how', 'what']) {
+  await p.click('[data-nav-label="hero"]').catch(() => {});
+  await p.waitForTimeout(2400);
+  const home = await heroCard();
+  ok(home && home.opacity > 0.9, `hero: the Commit SOL card is there to begin with (opacity ${home?.opacity})`);
+
+  await p.click(`[data-nav-label="${label}"]`).catch(() => {});
+  await p.waitForTimeout(2400);
+  const away = await heroCard();
+  ok(
+    away && (away.opacity < 0.15 || !away.onScreen),
+    `${label} after a return to the hero: the first screen is out of the way (opacity ${away?.opacity}, on screen ${away?.onScreen})`
+  );
+}
+
 ok(errors.length === 0, `no page errors ${errors.join(' | ')}`);
 console.log(fails ? `${fails} FAILED` : 'STORY NAV ALL PASSED');
 process.exitCode = fails ? 1 : 0;

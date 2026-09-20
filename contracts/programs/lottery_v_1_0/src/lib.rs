@@ -6,7 +6,11 @@ use anchor_lang::solana_program::{
     rent::Rent,
     system_instruction,
 };
-use switchboard_on_demand::on_demand::accounts::randomness::RandomnessAccountData;
+use anchor_lang::solana_program::hash::hashv;
+use anchor_lang::solana_program::sysvar::slot_hashes;
+use orao_solana_vrf::program::OraoVrf;
+use orao_solana_vrf::state::{NetworkState, RandomnessAccountData};
+use orao_solana_vrf::{CONFIG_ACCOUNT_SEED, RANDOMNESS_ACCOUNT_SEED};
 
 #[cfg(all(feature = "devnet", feature = "mainnet"))]
 compile_error!("Enable only one network feature: 'devnet' or 'mainnet'.");
@@ -23,23 +27,151 @@ declare_id!("4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH");
 pub const MIN_AMOUNT_LAMPORTS_DEFAULT: u64 = 50_000_000;          // 0.05 SOL
 pub const MAX_AMOUNT_LAMPORTS_DEFAULT: u64 = 250 * 1_000_000_000; // 250 SOL
 
-/// Phase 2 (waiting before VRF) = 5 mins by default
-pub const PHASE2_DEFAULT_WAIT_SECONDS: i64 = 5 * 60; // 300
+/// How long the round waits for ORAO before the admin is allowed to draw it
+/// with a seed of their own.
+///
+/// Measured on devnet on 2026-09-20 over three requests: 1.5s, 1.5s and 11.8s.
+/// Two minutes is ten times the worst of those, so a healthy oracle always
+/// answers first and only a real outage ever reaches this path.
+///
+/// It is not longer for a product reason. A round sitting in PendingVrf is a
+/// promise to buy that has not been kept yet, and the coin behind it is being
+/// watched while that lasts. An hour of that is worse than the thing this
+/// delay guards against.
+///
+/// The delay is not what keeps the admin honest anyway. The program reads the
+/// request account and refuses the moment randomness is there, so the wait only
+/// gives ORAO its fair chance; it cannot be used to shop for a better result at
+/// any length.
+pub const EMERGENCY_FULFILL_DELAY_SECONDS: i64 = 120;
 
 /// Maximum allowed lottery duration (7 days)
 pub const MAX_LOTTERY_DURATION_SECONDS: i64 = 7 * 24 * 60 * 60;
 
 
-#[cfg(feature = "devnet")]
-pub const SWITCHBOARD_ON_DEMAND_PROGRAM_ID: Pubkey = pubkey!("Aio4gaXjXzJNVLtzwtNVmSqGKpANtXhybbkhtAC94ji2");
-#[cfg(feature = "mainnet")]
-pub const SWITCHBOARD_ON_DEMAND_PROGRAM_ID: Pubkey =  pubkey!("SBondMDrcV3K4kxZR1HNVT7osZxAHVHgYXL5Ze1oMUv");
+/// ORAO VRF. The same program on devnet and mainnet, so unlike the oracle it
+/// replaced this one needs no per-network constant and cannot be built for the
+/// wrong one.
+pub const ORAO_VRF_PROGRAM_ID: Pubkey = pubkey!("VRFzZoJdhFWL8rkvu87LpKM3RbcVezpMEc6X5GVDr7y");
 
-#[cfg(feature = "devnet")]
-pub const MAX_RANDOMNESS_AGE_SLOTS: u64 = 64;
-#[cfg(feature = "mainnet")]
-pub const MAX_RANDOMNESS_AGE_SLOTS: u64 = 256;
-pub const MAX_VRF_RETRIES: u8 = 2;
+/// Domain tag mixed into the request seed so it can never collide with a seed
+/// derived by some other program for some other purpose.
+pub const VRF_FORCE_DOMAIN: &[u8] = b"pumpling-vrf-force-v1";
+
+/// Domain tag for folding ORAO's 64 bytes down to the 32 the round stores.
+pub const VRF_SEED_DOMAIN: &[u8] = b"pumpling-vrf-seed-v1";
+
+/// How far back the slot whose hash seeds the request may be.
+///
+/// The sysvar keeps 512 slots, about three and a half minutes. A quarter of
+/// that leaves a client plenty of room to build and land the transaction while
+/// keeping the hash firmly on this side of the round closing.
+pub const MAX_SEED_SLOT_AGE_SLOTS: u64 = 128;
+
+/// The request seed for a round.
+///
+/// Derived, never supplied. Anyone can recompute it from the round's address,
+/// the weights commitment and the slot hash the round was closed against, which
+/// is what makes the choice of randomness account checkable from outside.
+pub fn derive_vrf_force(
+    lottery: &Pubkey,
+    weights_hash: &[u8; 32],
+    slot_hash: &[u8; 32],
+) -> [u8; 32] {
+    hashv(&[VRF_FORCE_DOMAIN, lottery.as_ref(), weights_hash, slot_hash]).to_bytes()
+}
+
+/// The hash of one recent slot, looked up in the sysvar.
+///
+/// The caller names the slot instead of the program taking the newest one, and
+/// it has to be that way round: the seed is derived from this hash, the request
+/// account's address is derived from the seed, and the address has to be in the
+/// transaction before it runs. Nobody can predict which slot a transaction will
+/// land in, so the newest hash is not something a client can compute ahead.
+///
+/// Naming it does not hand anything over. The window is short and every hash in
+/// it is already fixed by the chain, so the choice is between values nobody can
+/// steer. What matters is that none of them exist before the round closes.
+///
+/// The sysvar is far too large to deserialize, so the entries are read by hand:
+/// an 8-byte vector length, then pairs of an 8-byte slot and its 32-byte hash,
+/// sorted newest first. Sorted, so this is a binary search rather than a walk
+/// through five hundred entries.
+fn slot_hash_at(slot_hashes: &AccountInfo, slot: u64, clock_slot: u64) -> Result<[u8; 32]> {
+    require_keys_eq!(
+        *slot_hashes.key,
+        slot_hashes::ID,
+        LotteryError::InvalidSlotHashesSysvar
+    );
+    require!(slot < clock_slot, LotteryError::SeedSlotNotFound);
+    require!(
+        clock_slot.saturating_sub(slot) <= MAX_SEED_SLOT_AGE_SLOTS,
+        LotteryError::SeedSlotTooOld
+    );
+
+    let data = slot_hashes.try_borrow_data()?;
+    require!(data.len() >= 8, LotteryError::InvalidSlotHashesSysvar);
+    let count = u64::from_le_bytes(
+        data[0..8]
+            .try_into()
+            .map_err(|_| LotteryError::InvalidSlotHashesSysvar)?,
+    ) as usize;
+    require!(
+        data.len() >= 8usize.saturating_add(count.saturating_mul(40)),
+        LotteryError::InvalidSlotHashesSysvar
+    );
+
+    let (mut lo, mut hi) = (0usize, count);
+    while lo < hi {
+        let mid = lo + (hi - lo) / 2;
+        let offset = 8 + mid * 40;
+        let entry_slot = u64::from_le_bytes(
+            data[offset..offset + 8]
+                .try_into()
+                .map_err(|_| LotteryError::InvalidSlotHashesSysvar)?,
+        );
+        if entry_slot == slot {
+            let mut hash = [0u8; 32];
+            hash.copy_from_slice(&data[offset + 8..offset + 40]);
+            return Ok(hash);
+        } else if entry_slot > slot {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    Err(LotteryError::SeedSlotNotFound.into())
+}
+
+/// Reads an ORAO randomness request, checking it is really one of theirs.
+///
+/// The owner check is the important line: without it any account laid out to
+/// look like a fulfilled request would be taken at face value.
+fn read_vrf_request(request: &AccountInfo) -> Result<RandomnessAccountData> {
+    require_keys_eq!(
+        *request.owner,
+        ORAO_VRF_PROGRAM_ID,
+        LotteryError::InvalidRandomnessAccountOwner
+    );
+    let data = request.try_borrow_data()?;
+    RandomnessAccountData::try_deserialize(&mut &data[..])
+        .map_err(|_| LotteryError::InvalidRandomnessAccountData.into())
+}
+
+/// Who to tell about a hole in this program.
+///
+/// Written into an ELF section of the binary, so it travels with the deployed
+/// code rather than living somewhere that can quietly stop matching it.
+#[cfg(not(feature = "no-entrypoint"))]
+solana_security_txt::security_txt! {
+    name: "Pumpling",
+    project_url: "https://pumpling.xyz",
+    contacts: "email:pumpling.xyz@gmail.com,link:https://github.com/dabdabych/pumpling/security",
+    policy: "https://github.com/dabdabych/pumpling/blob/main/SECURITY.md",
+    preferred_languages: "en,ru",
+    source_code: "https://github.com/dabdabych/pumpling",
+    auditors: "None"
+}
 
 #[program]
 pub mod lottery {
@@ -163,14 +295,12 @@ pub mod lottery {
 
         // VRF phase2/3 default fields
         l.weights_hash = [0u8; 32];
-        l.vrf_ready_ts = 0;
+        l.vrf_requested_ts = 0;
         l.vrf_seed = [0u8; 32];
         l.vrf_called = false;
-        l.vrf_randomness_account = Pubkey::default();
-        l.vrf_phase2_slot = 0;
-        l.vrf_retry_count = 0;
-        l.vrf_request_seed_slot = 0;
-        l.vrf_request_seed_slothash = [0u8; 32];
+        l.vrf_request = Pubkey::default();
+        l.vrf_force = [0u8; 32];
+        l.vrf_seed_slot = 0;
         l.vrf_algorithm_hash = vrf_algorithm_hash;
 
         emit!(LotteryInitialized {
@@ -254,10 +384,18 @@ pub mod lottery {
     pub fn start_second_phase(
         ctx: Context<StartSecondPhase>,
         weights_hash: [u8; 32],
-        wait_seconds: Option<i64>,
+        seed_slot: u64,
     ) -> Result<()> {
+        let clock = Clock::get()?;
+        let now = clock.unix_timestamp;
+
+        // Read before the mutable borrow: the seed is derived from the round's
+        // own address and the sysvar, and both are needed while `lottery` is
+        // still only borrowed immutably.
+        let lottery_key = ctx.accounts.lottery.key();
+        let slot_hash = slot_hash_at(&ctx.accounts.recent_slothashes, seed_slot, clock.slot)?;
+
         let l = &mut ctx.accounts.lottery;
-        let now = Clock::get()?.unix_timestamp;
 
         require!(l.status == LotteryStatus::Open, LotteryError::WrongPhase);
         require!(
@@ -273,47 +411,66 @@ pub mod lottery {
             weights_hash != [0u8; 32],
             LotteryError::InvalidWeightsHash
         );
-        let randomness_account = ctx.accounts.randomness_account_data.key();
-        require!(
-            randomness_account != Pubkey::default(),
-            LotteryError::InvalidRandomnessAccount
+        // The request seed. The program derives it and never takes it as an
+        // argument, and that is the whole point.
+        //
+        // With ORAO the randomness account is a PDA of the seed, so whoever
+        // picks the seed picks which of many possible results the round gets:
+        // request, look, dislike, request again. Deriving it here leaves
+        // exactly one valid request address per round, so there is nothing to
+        // choose between and no second draw to reach for.
+        //
+        // The slot hash is in there for a different reason. The value is ORAO's
+        // signature over the seed, and ORAO can compute that for any seed at
+        // any time. A seed anyone could work out in advance would let the
+        // fulfillers know the outcome while deposits were still open. Mixing in
+        // a hash that does not exist until this transaction lands, after
+        // deposits have closed, takes that away.
+        let force = derive_vrf_force(&lottery_key, &weights_hash, &slot_hash);
+
+        // The request account must be the one that seed points at. ORAO would
+        // reject a mismatch anyway, since it creates the account at that PDA,
+        // but failing here names the reason instead of surfacing a seeds error
+        // from somebody else's program.
+        let (expected_request, _bump) = Pubkey::find_program_address(
+            &[RANDOMNESS_ACCOUNT_SEED, &force],
+            &ORAO_VRF_PROGRAM_ID,
         );
         require_keys_eq!(
-            *ctx.accounts.randomness_account_data.owner,
-            SWITCHBOARD_ON_DEMAND_PROGRAM_ID,
-            LotteryError::InvalidRandomnessAccountOwner
+            ctx.accounts.vrf_request.key(),
+            expected_request,
+            LotteryError::RandomnessAccountMismatch
         );
-
-        let randomness_data = RandomnessAccountData::parse(
-            ctx.accounts.randomness_account_data.data.borrow(),
-        )
-        .map_err(|_| LotteryError::InvalidRandomnessAccountData)?;
-        require!(
-            randomness_data.reveal_slot == 0,
-            LotteryError::RandomnessAccountAlreadyResolved
-        );
-
-        let wait = wait_seconds.unwrap_or(PHASE2_DEFAULT_WAIT_SECONDS);
-        require!(wait > 0, LotteryError::InvalidPhase2Wait);
-
-        let vrf_ready_ts = now.checked_add(wait).ok_or(LotteryError::Overflow)?;
 
         l.weights_hash = weights_hash;
-        l.vrf_ready_ts = vrf_ready_ts;
-        l.vrf_randomness_account = randomness_account;
-        l.vrf_phase2_slot = Clock::get()?.slot;
-        l.vrf_retry_count = 0;
-        l.vrf_request_seed_slot = 0;
-        l.vrf_request_seed_slothash = [0u8; 32];
+        l.vrf_force = force;
+        l.vrf_seed_slot = seed_slot;
+        l.vrf_request = ctx.accounts.vrf_request.key();
+        l.vrf_requested_ts = now;
         l.status = LotteryStatus::PendingVrf;
 
+        // Ask ORAO. This is a CPI rather than a separate instruction in the
+        // same transaction so that the seed cannot be swapped on the way.
+        let cpi_accounts = orao_solana_vrf::cpi::accounts::RequestV2 {
+            payer: ctx.accounts.admin.to_account_info(),
+            network_state: ctx.accounts.vrf_network_state.to_account_info(),
+            treasury: ctx.accounts.vrf_treasury.to_account_info(),
+            request: ctx.accounts.vrf_request.to_account_info(),
+            system_program: ctx.accounts.system_program.to_account_info(),
+        };
+        orao_solana_vrf::cpi::request_v2(
+            CpiContext::new(ctx.accounts.vrf_program.to_account_info(), cpi_accounts),
+            force,
+        )?;
+
         emit!(Phase2Started {
-            lottery: l.key(),
+            lottery: lottery_key,
             weights_hash,
-            randomness_account,
-            vrf_ready_ts,
-            phase2_slot: l.vrf_phase2_slot,
-            retry_count: l.vrf_retry_count,
+            randomness_account: ctx.accounts.vrf_request.key(),
+            force,
+            seed_slot,
+            requested_ts: now,
+            requested_slot: clock.slot,
         });
 
         emit!(PhaseChanged {
@@ -324,111 +481,47 @@ pub mod lottery {
         Ok(())
     }
 
-    pub fn bind_vrf_request(ctx: Context<StartSecondPhase>) -> Result<()> {
-        let l = &mut ctx.accounts.lottery;
-        let clock = Clock::get()?;
-
-        require!(l.status == LotteryStatus::PendingVrf, LotteryError::WrongPhase);
-        require!(!l.vrf_called, LotteryError::VrfAlreadyCalled);
-        require_keys_eq!(
-            ctx.accounts.randomness_account_data.key(),
-            l.vrf_randomness_account,
-            LotteryError::RandomnessAccountMismatch
-        );
-        require_keys_eq!(
-            *ctx.accounts.randomness_account_data.owner,
-            SWITCHBOARD_ON_DEMAND_PROGRAM_ID,
-            LotteryError::InvalidRandomnessAccountOwner
-        );
-        require!(
-            l.vrf_request_seed_slot == 0,
-            LotteryError::VrfRequestAlreadyBound
-        );
-
-        let randomness_data = RandomnessAccountData::parse(
-            ctx.accounts.randomness_account_data.data.borrow(),
-        )
-        .map_err(|_| LotteryError::InvalidRandomnessAccountData)?;
-
-        require!(
-            randomness_data.seed_slot > l.vrf_phase2_slot,
-            LotteryError::RandomnessTooOld
-        );
-        require!(
-            randomness_data.seed_slot <= clock.slot,
-            LotteryError::RandomnessNotResolved
-        );
-        require!(
-            randomness_data.reveal_slot == 0,
-            LotteryError::RandomnessAccountAlreadyResolved
-        );
-
-        l.vrf_request_seed_slot = randomness_data.seed_slot;
-        l.vrf_request_seed_slothash = randomness_data.seed_slothash;
-
-        emit!(VrfBinded {
-            lottery: l.key(),
-            randomness_account: l.vrf_randomness_account,
-            seed_slot: l.vrf_request_seed_slot,
-            seed_slothash: l.vrf_request_seed_slothash,
-        });
-
-        Ok(())
-    }
-
     // -----------------------
     // PHASE 3: VRF SEED
     // -----------------------
+
+    /// Takes the randomness ORAO produced for this round and writes it in.
+    ///
+    /// Permissionless on purpose: the result is already fixed by the time this
+    /// runs, so anybody may push the round forward and nobody has to wait for
+    /// us to do it.
     pub fn fulfill_randomness(ctx: Context<FulfillRandomness>) -> Result<()> {
+        let request_key = ctx.accounts.vrf_request.key();
+        let request = read_vrf_request(&ctx.accounts.vrf_request)?;
+        let request_seed = *request.seed();
+        // Copied out now, unwrapped last: a round in the wrong phase should say
+        // so rather than complain that randomness has not arrived.
+        let fulfilled = request.fulfilled_randomness().copied();
+
         let l = &mut ctx.accounts.lottery;
-        let clock = Clock::get()?;
 
         require!(l.status == LotteryStatus::PendingVrf, LotteryError::WrongPhase);
-        require!(clock.unix_timestamp >= l.vrf_ready_ts, LotteryError::VrfNotReady);
         require!(!l.vrf_called, LotteryError::VrfAlreadyCalled);
         require_keys_eq!(
-            ctx.accounts.randomness_account_data.key(),
-            l.vrf_randomness_account,
+            request_key,
+            l.vrf_request,
             LotteryError::RandomnessAccountMismatch
         );
 
-        require_keys_eq!(
-            *ctx.accounts.randomness_account_data.owner,
-            SWITCHBOARD_ON_DEMAND_PROGRAM_ID,
-            LotteryError::InvalidRandomnessAccountOwner
-        );
-
-        let randomness_data = RandomnessAccountData::parse(
-            ctx.accounts.randomness_account_data.data.borrow(),
-        )
-        .map_err(|_| LotteryError::InvalidRandomnessAccountData)?;
-
+        // The account is a PDA of the seed, so this can only fail if the round
+        // was pointed at somebody else's request. Checked anyway: the seed is
+        // what the whole draw hangs on.
         require!(
-            l.vrf_request_seed_slot > 0,
-            LotteryError::VrfRequestNotBound
-        );
-        require!(
-            randomness_data.seed_slot == l.vrf_request_seed_slot,
+            request_seed == l.vrf_force,
             LotteryError::RandomnessRequestMismatch
         );
-        require!(
-            randomness_data.seed_slothash == l.vrf_request_seed_slothash,
-            LotteryError::RandomnessRequestMismatch
-        );
-        require!(
-            randomness_data.reveal_slot <= clock.slot,
-            LotteryError::RandomnessNotResolved
-        );
-        require!(
-            randomness_data.reveal_slot >= randomness_data.seed_slot,
-            LotteryError::RandomnessNotResolved
-        );
-        require!(
-            clock.slot.saturating_sub(randomness_data.reveal_slot) <= MAX_RANDOMNESS_AGE_SLOTS,
-            LotteryError::RandomnessTooStale
-        );
 
-        let seed = randomness_data.value;
+        let randomness = fulfilled.ok_or(LotteryError::RandomnessNotResolved)?;
+
+        // ORAO returns 64 bytes and the round carries 32. We hash rather than
+        // truncate so every byte it produced has a say in the result.
+        let seed = hashv(&[VRF_SEED_DOMAIN, &randomness]).to_bytes();
+        require!(seed != [0u8; 32], LotteryError::InvalidVrfSeed);
 
         l.vrf_seed = seed;
         l.vrf_called = true;
@@ -447,66 +540,43 @@ pub mod lottery {
         Ok(())
     }
 
-    pub fn retry_randomness(
-        ctx: Context<StartSecondPhase>,
-        wait_seconds: Option<i64>,
-    ) -> Result<()> {
-        let l = &mut ctx.accounts.lottery;
-        let clock = Clock::get()?;
-
-        require!(l.status == LotteryStatus::PendingVrf, LotteryError::WrongPhase);
-        require!(!l.vrf_called, LotteryError::VrfAlreadyCalled);
-        require!(l.vrf_retry_count < MAX_VRF_RETRIES, LotteryError::VrfRetryLimitReached);
-        require!(clock.unix_timestamp >= l.vrf_ready_ts, LotteryError::VrfRetryTooEarly);
-
-        let new_randomness_account = ctx.accounts.randomness_account_data.key();
-        require!(
-            new_randomness_account != l.vrf_randomness_account,
-            LotteryError::SameRandomnessAccount
-        );
-        require_keys_eq!(
-            *ctx.accounts.randomness_account_data.owner,
-            SWITCHBOARD_ON_DEMAND_PROGRAM_ID,
-            LotteryError::InvalidRandomnessAccountOwner
-        );
-
-        let randomness_data = RandomnessAccountData::parse(
-            ctx.accounts.randomness_account_data.data.borrow(),
-        )
-        .map_err(|_| LotteryError::InvalidRandomnessAccountData)?;
-        require!(
-            randomness_data.reveal_slot == 0,
-            LotteryError::RandomnessAccountAlreadyResolved
-        );
-
-        l.vrf_randomness_account = new_randomness_account;
-        l.vrf_phase2_slot = clock.slot;
-        l.vrf_retry_count = l.vrf_retry_count.checked_add(1).ok_or(LotteryError::Overflow)?;
-        l.vrf_request_seed_slot = 0;
-        l.vrf_request_seed_slothash = [0u8; 32];
-
-        emit!(VrfRetryScheduled {
-            lottery: l.key(),
-            randomness_account: new_randomness_account,
-            phase2_slot: l.vrf_phase2_slot,
-            retry_count: l.vrf_retry_count,
-        });
-
-        Ok(())
-    }
-
+    /// The way out if ORAO itself stops answering.
+    ///
+    /// It cannot be used to dislike a result. The program reads the request
+    /// account and refuses the moment randomness is there, so the only state
+    /// this instruction accepts is one an outsider can check: the wait has gone
+    /// by and the request is still empty.
     pub fn emergency_fulfill_randomness(
-        ctx: Context<AdminOnly>,
+        ctx: Context<EmergencyFulfillRandomness>,
         seed: [u8; 32],
     ) -> Result<()> {
-        let l = &mut ctx.accounts.lottery;
         let clock = Clock::get()?;
+        let request_key = ctx.accounts.vrf_request.key();
+        let request = read_vrf_request(&ctx.accounts.vrf_request)?;
+        let still_pending = request.fulfilled_randomness().is_none();
+        let request_seed = *request.seed();
+
+        let l = &mut ctx.accounts.lottery;
 
         require!(l.status == LotteryStatus::PendingVrf, LotteryError::WrongPhase);
         require!(!l.vrf_called, LotteryError::VrfAlreadyCalled);
+        require_keys_eq!(
+            request_key,
+            l.vrf_request,
+            LotteryError::RandomnessAccountMismatch
+        );
         require!(
-            l.vrf_retry_count >= MAX_VRF_RETRIES,
-            LotteryError::VrfRetriesNotExhausted
+            request_seed == l.vrf_force,
+            LotteryError::RandomnessRequestMismatch
+        );
+        require!(still_pending, LotteryError::RandomnessAlreadyResolved);
+        require!(
+            clock.unix_timestamp
+                >= l
+                    .vrf_requested_ts
+                    .checked_add(EMERGENCY_FULFILL_DELAY_SECONDS)
+                    .ok_or(LotteryError::Overflow)?,
+            LotteryError::VrfNotReady
         );
         require!(seed != [0u8; 32], LotteryError::InvalidVrfSeed);
 
@@ -517,7 +587,7 @@ pub mod lottery {
         emit!(EmergencySeedUsed {
             lottery: l.key(),
             seed,
-            retry_count: l.vrf_retry_count,
+            requested_ts: l.vrf_requested_ts,
             ts: clock.unix_timestamp,
         });
 
@@ -528,6 +598,7 @@ pub mod lottery {
 
         Ok(())
     }
+
 
 
     // -----------------------
@@ -784,14 +855,19 @@ pub struct Lottery {
 
     // phase 2 + phase 3 VRF fields
     pub weights_hash: [u8; 32],
-    pub vrf_ready_ts: i64,
+    /// When the randomness was asked for. The emergency path counts from here.
+    pub vrf_requested_ts: i64,
     pub vrf_seed: [u8; 32],
     pub vrf_called: bool,
-    pub vrf_randomness_account: Pubkey,
-    pub vrf_phase2_slot: u64,
-    pub vrf_retry_count: u8,
-    pub vrf_request_seed_slot: u64,
-    pub vrf_request_seed_slothash: [u8; 32],
+    /// The ORAO request account this round is bound to. A PDA of `vrf_force`,
+    /// stored so the binding is readable without recomputing anything.
+    pub vrf_request: Pubkey,
+    /// The request seed the program derived. Kept on chain so a verifier can
+    /// recompute it and confirm the round could not have shopped for another.
+    pub vrf_force: [u8; 32],
+    /// The slot whose hash went into `vrf_force`. Without it the derivation
+    /// cannot be reproduced, so it is part of the proof, not bookkeeping.
+    pub vrf_seed_slot: u64,
 
     /// sha256 of the canonical VRF used for this lottery. Set once in
     /// initialize, immutable thereafter. Verified off-chain by users.
@@ -799,29 +875,31 @@ pub struct Lottery {
 }
 
 impl Lottery {
+    /// Field by field, so a change to the struct that forgets this line is
+    /// obvious rather than a truncated account three rounds later.
     pub const SPACE: usize =
-        8 +
-        32 +
-        8 + 8 +
-        2 +
-        32 +
-        32 +
-        8 + 8 +
-        8 +
-        1 +
-        1 +
-        8 +
-        16 +
-        32 +
-        8 +
-        32 +
-        1 +
-        32 +
-        8 +
-        1 +
-        8 +
-        32 +
-        32;
+        8 +   // anchor discriminator
+        32 +  // admin
+        8 +   // start_ts
+        8 +   // end_ts
+        2 +   // fee_bps
+        32 +  // wallet_fee
+        32 +  // wallet_keeper
+        8 +   // min_amount
+        8 +   // max_amount
+        8 +   // max_total
+        1 +   // status
+        1 +   // paused
+        8 +   // deposits_count
+        16 +  // total_deposited
+        32 +  // weights_hash
+        8 +   // vrf_requested_ts
+        32 +  // vrf_seed
+        1 +   // vrf_called
+        32 +  // vrf_request
+        32 +  // vrf_force
+        8 +   // vrf_seed_slot
+        32;   // vrf_algorithm_hash
 }
 
 // ========= ENUM =========
@@ -905,10 +983,43 @@ pub struct AdminOnly<'info> {
 pub struct StartSecondPhase<'info> {
     #[account(mut, has_one = admin)]
     pub lottery: Account<'info, Lottery>,
+    /// Pays the ORAO fee and the request account's rent, and is the `client`
+    /// ORAO records, so the rent that comes back on fulfilment comes back here.
+    #[account(mut)]
     pub admin: Signer<'info>,
 
-    /// CHECK: Switchboard randomness account; parsed and validated in the handler.
-    pub randomness_account_data: AccountInfo<'info>,
+    /// The request account ORAO will create.
+    ///
+    /// Its address is a PDA of the seed the handler derives, and the handler
+    /// checks it against that derivation before the CPI. The check lives there
+    /// rather than in a seeds constraint because the seed depends on a sysvar
+    /// read, and a constraint that cannot fail cleanly is worse than an
+    /// explicit one that can.
+    ///
+    /// CHECK: address is checked against the derived PDA in the handler.
+    #[account(mut)]
+    pub vrf_request: AccountInfo<'info>,
+
+    #[account(
+        mut,
+        seeds = [CONFIG_ACCOUNT_SEED],
+        bump,
+        seeds::program = ORAO_VRF_PROGRAM_ID,
+    )]
+    pub vrf_network_state: Account<'info, NetworkState>,
+
+    /// CHECK: ORAO checks it against its own configuration inside the CPI.
+    #[account(mut)]
+    pub vrf_treasury: AccountInfo<'info>,
+
+    #[account(address = ORAO_VRF_PROGRAM_ID)]
+    pub vrf_program: Program<'info, OraoVrf>,
+
+    /// CHECK: the address is checked against the sysvar id when it is read.
+    #[account(address = slot_hashes::ID)]
+    pub recent_slothashes: AccountInfo<'info>,
+
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -916,8 +1027,23 @@ pub struct FulfillRandomness<'info> {
     #[account(mut)]
     pub lottery: Account<'info, Lottery>,
 
-    /// CHECK: Switchboard randomness account; parsed and validated in the handler.
-    pub randomness_account_data: AccountInfo<'info>,
+    /// CHECK: owner and seed are checked in the handler against the round.
+    #[account(address = lottery.vrf_request)]
+    pub vrf_request: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+pub struct EmergencyFulfillRandomness<'info> {
+    #[account(mut, has_one = admin)]
+    pub lottery: Account<'info, Lottery>,
+    pub admin: Signer<'info>,
+
+    /// The request must be produced for inspection: the handler refuses once
+    /// ORAO has answered, and it cannot tell without reading it.
+    ///
+    /// CHECK: owner and seed are checked in the handler against the round.
+    #[account(address = lottery.vrf_request)]
+    pub vrf_request: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]
@@ -1005,25 +1131,23 @@ pub struct LimitsUpdated {
 pub struct Phase2Started {
     pub lottery: Pubkey,
     pub weights_hash: [u8; 32],
+    /// The ORAO request account, a PDA of `force`.
     pub randomness_account: Pubkey,
-    pub vrf_ready_ts: i64,
-    pub phase2_slot: u64,
-    pub retry_count: u8,
-}
-
-#[event]
-pub struct VrfRetryScheduled {
-    pub lottery: Pubkey,
-    pub randomness_account: Pubkey,
-    pub phase2_slot: u64,
-    pub retry_count: u8,
+    /// The derived request seed. Published so the derivation can be rechecked
+    /// without reading the round account.
+    pub force: [u8; 32],
+    /// The slot whose hash seeded `force`.
+    pub seed_slot: u64,
+    pub requested_ts: i64,
+    pub requested_slot: u64,
 }
 
 #[event]
 pub struct EmergencySeedUsed {
     pub lottery: Pubkey,
     pub seed: [u8; 32],
-    pub retry_count: u8,
+    /// When the round asked ORAO, so the silence before this is measurable.
+    pub requested_ts: i64,
     pub ts: i64,
 }
 
@@ -1031,14 +1155,6 @@ pub struct EmergencySeedUsed {
 pub struct VrfFulfilled {
     pub lottery: Pubkey,
     pub seed: [u8; 32],
-}
-
-#[event]
-pub struct VrfBinded {
-    pub lottery: Pubkey,
-    pub randomness_account: Pubkey,
-    pub seed_slot: u64,
-    pub seed_slothash: [u8; 32],
 }
 
 #[event]
@@ -1091,8 +1207,6 @@ pub enum LotteryError {
     WeightsHashAlreadySet,
     #[msg("Invalid weights hash (zero value)")]
     InvalidWeightsHash,
-    #[msg("Invalid wait duration for second phase")]
-    InvalidPhase2Wait,
     #[msg("Entry period has not ended yet")]
     NotEndedYet,
     #[msg("VRF is not ready yet")]
@@ -1115,8 +1229,6 @@ pub enum LotteryError {
     InvalidVaultOwner,
     #[msg("Vault must have zero data")]
     InvalidVaultData,
-    #[msg("Invalid randomness account")]
-    InvalidRandomnessAccount,
     #[msg("Randomness account does not match lottery state")]
     RandomnessAccountMismatch,
     #[msg("Failed to parse randomness account")]
@@ -1125,26 +1237,132 @@ pub enum LotteryError {
     RandomnessNotResolved,
     #[msg("Randomness account owner is invalid")]
     InvalidRandomnessAccountOwner,
-    #[msg("Randomness account already has a revealed value")]
-    RandomnessAccountAlreadyResolved,
-    #[msg("Randomness account uses data from before phase 2")]
-    RandomnessTooOld,
-    #[msg("Randomness result is older than the allowed freshness window")]
-    RandomnessTooStale,
-    #[msg("VRF retry limit reached")]
-    VrfRetryLimitReached,
-    #[msg("VRF retry can only be called after vrf_ready_ts")]
-    VrfRetryTooEarly,
-    #[msg("Retry must use a new randomness account")]
-    SameRandomnessAccount,
-    #[msg("Emergency seed is allowed only after max VRF retries")]
-    VrfRetriesNotExhausted,
-    #[msg("VRF request metadata is not bound yet")]
-    VrfRequestNotBound,
-    #[msg("VRF request metadata is already bound")]
-    VrfRequestAlreadyBound,
     #[msg("Randomness data does not match the bound request metadata")]
     RandomnessRequestMismatch,
+    #[msg("Randomness has already been produced for this round")]
+    RandomnessAlreadyResolved,
+    #[msg("Recent slot hashes sysvar is missing or malformed")]
+    InvalidSlotHashesSysvar,
+    #[msg("Seed slot is not present in the slot hashes sysvar")]
+    SeedSlotNotFound,
+    #[msg("Seed slot is too far in the past")]
+    SeedSlotTooOld,
     #[msg("Invalid VRF algorithm hash (zero value)")]
     InvalidVrfAlgorithmHash,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pk(byte: u8) -> Pubkey {
+        Pubkey::new_from_array([byte; 32])
+    }
+
+    /// The same round always asks for the same seed. If this ever stopped
+    /// holding, a round could be pointed at a second request account.
+    #[test]
+    fn force_is_deterministic() {
+        let a = derive_vrf_force(&pk(1), &[2u8; 32], &[3u8; 32]);
+        let b = derive_vrf_force(&pk(1), &[2u8; 32], &[3u8; 32]);
+        assert_eq!(a, b);
+    }
+
+    /// Every input has to matter. A field that does not change the seed is a
+    /// field somebody can vary for free.
+    #[test]
+    fn every_input_changes_the_force() {
+        let base = derive_vrf_force(&pk(1), &[2u8; 32], &[3u8; 32]);
+        assert_ne!(base, derive_vrf_force(&pk(9), &[2u8; 32], &[3u8; 32]));
+        assert_ne!(base, derive_vrf_force(&pk(1), &[9u8; 32], &[3u8; 32]));
+        assert_ne!(base, derive_vrf_force(&pk(1), &[2u8; 32], &[9u8; 32]));
+    }
+
+    /// The domain tag is not decoration: without it the seed would be a plain
+    /// hash of three public values that another program could land on too.
+    #[test]
+    fn force_is_domain_separated() {
+        let lottery = pk(1);
+        let weights = [2u8; 32];
+        let slot_hash = [3u8; 32];
+        let undomained = hashv(&[lottery.as_ref(), &weights, &slot_hash]).to_bytes();
+        assert_ne!(derive_vrf_force(&lottery, &weights, &slot_hash), undomained);
+    }
+
+    /// ORAO hands back 64 bytes, the round stores 32. Folding has to keep all
+    /// of them in play, so a change to any byte has to move the result.
+    #[test]
+    fn folding_uses_every_byte_of_the_randomness() {
+        let randomness = [7u8; 64];
+        let base = hashv(&[VRF_SEED_DOMAIN, &randomness]).to_bytes();
+        for index in 0..64 {
+            let mut altered = randomness;
+            altered[index] ^= 0x01;
+            assert_ne!(
+                base,
+                hashv(&[VRF_SEED_DOMAIN, &altered]).to_bytes(),
+                "byte {index} had no effect on the seed"
+            );
+        }
+    }
+
+    /// The two domains must never collide, or a randomness value could be
+    /// mistaken for a request seed.
+    #[test]
+    fn the_two_domains_differ() {
+        assert_ne!(VRF_FORCE_DOMAIN, VRF_SEED_DOMAIN);
+    }
+
+    /// The account has to be big enough for what the struct now holds. Anchor
+    /// would otherwise truncate silently at `init`.
+    #[test]
+    fn space_matches_the_struct() {
+        // 8 discriminator + borsh body, all fixed-size fields.
+        let body = 32 + 8 + 8 + 2 + 32 + 32 + 8 + 8 + 8 + 1 + 1 + 8 + 16
+            + 32 + 8 + 32 + 1 + 32 + 32 + 8 + 32;
+        assert_eq!(Lottery::SPACE, 8 + body);
+    }
+}
+
+#[cfg(test)]
+mod cross_language_tests {
+    use super::*;
+    use std::str::FromStr;
+
+    fn hex(bytes: [u8; 32]) -> String {
+        bytes.iter().map(|b| format!("{b:02x}")).collect()
+    }
+
+    /// The worker has to derive the same seed as the program, or it will offer
+    /// a request account the program refuses. The two implementations live in
+    /// different languages and different repositories, so they are pinned to
+    /// the same vectors instead of to each other.
+    ///
+    /// The twin of this test is `workers/tests/test_orao_vrf.py`. If one of
+    /// them is ever edited alone, the pair stops agreeing and both should fail.
+    #[test]
+    fn force_matches_the_worker() {
+        let lottery = Pubkey::from_str("4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH").unwrap();
+        let force = derive_vrf_force(&lottery, &[2u8; 32], &[3u8; 32]);
+        assert_eq!(
+            hex(force),
+            "1b62c4004550937dd435457f0d0a0a9771996ccaf083f452aa0c58a5832e5c52"
+        );
+    }
+
+    /// The worker holds the same number so it does not send a transaction the
+    /// program is going to refuse. Two minutes, measured rather than guessed.
+    #[test]
+    fn the_emergency_delay_matches_the_worker() {
+        assert_eq!(EMERGENCY_FULFILL_DELAY_SECONDS, 120);
+    }
+
+    #[test]
+    fn folding_matches_the_worker() {
+        let seed = hashv(&[VRF_SEED_DOMAIN, &[7u8; 64]]).to_bytes();
+        assert_eq!(
+            hex(seed),
+            "58d6e85496a4c2bd8ea9ae6bf61658708c533c5491633ecf9fcf8725fd921601"
+        );
+    }
 }

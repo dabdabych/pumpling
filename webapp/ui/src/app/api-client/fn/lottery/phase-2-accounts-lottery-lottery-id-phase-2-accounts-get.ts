@@ -7,14 +7,14 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { LotteryResponse } from '../../models/lottery-response';
+import { Phase2AccountsResponse } from '../../models/phase-2-accounts-response';
 
-export interface MarkVrfBindedLotteryLotteryIdVrfBindedPost$Params {
+export interface Phase2AccountsLotteryLotteryIdPhase2AccountsGet$Params {
   lottery_id: number;
 }
 
-export function markVrfBindedLotteryLotteryIdVrfBindedPost(http: HttpClient, rootUrl: string, params: MarkVrfBindedLotteryLotteryIdVrfBindedPost$Params, context?: HttpContext): Observable<StrictHttpResponse<LotteryResponse>> {
-  const rb = new RequestBuilder(rootUrl, markVrfBindedLotteryLotteryIdVrfBindedPost.PATH, 'post');
+export function phase2AccountsLotteryLotteryIdPhase2AccountsGet(http: HttpClient, rootUrl: string, params: Phase2AccountsLotteryLotteryIdPhase2AccountsGet$Params, context?: HttpContext): Observable<StrictHttpResponse<Phase2AccountsResponse>> {
+  const rb = new RequestBuilder(rootUrl, phase2AccountsLotteryLotteryIdPhase2AccountsGet.PATH, 'get');
   if (params) {
     rb.path('lottery_id', params.lottery_id, {});
   }
@@ -24,9 +24,9 @@ export function markVrfBindedLotteryLotteryIdVrfBindedPost(http: HttpClient, roo
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<LotteryResponse>;
+      return r as StrictHttpResponse<Phase2AccountsResponse>;
     })
   );
 }
 
-markVrfBindedLotteryLotteryIdVrfBindedPost.PATH = '/lottery/{lottery_id}/vrf-binded';
+phase2AccountsLotteryLotteryIdPhase2AccountsGet.PATH = '/lottery/{lottery_id}/phase2-accounts';

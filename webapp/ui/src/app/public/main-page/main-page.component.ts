@@ -519,9 +519,14 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     const trigger = timeline?.scrollTrigger;
     const at = timeline?.labels?.[label];
     if (!timeline || !trigger || at === undefined) {
+      // No timeline: a phone or reduced motion, where the story is an ordinary
+      // page. `behavior: 'auto'` reads the value from CSS, and Tailwind's
+      // preflight puts `scroll-behavior: smooth` on :root — so a jump asked for
+      // here came out as a ride through every screen on the way. 'instant'
+      // is the one value that ignores the stylesheet.
       const selector = STORY_SECTION_SELECTORS.find(([name]) => name === label)?.[1];
       const node = selector ? this.document.querySelector(selector) : null;
-      node?.scrollIntoView({ behavior: 'auto', block: 'start' });
+      node?.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'start' });
       return;
     }
 
@@ -617,7 +622,7 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
    * is nowhere.
    */
   scrollToStory(): void {
-    this.goToSection('what', true);
+    this.goToSection('what');
   }
 
   /**
@@ -844,6 +849,15 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
    * So the end of every transition, finished or cut short, restores them, and
    * only where they belong: at the start of the story. Further along, hidden is
    * exactly what they should be, and the timeline owns them again.
+   *
+   * What it must not do is kill tweens by target. `gsap.killTweensOf(card)`
+   * reaches inside every timeline that holds that card, and the story timeline
+   * holds three of them: the two that part the cards and the one that fades
+   * them. Killing those took the cards out of the story for good — from then on
+   * the first screen stayed lit over "What is it" and "How it works", its text
+   * printed across theirs. Only our own animations are ours to stop; the story
+   * timeline is at its start here and is already holding these where they
+   * belong, so setting them is enough.
    */
   private restoreHeroContentAtStart(): void {
     const timeline = this.storyTimeline;
@@ -864,7 +878,9 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     if (!targets.length) {
       return;
     }
-    gsap.killTweensOf(targets);
+    // The entrance is ours and may still be running: it is the one animation
+    // that could overwrite what we are about to set.
+    this.heroEntrance?.kill();
     if (cards.length) {
       gsap.set(cards, { xPercent: 0, scale: 1, autoAlpha: 1 });
     }
@@ -876,7 +892,7 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  goToSection(label: string, smooth = false): void {
+  goToSection(label: string): void {
     const timeline = this.storyTimeline;
     const trigger = timeline?.scrollTrigger;
     const at = timeline?.labels?.[label];
@@ -886,12 +902,20 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
       // we go to the right one by its own place on the page.
       // The hero screen is the top of the page. We do not go to the block
       // itself: it sits under the sticky header, and scrolling to it hid its top.
+      // Smooth on purpose, not by accident. Here the page is an ordinary long
+      // one and every caller is a person pressing a control, so carrying them
+      // there keeps the sense of place. It used to come out smooth anyway,
+      // through `behavior: 'auto'` reading `scroll-behavior: smooth` off :root
+      // (Tailwind preflight) — which is the same accident that turned the deep
+      // link from the pool page into a ride past every screen. That one is a
+      // jump and says so; this one is a scroll and now says so too.
+      const behavior = 'smooth' as ScrollBehavior;
       const selector = label === 'hero' ? undefined : STORY_SECTION_SELECTORS.find(([name]) => name === label)?.[1];
       const node = selector ? this.document.querySelector(selector) : null;
       if (node) {
-        node.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
+        node.scrollIntoView({ behavior, block: 'start' });
       } else {
-        window.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
+        window.scrollTo({ top: 0, behavior });
       }
       return;
     }

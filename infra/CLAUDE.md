@@ -38,7 +38,6 @@ docker compose up -d loki grafana
 - Loki: http://localhost:3100
 
 Note: `docker-compose.yml` needs `SWITCHBOARD_SIGNER_KEYPAIR_JSON` for
-`vrf-service` and validates the file as a whole, so the variable has to be in
 `.env` even when you only bring up some of the services (`dummy` will do
 locally).
 

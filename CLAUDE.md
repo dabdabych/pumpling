@@ -34,7 +34,6 @@ the docs and any new code. Do not spend a refactor on it without asking.
 |---|---|---|---|
 | `webapp/ui/` | Angular | The site: main page, pool page, personal history, archive, admin | → `webapp/ui/CLAUDE.md` |
 | `webapp/backend/` | Python, FastAPI | API, auth, commits, mint validation, round state | → `webapp/backend/CLAUDE.md` |
-| `webapp/backend/vrf-service/` | Node | Signs VRF requests with the service keypair | — |
 | `workers/` | Python, asyncio | Round lifecycle and on-chain event processing | → `workers/CLAUDE.md` |
 | `offchain/` | TypeScript | **The buyer**: batched purchases, delivery, refunds | → `offchain/CLAUDE.md` |
 | `offchain/api/` | TypeScript | HTTP wrapper around the buyer | → `offchain/api/CLAUDE.md` |
@@ -50,16 +49,17 @@ the docs and any new code. Do not spend a refactor on it without asking.
 - `lottery_phase_worker` — drives round phases and starts the buyer after the draw
 - `telegram_error_handler` — error alert channel
 
-Flow: `Angular → FastAPI → workers → the buyer → Solana`, with `vrf-service`
-signing VRF requests alongside.
+Flow: `Angular → FastAPI → workers → the buyer → Solana`. Randomness comes from
+ORAO VRF, requested by the program itself in the same transaction that closes a
+round, so there is no service in between any more.
 
 ---
 
 ## Running the stack
 
 Everything runs through docker compose. Services: `postgres, backend, ui,
-vrf-service, events-worker, backfill-worker, bet-finalizer-worker,
-lottery-phase-worker, buyer, loki, grafana, certbot-renew`.
+events-worker, backfill-worker, bet-finalizer-worker, lottery-phase-worker,
+buyer, loki, grafana, certbot-renew`.
 
 ```bash
 ./deploy.sh                       # the whole stack
@@ -69,10 +69,8 @@ docker compose up -d postgres backend ui   # locally you usually want a part of 
 docker compose up -d loki grafana          # monitoring on :3001
 ```
 
-**Watch out:** `docker-compose.yml` needs `SWITCHBOARD_SIGNER_KEYPAIR_JSON` for
-`vrf-service` and validates the file as a whole, even when you only bring up a
-few services. Keep it in `.env` (`dummy` is fine locally). The buyer needs
-`KEEPER_SECRET_KEY`.
+**Watch out:** `docker-compose.yml` validates the whole env file even when you
+only bring up a few services. The buyer needs `KEEPER_SECRET_KEY`.
 
 How to run a single component and its tests is in that component's `CLAUDE.md`.
 
@@ -95,6 +93,41 @@ from the source, `--check` exits non-zero when what is committed has drifted,
 `--write` updates all five places that carry it.
 `webapp/backend/tests/test_vrf_engine.py` fails the run if they disagree, so a
 stale commitment cannot reach mainnet.
+
+One thing those checks cannot see: in `docker-compose.yml` the value is a
+default, and `LOTTERY_AUTOSTART_VRF_ALGORITHM_HASH` in a server's `.env`
+overrides it. A stale line there and rounds declare one algorithm while another
+computes them. The phase worker complains in the log when it can see the file to
+compare against, but it opens the round anyway — a wrong fingerprint is an
+argument, a cycle that stops is the site going quiet. Check the `.env` after
+touching the engine.
+
+---
+
+## Deploying the program
+
+Build it with `solana-verify`, not with `anchor build`, and deploy that
+artifact:
+
+```bash
+solana-verify build --library-name lottery_v_1_0 \
+  -b solanafoundation/solana-verifiable-build:2.3.11
+solana program deploy target/deploy/lottery_v_1_0.so --program-id <id> ...
+```
+
+The two builds are not the same binary. `anchor build` uses whatever toolchain
+is on the machine; `solana-verify` uses a pinned container, and that container
+is what anyone checking the program will rebuild from. Deploy the wrong one and
+the explorers say the program is unverified, however honest the source is.
+Measured on 2026-09-20: `anchor build` gave `0b16b7bb…`, the container gave
+`07feaabe…`, from the same commit.
+
+On an Apple Silicon machine the container build dies downloading crates through
+the x86 emulation. It runs fine on the Linux stand, which has `solana-verify`
+and a Rust toolchain installed for exactly this.
+
+`anchor build` is still what regenerates the IDL, so a release needs both: the
+container build for the binary, `anchor build` for `target/idl`.
 
 ---
 
