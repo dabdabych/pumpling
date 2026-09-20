@@ -1954,6 +1954,53 @@ async def resume_lottery_cycle(
     return _to_cycle_control_response(set_cycle_enabled(db, normalized_type, True))
 
 
+
+def _verification_from_events(db: Session, lottery_pda: str) -> dict[str, object]:
+    """The round's on-chain proof, rebuilt from the events it emitted.
+
+    `Phase2Started` carries the weights commitment, the derived request seed and
+    the slot whose hash went into it; `LotteryInitialized` carries the shares
+    algorithm fingerprint. Both were written by the program and both are in the
+    transaction logs, so this is a copy of something public rather than a claim
+    of ours.
+    """
+    def _hex(value: object) -> str | None:
+        if isinstance(value, str):
+            return value or None
+        if isinstance(value, (list, tuple)) and len(value) == 32:
+            try:
+                return bytes(int(b) & 0xFF for b in value).hex()
+            except (TypeError, ValueError):
+                return None
+        return None
+
+    def _event(name: str) -> dict:
+        row = (
+            db.query(SmartContractEventModel)
+            .filter(SmartContractEventModel.event_name == name)
+            # `as_string()`, not `.astext`: the column is declared as plain JSON
+            # and `.astext` only exists on PostgreSQL's JSONB, so it would have
+            # thrown on the first finished round anyone looked at.
+            .filter(SmartContractEventModel.data["lottery"].as_string() == lottery_pda)
+            .order_by(SmartContractEventModel.id.desc())
+            .first()
+        )
+        return row.data if row and isinstance(row.data, dict) else {}
+
+    phase2 = _event("Phase2Started")
+    initialized = _event("LotteryInitialized")
+    if not phase2 and not initialized:
+        return {}
+
+    weights = _hex(phase2.get("weights_hash"))
+    return {
+        "weights_hash": weights if weights and weights != "00" * 32 else None,
+        "vrf_randomness_account": phase2.get("randomness_account") or None,
+        "vrf_force": _hex(phase2.get("force")),
+        "vrf_seed_slot": phase2.get("seed_slot") or None,
+        "vrf_algorithm_hash": _hex(initialized.get("vrf_algorithm_hash")),
+    }
+
 @router.get("/{lottery_id}/verification", response_model=LotteryVerificationResponse)
 def get_lottery_verification(lottery_id: int, db: Session = Depends(get_db)):
     """
@@ -1983,6 +2030,21 @@ def get_lottery_verification(lottery_id: int, db: Session = Depends(get_db)):
 
     settings = get_settings()
     lottery_pda, vault_pda, admin_pubkey = _derive_lottery_account_summary(int(lottery_id), settings)
+
+    # The derivation above looks the round up on chain, so it comes back empty
+    # once the round has closed and its account has been returned to rent. The
+    # address is still worth printing: it is how anyone finds the round in the
+    # transaction history, which is where the rest of its proof lives.
+    if not lottery_pda and getattr(lottery, "lottery_pda", None):
+        lottery_pda = str(lottery.lottery_pda)
+        try:
+            derived_vault, _ = Pubkey.find_program_address(
+                [b"vault", bytes(Pubkey.from_string(lottery_pda))],
+                Pubkey.from_string(str(settings.lottery_program_id)),
+            )
+            vault_pda = str(derived_vault)
+        except Exception:  # noqa: BLE001
+            vault_pda = None
 
     # The commitment preimage is built from the same commits and by the same
     # rule the worker used when it put the hash into the program.
@@ -2014,6 +2076,15 @@ def get_lottery_verification(lottery_id: int, db: Session = Depends(get_db)):
             # pool address.
             logger.warning("verification: on-chain read failed (lottery_id=%s)", lottery_id)
 
+    # A finished round has no account left: `close_lottery` returns its rent, so
+    # the commitment, the request seed and the algorithm fingerprint go with it.
+    # They are not lost, they are in the events the program emitted, which live
+    # in the transaction logs and which anyone can read for themselves. Without
+    # this the verification page reported "the commitment did not match" for
+    # every round that had ended, which is a worse answer than nothing.
+    if not onchain and lottery_pda:
+        onchain = _verification_from_events(db, lottery_pda)
+
     weights_onchain = onchain.get("weights_hash") if onchain else None
     seed = onchain.get("vrf_seed") if onchain else None
     seed = seed or (lottery.vrf_seed or None)
@@ -2039,9 +2110,13 @@ def get_lottery_verification(lottery_id: int, db: Session = Depends(get_db)):
         weights_hash_onchain=weights_onchain,
         weights_payload=weights_payload,
         weights_hash_recomputed=weights_recomputed,
+        # Unknown, not false. There is nothing to compare against when the
+        # round's account is gone and no event carried the commitment, and
+        # saying "did not match" there accuses us of something that did not
+        # happen.
         weights_match=(
-            bool(weights_onchain and weights_recomputed and weights_onchain == weights_recomputed)
-            if weights_onchain or weights_recomputed
+            weights_onchain == weights_recomputed
+            if weights_onchain and weights_recomputed
             else None
         ),
         randomness_source=source,

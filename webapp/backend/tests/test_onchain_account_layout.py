@@ -151,6 +151,46 @@ class TestItStaysInStepWithTheProgram:
         assert 8 + body == CURRENT_SIZE
 
 
+class TestWhatTheProgramLetsAnAdminDo:
+    """The instruction list is the full set of powers over a live round.
+
+    It is worth pinning because the interesting direction is growth. Every
+    instruction an admin can call while people's SOL sits in the vault is a
+    thing they have to be trusted not to do, and `update_max_amount` was one:
+    it moved a round's per-commit cap at any point, after the commits were in,
+    and nothing in this repository ever called it.
+    """
+
+    EXPECTED = {
+        # the round's life
+        "initialize", "deposit_sol", "start_second_phase",
+        "fulfill_randomness", "emergency_fulfill_randomness",
+        "start_purchases_phase", "close_lottery",
+        # the only switch left
+        "pause", "unpause",
+    }
+
+    def _idl(self):
+        import json
+
+        with open(os.path.join(_WORKERS, "idl", "lottery.json")) as handle:
+            return json.load(handle)
+
+    def test_the_program_has_exactly_these_instructions(self):
+        names = {i["name"] for i in self._idl()["instructions"]}
+        assert names == self.EXPECTED, (
+            f"unexpected: {sorted(names - self.EXPECTED)}, missing: {sorted(self.EXPECTED - names)}"
+        )
+
+    def test_only_one_of_them_can_move_money_out_of_the_vault_to_an_admin(self):
+        # `close_lottery` sweeps what is left to the admin, and it is the only
+        # one that may. It is also why it refuses to run with commits still
+        # counted, which `start_purchases_phase` is what clears.
+        names = {i["name"] for i in self._idl()["instructions"]}
+        assert "close_lottery" in names
+        assert not (names & {"withdraw", "sweep", "rescue", "admin_transfer"})
+
+
 class TestAnAccountOfTheWrongShape:
     """The size is the only thing that tells the two layouts apart.
 

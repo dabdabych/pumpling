@@ -442,7 +442,7 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     requestAnimationFrame(() => {
       this.buildScrollStory();
       ScrollTrigger.refresh();
-      this.openSectionFromFragment();
+      void this.settleStory().then(() => this.openSectionFromFragment());
       void this.releaseSplashWhenHeroReady();
     });
   }
@@ -465,25 +465,29 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
    * page: they asked for a section, not for a tour past the previous ones.
    */
   private jumpToSection(label: string): void {
-    void this.jumpWhenStoryIsSteady(label);
+    void this.settleStory().then(() => this.applyJump(label));
   }
 
   /**
-   * The jump to a section happens once, when the layout has stopped moving.
+   * Waits until the story has stopped changing size, refreshing as it goes.
    *
-   * The story is built while images are still loading and the pinning is being
-   * computed, and ScrollTrigger's bounds at that moment are temporary. A jump by
-   * them landed in the neighbouring section, and the next recalculation took the
-   * page further still. So we wait until the bounds match twice in a row and
-   * only then jump.
+   * This has to run on every arrival, not only on the ones that jump somewhere.
+   * ScrollTrigger decides whether to pin the first screen when it measures, and
+   * one measurement taken a frame after the view exists is taken against a
+   * layout that is still moving. On a fresh load the splash hides that, because
+   * it waits for the images. Coming back from the pool page there is no splash,
+   * the single measurement lands too early, and the pin is simply never applied:
+   * the trigger is there, the spacer is there, and the first screen scrolls away
+   * with the mascot and the cards on it while the story does not advance. A
+   * window resize fixed it, which is what pointed at the measurement rather than
+   * at the pinning.
+   *
+   * Images first: every one that arrives changes the height of the pinned block.
+   * Then the bounds have to match three times in a row, because scenes inside
+   * the story measure their own text after the first paint and move the end a
+   * good half second later.
    */
-  private async jumpWhenStoryIsSteady(label: string): Promise<void> {
-    // Images first. On an in-app navigation there is no splash, and the layout
-    // keeps growing underfoot: every image that arrives changes the height of
-    // the pinned story and with it the position of a section. A jump at that
-    // moment lands almost right, after which the page keeps creeping for several
-    // seconds. On a fresh load this is invisible, because the splash waits for
-    // the images.
+  private async settleStory(): Promise<void> {
     const images = Array.from(
       this.document.querySelectorAll<HTMLImageElement>('#qres-hero img')
     ).filter((image) => !image.complete);
@@ -494,24 +498,40 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
       ]);
     }
 
-    // Two matching bounds in a row are not enough. Scenes inside the story
-    // measure their own lines after the first paint and change the height of the
-    // pinned block late: the bounds manage to match and half a second later
-    // drift, and the jump misses by a screen. We wait for three identical measurements.
+    // What is compared is the page, not only the trigger. Bounds settle on a
+    // wrong answer perfectly happily: coming back from the pool page, the story
+    // was measured while that page was still in the document, which put the
+    // first screen 1120px down. The bounds then read the same wrong number
+    // twice in a row and the loop left satisfied, a tenth of a second before
+    // the old page came out and everything moved. So the height of the document
+    // and where the pinned block actually sits go into the comparison, and only
+    // when none of it has moved is the last measurement the real one.
+    const pageShape = () => {
+      const trigger = this.storyTimeline?.scrollTrigger;
+      const spacer = this.document.querySelector('.pin-spacer');
+      const top = spacer ? Math.round(spacer.getBoundingClientRect().top + window.scrollY) : -1;
+      const height = this.document.documentElement.scrollHeight;
+      const bounds = trigger ? `${Math.round(trigger.start)}:${Math.round(trigger.end)}` : '';
+      return `${bounds}|${top}|${height}`;
+    };
+
+    // Half a second of nothing moving, not two readings. Two was measured and
+    // it left at 300ms; the previous page came out of the document at 400ms and
+    // took the first screen 1120px up with it. Anything that moves resets the
+    // count, so a slow machine waits longer by itself, and the attempt cap
+    // keeps the worst case at four seconds.
     let previous = '';
     let steady = 0;
-    for (let attempt = 0; attempt < 24; attempt++) {
+    for (let attempt = 0; attempt < 40; attempt++) {
       ScrollTrigger.refresh();
-      const trigger = this.storyTimeline?.scrollTrigger;
-      const bounds = trigger ? `${Math.round(trigger.start)}:${Math.round(trigger.end)}` : '';
-      steady = bounds && bounds === previous ? steady + 1 : 0;
-      if (steady >= 2) {
-        break;
+      const shape = pageShape();
+      steady = shape === previous ? steady + 1 : 0;
+      if (steady >= 5) {
+        return;
       }
-      previous = bounds;
+      previous = shape;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    this.applyJump(label);
   }
 
   private applyJump(label: string): void {

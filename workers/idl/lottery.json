@@ -612,38 +612,6 @@
         }
       ],
       "args": []
-    },
-    {
-      "name": "update_max_amount",
-      "discriminator": [
-        201,
-        56,
-        102,
-        231,
-        215,
-        69,
-        216,
-        17
-      ],
-      "accounts": [
-        {
-          "name": "lottery",
-          "writable": true
-        },
-        {
-          "name": "admin",
-          "signer": true,
-          "relations": [
-            "lottery"
-          ]
-        }
-      ],
-      "args": [
-        {
-          "name": "new_max",
-          "type": "u64"
-        }
-      ]
     }
   ],
   "accounts": [
@@ -699,19 +667,6 @@
         206,
         146,
         125
-      ]
-    },
-    {
-      "name": "LimitsUpdated",
-      "discriminator": [
-        160,
-        131,
-        108,
-        76,
-        91,
-        80,
-        118,
-        137
       ]
     },
     {
@@ -1037,26 +992,6 @@
           {
             "name": "ts",
             "type": "i64"
-          }
-        ]
-      }
-    },
-    {
-      "name": "LimitsUpdated",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "lottery",
-            "type": "pubkey"
-          },
-          {
-            "name": "min_amount",
-            "type": "u64"
-          },
-          {
-            "name": "max_amount",
-            "type": "u64"
           }
         ]
       }

@@ -24,8 +24,9 @@ declare_id!("4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH");
 declare_id!("4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH");
 
 // --- Default constants ---
-pub const MIN_AMOUNT_LAMPORTS_DEFAULT: u64 = 50_000_000;          // 0.05 SOL
-pub const MAX_AMOUNT_LAMPORTS_DEFAULT: u64 = 250 * 1_000_000_000; // 250 SOL
+/// The smallest commit the program will take, when `initialize` names none.
+/// The same 0.05 SOL the site offers as its lowest amount.
+pub const MIN_AMOUNT_LAMPORTS_DEFAULT: u64 = 50_000_000; // 0.05 SOL
 
 /// How long the round waits for ORAO before the admin is allowed to draw it
 /// with a seed of their own.
@@ -275,7 +276,14 @@ pub mod lottery {
         );
 
         l.min_amount = min_amount.unwrap_or(MIN_AMOUNT_LAMPORTS_DEFAULT);
-        l.max_amount = max_amount.unwrap_or(MAX_AMOUNT_LAMPORTS_DEFAULT);
+        // The pool's own cap when no per-commit cap is named. There used to be
+        // a flat 250 SOL here, which no commit could ever reach: a commit is
+        // checked against this *and* against what is left under `max_total`,
+        // and the pool cap has always been the smaller of the two. So the
+        // number read like a rule and was never one. Defaulting to `max_total`
+        // leaves the behaviour exactly as it was and stops the two limits
+        // disagreeing on paper.
+        l.max_amount = max_amount.unwrap_or(max_total);
 
         require!(
             l.min_amount > 0 && l.min_amount <= l.max_amount,
@@ -284,6 +292,12 @@ pub mod lottery {
         require!(
             max_total >= l.min_amount,
             LotteryError::InvalidTotalLimit
+        );
+        // A per-commit cap above the pool cap is unreachable by definition.
+        // Refusing it keeps a round from advertising a limit it cannot honour.
+        require!(
+            l.max_amount <= max_total,
+            LotteryError::InvalidAmountBounds
         );
 
         l.status = LotteryStatus::Open;
@@ -752,25 +766,6 @@ pub mod lottery {
     }
 
     // -----------------------
-    // Update max_amount
-    // -----------------------
-    pub fn update_max_amount(ctx: Context<AdminOnly>, new_max: u64) -> Result<()> {
-        let l = &mut ctx.accounts.lottery;
-
-        require!(new_max >= l.min_amount, LotteryError::InvalidAmountBounds);
-
-        l.max_amount = new_max;
-
-        emit!(LimitsUpdated {
-            lottery: l.key(),
-            min_amount: l.min_amount,
-            max_amount: l.max_amount,
-        });
-
-        Ok(())
-    }
-
-    // -----------------------
     // CLOSE LOTTERY (vault closes too). All the remaining lamports would been sent
     // to admin pubkey, which is fixed in the rules
     // -----------------------
@@ -1118,13 +1113,6 @@ pub struct Deposit {
 pub struct PhaseChanged {
     pub lottery: Pubkey,
     pub status: LotteryStatus,
-}
-
-#[event]
-pub struct LimitsUpdated {
-    pub lottery: Pubkey,
-    pub min_amount: u64,
-    pub max_amount: u64,
 }
 
 #[event]

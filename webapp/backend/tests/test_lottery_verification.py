@@ -84,6 +84,114 @@ def offline(monkeypatch):
     monkeypatch.setattr(router, "Client", DeadClient)
 
 
+class FakeEventRow:
+    def __init__(self, data):
+        self.data = data
+
+
+class EventQuery:
+    """The chain of filters the events fallback uses."""
+
+    def __init__(self, rows):
+        self._rows = rows
+        self._name = None
+
+    def filter(self, *conditions):
+        # The event name is on the right of the comparison, as a bound value.
+        # Rendering the expression to a string hides it behind a placeholder,
+        # so the value is read off the node instead.
+        for condition in conditions:
+            value = getattr(getattr(condition, "right", None), "value", None)
+            if value in ("Phase2Started", "LotteryInitialized"):
+                self._name = value
+        return self
+
+    def order_by(self, *_):
+        return self
+
+    def first(self):
+        data = self._rows.get(self._name)
+        return FakeEventRow(data) if data else None
+
+
+class ClosedRoundSession(FakeSession):
+    """A round whose account is gone: only the events it emitted are left."""
+
+    def __init__(self, rows, events):
+        super().__init__(rows, FakeLottery())
+        self._events = events
+
+    def query(self, *args):
+        name = getattr(args[0], "__name__", "") if args else ""
+        if name == "SmartContractEventModel":
+            return EventQuery(self._events)
+        return super().query(*args)
+
+
+@pytest.fixture
+def closed(offline, monkeypatch):
+    """No account on chain, and an address to look the events up by."""
+    monkeypatch.setattr(
+        router, "_derive_lottery_account_summary",
+        lambda *_a, **_k: ("pda", "vault", "admin"),
+    )
+
+
+class TestARoundThatHasClosed:
+    """`close_lottery` returns the account's rent, so the account is deleted.
+
+    Everything the verification page reads off it goes at the same moment. It
+    used to answer "the commitment did not match" for every finished round,
+    which reads as our own check failing rather than as the account being gone.
+    """
+
+    WEIGHTS = [1] * 32
+    ALGORITHM = [2] * 32
+    FORCE = [3] * 32
+
+    def _events(self, weights=None):
+        return {
+            "Phase2Started": {
+                "lottery": "pda",
+                "weights_hash": weights if weights is not None else self.WEIGHTS,
+                "randomness_account": "6JViNMPPhucr1AYsqFx6rqGqKFpd6iMxEEHoXPztrugJ",
+                "force": self.FORCE,
+                "seed_slot": 501465892,
+            },
+            "LotteryInitialized": {"lottery": "pda", "vrf_algorithm_hash": self.ALGORITHM},
+        }
+
+    def test_the_proof_comes_back_from_the_events(self, closed):
+        rows = [("So11111111111111111111111111111111111111112", Decimal("1.5"))]
+        session = ClosedRoundSession(rows, self._events())
+
+        answer = router.get_lottery_verification(LOTTERY_ID, db=session)
+
+        assert answer.weights_hash_onchain == bytes([1] * 32).hex()
+        assert answer.vrf_algorithm_hash == bytes([2] * 32).hex()
+        assert answer.randomness_account == "6JViNMPPhucr1AYsqFx6rqGqKFpd6iMxEEHoXPztrugJ"
+
+    def test_a_commitment_that_disagrees_is_still_reported(self, closed):
+        # The fallback must not paper over a real mismatch.
+        rows = [("So11111111111111111111111111111111111111112", Decimal("1.5"))]
+        session = ClosedRoundSession(rows, self._events(weights=[9] * 32))
+
+        answer = router.get_lottery_verification(LOTTERY_ID, db=session)
+
+        assert answer.weights_match is False
+
+    def test_nothing_to_compare_is_unknown_not_a_failure(self, closed):
+        # No account and no event: the honest answer is that we cannot say,
+        # not that the round failed its own check.
+        rows = [("So11111111111111111111111111111111111111112", Decimal("1.5"))]
+        session = ClosedRoundSession(rows, {})
+
+        answer = router.get_lottery_verification(LOTTERY_ID, db=session)
+
+        assert answer.weights_match is None
+        assert answer.weights_hash_recomputed
+
+
 class TestVerificationAnswers:
     def test_a_pool_with_commits_verifies(self, offline):
         rows = [("So11111111111111111111111111111111111111112", Decimal("1.5")),
