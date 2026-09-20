@@ -48,12 +48,30 @@ weights commitment and the exact text it was hashed from, the request seed the
 program derived, the slot whose hash went into that seed, where the randomness
 came from, and the fingerprint of the algorithm that turned it into shares.
 
-The request seed is derived, never chosen:
+Four things you can check from the chain alone, with no help from us:
 
-```
-force = sha256("pumpling-vrf-force-v1" || lottery_pda || weights_hash || slot_hash)
-```
+1. **The commitment matches the commits.** Hash the payload the endpoint hands
+   you and compare it with `weights_hash` in the round account. It was written
+   before the draw.
+2. **The request account is the one the seed points at.** The account is a PDA
+   of `vrf_force`, and both are in the round account:
+   `PDA(["orao-vrf-randomness-request", vrf_force], VRFzZoJ…)`.
+3. **ORAO answered that request and no other.** Read the request account; the
+   seed inside it is `vrf_force`.
+4. **The round's seed is that answer.** ORAO returns 64 bytes; the round stores
+   `sha256("pumpling-vrf-seed-v1" || those 64 bytes)`.
 
-Recompute it, derive the ORAO request account from it, and check that the round
-used that account and no other. There is exactly one possible request per round,
-which is what stops anyone from asking twice and keeping the answer they prefer.
+One thing you cannot recompute, and we would rather say so than let you find
+out. `vrf_force` is derived from the hash of the slot in `vrf_seed_slot`, and
+that hash is the slot's bank hash, which the chain keeps for 512 slots — about
+three and a half minutes — and no ordinary RPC serves afterwards. So you cannot
+rebuild `vrf_force` from first principles once a round is a few minutes old.
+
+What stands in its place is the program itself. It is a
+[verified build](https://github.com/dabdabych/pumpling): the bytes running on
+chain rebuild exactly from this repository, and the source shows that the seed
+is derived inside the program and never taken as an argument, and that the
+request account is checked against that derivation before anything else
+happens. So there is exactly one request a round can make, and the thing
+guaranteeing it is code you can read and rebuild rather than a number we hand
+you.
