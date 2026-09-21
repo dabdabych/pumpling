@@ -1,0 +1,139 @@
+<!doctype html>
+<!--
+  The page the world sees while the site is closed.
+
+  Served instead of the app by nginx when SITE_ENTRY points here, so the app
+  shell is never delivered at all. That matters more than hiding a screen: with
+  the real index.html out of reach there is no commit button to press, no API
+  calls going out, and nothing for somebody to re-enable in devtools. The whole
+  stack keeps running underneath, so opening the site is one environment
+  variable and a container restart away.
+
+  Deliberately a single standalone file with no build step, no framework and no
+  network calls. A holding page that depends on the thing it is holding back is
+  no use on the day it is needed.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>pumpling</title>
+    <meta name="description" content="Pumpling is a platform built so anyone can hype and promote their coin on the Solana network.">
+    <meta name="robots" content="noindex">
+    <link rel="icon" href="favicon.ico">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <meta property="og:title" content="pumpling">
+    <meta property="og:description" content="Pumpling is a platform built so anyone can hype and promote their coin on the Solana network.">
+    <meta property="og:type" content="website">
+    <style>
+      :root {
+        --white: #FCFCFC;
+        --black: #020202;
+        --purple: #AF8FFF;
+        --green: #8FFFAF;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        min-height: 100%;
+        background: var(--white);
+        color: var(--black);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      /* The border, the hard shadow and the near-square corners are the whole
+         look of the site. Repeated here by hand rather than pulled from the
+         stylesheet, which lives inside the build this page has to work without. */
+      .card {
+        position: relative;
+        width: 100%;
+        max-width: 560px;
+        border: 2px solid var(--black);
+        border-radius: 4px;
+        background: var(--white);
+        padding: 40px 32px;
+        text-align: center;
+      }
+      .card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 4px;
+        background: var(--black);
+        transform: translate(6px, 6px);
+        z-index: -1;
+      }
+      .mark {
+        width: 96px;
+        height: 96px;
+        display: block;
+        margin: 0 auto 20px;
+      }
+      .word {
+        margin: 0 0 24px;
+        font-size: 32px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .line {
+        display: inline-block;
+        margin: 0 0 20px;
+        padding: 6px 14px;
+        border: 2px solid var(--black);
+        border-radius: 4px;
+        background: var(--purple);
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .lede {
+        margin: 0 auto;
+        max-width: 42ch;
+        font-size: 17px;
+        line-height: 1.5;
+      }
+      .links {
+        margin-top: 28px;
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      .links a {
+        border: 2px solid var(--black);
+        border-radius: 4px;
+        padding: 8px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+        color: var(--black);
+        background: var(--white);
+      }
+      .links a:hover { background: var(--green); }
+      @media (max-width: 480px) {
+        .card { padding: 32px 20px; }
+        .word { font-size: 26px; }
+        .lede { font-size: 16px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <img class="mark" src="assets/images/pumpling-mascot.png" width="96" height="96" alt="">
+      <p class="word">pumpling</p>
+      <p class="line">Opening shortly</p>
+      <p class="lede">
+        Attention you can buy, with a receipt on Solana. We are finishing the
+        last checks before the first pool opens.
+      </p>
+      <nav class="links">
+        <a href="https://x.com/pumplingxyz" rel="noreferrer">Follow on X</a>
+      </nav>
+    </main>
+  </body>
+</html>

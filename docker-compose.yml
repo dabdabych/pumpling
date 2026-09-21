@@ -234,7 +234,11 @@ services:
       - SOLANA_EXPLORER_QUERY=${SOLANA_EXPLORER_QUERY-}
       # Where the "how to check this yourself" link in the verification dialog leads.
       - VERIFY_DOCS_URL=${VERIFY_DOCS_URL:-https://github.com/qres-crypto/public-docs}
-      - NGINX_ENVSUBST_FILTER=^(APP_DOMAIN|APP_DOMAIN_ALIASES|SOLANA_EXPLORER_QUERY|VERIFY_DOCS_URL)
+      # Which file nginx serves as the site. `index.html` is the app;
+      # `coming-soon.html` is the holding page, and then the app shell is never
+      # delivered at all. Change it in .env and `docker compose up -d ui`.
+      - SITE_ENTRY=${SITE_ENTRY:-index.html}
+      - NGINX_ENVSUBST_FILTER=^(APP_DOMAIN|APP_DOMAIN_ALIASES|SOLANA_EXPLORER_QUERY|VERIFY_DOCS_URL|SITE_ENTRY)
       - NGINX_CERT_RELOAD_INTERVAL=${NGINX_CERT_RELOAD_INTERVAL:-12h}
     ports:
       - "${UI_HTTP_PORT:-80}:80"
