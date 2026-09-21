@@ -20,6 +20,7 @@ import { ConfirmEmailComponent } from './confirm-email/confirm-email.component';
 import { ResetPasswordComponent } from './reset-password/reset-password.component';
 import { ChatFeatureModule } from '../chat/chat-feature.module';
 import { ComingSoonComponent } from './coming-soon/coming-soon.component';
+import { environment } from '../../environments/environment';
 
 
 @NgModule({
@@ -42,11 +43,18 @@ import { ComingSoonComponent } from './coming-soon/coming-soon.component';
         component: RootComponent,
         children: [
           {
-            // The ordinary main page: the pool card, the chat and the scroll screens.
-            // The pre-launch placeholder (ComingSoonComponent) stayed on /soon —
-            // putting it back on the root is a matter of changing component here.
+            // Before launch the root is the placeholder: the mascot, the date,
+            // sign-in and the community chat. It is what people meet while the
+            // rounds are not running yet, and the chat is the only thing on the
+            // site they can do something with, so it is not a screen to drop.
+            //
+            // The flag comes from environment.json at runtime, which the app
+            // fetches before it boots, so opening the site is an environment
+            // variable and a container restart rather than a rebuild. This
+            // module is lazy, so the value is in place by the time the route is
+            // read.
             path: '',
-            component: MainPageComponent
+            component: environment.comingSoon ? ComingSoonComponent : MainPageComponent
           },
           {
             path: 'soon',

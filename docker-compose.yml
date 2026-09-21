@@ -238,7 +238,11 @@ services:
       # `coming-soon.html` is the holding page, and then the app shell is never
       # delivered at all. Change it in .env and `docker compose up -d ui`.
       - SITE_ENTRY=${SITE_ENTRY:-index.html}
-      - NGINX_ENVSUBST_FILTER=^(APP_DOMAIN|APP_DOMAIN_ALIASES|SOLANA_EXPLORER_QUERY|VERIFY_DOCS_URL|SITE_ENTRY)
+      # true keeps the root on the placeholder: the launch date, sign-in and the
+      # chat, with the rest of the site reachable. It is the pre-launch state,
+      # not a closed site; SITE_ENTRY is what closes the site outright.
+      - COMING_SOON=${COMING_SOON:-false}
+      - NGINX_ENVSUBST_FILTER=^(APP_DOMAIN|APP_DOMAIN_ALIASES|SOLANA_EXPLORER_QUERY|VERIFY_DOCS_URL|SITE_ENTRY|COMING_SOON)
       - NGINX_CERT_RELOAD_INTERVAL=${NGINX_CERT_RELOAD_INTERVAL:-12h}
     ports:
       - "${UI_HTTP_PORT:-80}:80"
