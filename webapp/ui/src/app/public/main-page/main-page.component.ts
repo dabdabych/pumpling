@@ -143,12 +143,14 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
   private storyMedia?: gsap.MatchMedia;
   private storyTimeline?: gsap.core.Timeline;
 
-  /** The Solana program address for the footer. Empty means a dash there. */
-  readonly programId: string = '';
+  /** The Solana program address for the footer. Empty means a dash there.
+   *  The same address on mainnet and devnet; the cluster comes from
+   *  `explorerQuery`, so a stand links to its own explorer view. */
+  readonly programId: string = '4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH';
   /** The cluster in a Solscan link: without it a stand opens mainnet. */
   readonly explorerQuery = environment.solanaExplorerQuery;
   /** The repository for the footer, a full URL. Empty means a dash there. */
-  readonly githubUrl: string = '';
+  readonly githubUrl: string = 'https://github.com/pumplingxyz/public-docs';
 
   /** Which story section is on screen — it is highlighted in the menu. */
   activeSection = 'hero';

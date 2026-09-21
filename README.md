@@ -40,7 +40,7 @@ on-chain and nobody can pull the SOL back out.
 | Phase | Length | What happens |
 |---|---|---|
 | Open | up to ~2 hours, or until the 111 SOL cap | anyone adds SOL behind any Solana memecoin |
-| Draw | a minute or two | verifiable randomness sets each coin's share of the buying |
+| Draw | a few seconds | verifiable randomness from ORAO VRF sets each coin's share of the buying |
 | Buys | about an hour | the SOL goes out in small on-chain purchases |
 | Done | five minutes | bought tokens reach the wallets that backed those coins, then the next pool opens |
 
@@ -57,6 +57,27 @@ Four things we say out loud, because they are easy to get wrong:
   returns to the people who put it in, split by their share, with the network
   fee taken out.
 * **Fee: 3% of the pool.** Today that is our only revenue.
+
+## The program on mainnet
+
+```
+4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH
+```
+
+It is a verified build. Rebuild this repository in the pinned container and the
+hash matches the bytes running on chain, which anyone can check without asking
+us:
+
+```bash
+solana-verify verify-from-repo https://github.com/dabdabych/pumpling \
+  --program-id 4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH \
+  --library-name lottery_v_1_0 --mount-path contracts \
+  -b solanafoundation/solana-verifiable-build:2.3.11
+```
+
+The deployed binary also carries a `security.txt`, so the contact for a
+vulnerability is readable off the program itself rather than off a page we
+control.
 
 ## Checking a round yourself
 
@@ -132,8 +153,9 @@ Secrets live in `.env` files and never in this repository; `.env.example` lists
 every variable. The lifecycle worker needs an admin signer, the buyer needs a
 keeper key. Both are described in `workers/CLAUDE.md` and `offchain/CLAUDE.md`.
 
-A full round on devnet, including refunds and buyer recovery after a crash, is
-written up in [`DEVNET.md`](DEVNET.md).
+[`DEVNET.md`](DEVNET.md) is the write-up of a full round driven end to end,
+including the awkward parts: refunds for coins that could not be bought, and the
+buyer picking itself back up after a crash mid-round.
 
 ## Tests
 
@@ -163,9 +185,12 @@ the docs use.
 
 ## Status
 
-Program, backend, workers, VRF, buyer and frontend are written and exercised on
-devnet and mainnet. What is ahead: the first public rounds, and the teams to run
-them for.
+The program is deployed on mainnet and verified. Backend, workers, the draw,
+the buyer and the frontend are written and exercised end to end: a full round,
+from the first commit to the tokens landing in wallets, with the draw checked
+against the chain independently of our own code.
+
+What is ahead: the first public rounds, and the teams to run them for.
 
 ## License
 

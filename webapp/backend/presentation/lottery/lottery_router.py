@@ -2583,7 +2583,7 @@ async def place_bet(
             raise HTTPException(status_code=503, detail=f"Failed to verify transaction: {str(exc)}")
 
         if deposit_event is None:
-            raise HTTPException(status_code=400, detail="Transaction is not a confirmed QRES deposit")
+            raise HTTPException(status_code=400, detail="Transaction is not a confirmed pumpling commit")
 
         _validate_deposit_event_matches_request(
             event=deposit_event,

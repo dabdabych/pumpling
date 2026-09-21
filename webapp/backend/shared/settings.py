@@ -315,7 +315,7 @@ def get_settings() -> AppSettings:
         smtp_port=_env_int_non_negative("SMTP_PORT", 2525),
         smtp_username=_env_str("SMTP_USERNAME"),
         smtp_password=_env_str("SMTP_PASSWORD"),
-        smtp_from_email=_env_str("SMTP_FROM_EMAIL", "noreply@qrescrypto.local"),
+        smtp_from_email=_env_str("SMTP_FROM_EMAIL", "noreply@pumpling.xyz"),
         smtp_from_name=_env_str("SMTP_FROM_NAME", "Pumpling"),
         smtp_use_tls=_env_bool("SMTP_USE_TLS", False),
         smtp_use_ssl=_env_bool("SMTP_USE_SSL", False),

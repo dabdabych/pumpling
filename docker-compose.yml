@@ -50,7 +50,7 @@ services:
       - SMTP_PORT=${SMTP_PORT:-2525}
       - SMTP_USERNAME=${SMTP_USERNAME:-}
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-noreply@qrescrypto.local}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-noreply@pumpling.xyz}
       - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Pumpling}
       - SMTP_USE_TLS=${SMTP_USE_TLS:-false}
       - SMTP_USE_SSL=${SMTP_USE_SSL:-false}
@@ -233,7 +233,7 @@ services:
       # The cluster for Solscan links: empty means mainnet, `?cluster=devnet` a stand.
       - SOLANA_EXPLORER_QUERY=${SOLANA_EXPLORER_QUERY-}
       # Where the "how to check this yourself" link in the verification dialog leads.
-      - VERIFY_DOCS_URL=${VERIFY_DOCS_URL:-https://github.com/qres-crypto/public-docs}
+      - VERIFY_DOCS_URL=${VERIFY_DOCS_URL:-https://github.com/dabdabych/pumpling}
       # Which file nginx serves as the site. `index.html` is the app;
       # `coming-soon.html` is the holding page, and then the app shell is never
       # delivered at all. Change it in .env and `docker compose up -d ui`.
