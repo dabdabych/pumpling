@@ -42,6 +42,28 @@
   will-change: transform, opacity;
 }
 
+// Held still while the story is being measured.
+//
+// Settling refreshes ScrollTrigger in a loop, and every refresh rebuilds the
+// pin around the first screen, which moves this node in the DOM and restarts
+// the animation from zero. The coin got about a fifth of the way in and snapped
+// back, five or six times over, and that is what flickering on a reload was.
+//
+// Suppressed rather than enabled, so a page that measures nothing — the design
+// previews — plays the entrance the way it always did.
+:host-context(html[data-story-settling]) .dex-card-animation__shell {
+  animation: none;
+  opacity: 0;
+}
+
+// Arrived. Written down rather than left to the animation, so the next refresh
+// has nothing to replay: `animation: none` and the end values by hand.
+.dex-card-animation__shell.is-entered {
+  animation: none;
+  opacity: 1;
+  transform: scale(1) rotate(var(--dex-tilt));
+}
+
 .dex-card-animation__float {
   display: grid;
   width: 100%;

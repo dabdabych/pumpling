@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component } from '@angular/core';
 
 interface DexToken {
   readonly src: string;
@@ -20,6 +20,31 @@ interface DexToken {
   standalone: false
 })
 export class DexCardAnimationComponent {
+  /** Coins that have finished arriving and no longer need the animation. */
+  readonly entered = new Set<number>();
+
+  constructor(private readonly cdr: ChangeDetectorRef) {}
+
+  /**
+   * Freezes a coin once it has arrived.
+   *
+   * The card sits inside the pinned first screen, and ScrollTrigger rebuilds
+   * that pin on every refresh, which moves this node in the DOM. A move
+   * restarts CSS animations from zero, so without this the coins replay their
+   * entrance on every resize and on every return to the page.
+   *
+   * Only the entrance is frozen. The drift underneath loops forever and has no
+   * end state to write down; a restart there just shifts its phase, which does
+   * not read as anything.
+   */
+  onEntered(index: number, event: AnimationEvent): void {
+    if (!event.animationName.includes('token-enter') || this.entered.has(index)) {
+      return;
+    }
+    this.entered.add(index);
+    this.cdr.markForCheck();
+  }
+
   readonly tokens: DexToken[] = [
     {
       src: '/assets/design-preview/dogeupd.svg',

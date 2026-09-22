@@ -489,7 +489,38 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
    * the story measure their own text after the first paint and move the end a
    * good half second later.
    */
+  /**
+   * Marks the document while the story is being measured.
+   *
+   * Settling refreshes ScrollTrigger in a loop, and every refresh rebuilds the
+   * pin, which moves the first screen in the DOM. A move restarts every CSS
+   * animation inside it, so anything that fades in from nothing gets as far as
+   * a fifth of its opacity and snaps back, five or six times over. On the coins
+   * of the Commit SOL card that reads as flickering.
+   *
+   * The attribute lets those animations hold until the measuring is over. It is
+   * set rather than cleared, so a page that never settles anything — the design
+   * previews — keeps playing them the way it always did.
+   */
+  private markSettling(settling: boolean): void {
+    const root = this.document.documentElement;
+    if (settling) {
+      root.setAttribute('data-story-settling', '');
+    } else {
+      root.removeAttribute('data-story-settling');
+    }
+  }
+
   private async settleStory(): Promise<void> {
+    this.markSettling(true);
+    try {
+      await this.settleStoryInner();
+    } finally {
+      this.markSettling(false);
+    }
+  }
+
+  private async settleStoryInner(): Promise<void> {
     const images = Array.from(
       this.document.querySelectorAll<HTMLImageElement>('#qres-hero img')
     ).filter((image) => !image.complete);
@@ -1452,6 +1483,9 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     // We left the main page before it released the splash — release it ourselves.
     this.releaseHeldSplash();
+    // The mark lives on <html>, so leaving mid-measurement would hold the
+    // entrance animations still on whatever page comes next.
+    this.markSettling(false);
     this.splashExitCleanup?.();
     // An interrupted transition would otherwise leave the flag raised and snapping silent.
     this.sectionNavRelease?.kill();

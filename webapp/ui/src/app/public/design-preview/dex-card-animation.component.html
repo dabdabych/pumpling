@@ -1,6 +1,6 @@
 <div class="dex-card-animation" aria-hidden="true">
   <span
-    *ngFor="let token of tokens"
+    *ngFor="let token of tokens; index as i"
     class="dex-card-animation__token"
     [style.left.%]="token.x"
     [style.top.%]="token.y"
@@ -10,7 +10,14 @@
     [style.--dex-scale]="token.scale"
     [style.--dex-enter-delay]="token.enterDelayMs + 'ms'"
     [style.--dex-duration]="token.durationMs + 'ms'">
-    <span class="dex-card-animation__shell">
+    <!-- `is-entered` freezes the end state once the coin has arrived. The first
+         screen is pinned, and every ScrollTrigger refresh rebuilds that pin and
+         moves this node in the DOM, which restarts the CSS animation from zero.
+         With the animation gone and the final values written down, a refresh
+         has nothing left to replay. -->
+    <span class="dex-card-animation__shell"
+          [class.is-entered]="entered.has(i)"
+          (animationend)="onEntered(i, $event)">
       <span class="dex-card-animation__float">
         <img [src]="token.src" alt="">
       </span>
