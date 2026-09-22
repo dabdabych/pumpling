@@ -50,13 +50,49 @@ Four things we say out loud, because they are easy to get wrong:
   but the outcome is random. Small stakes swing the most, sometimes down to
   nothing. The site says this next to the commit button, not in a footnote.
 * **Buying happens off-chain on purpose.** The program releases the pool to a
-  keeper wallet, and the buyer spends it in small batches across the hour, so
-  the size and timing of each purchase cannot be front-run. Every purchase is a
-  normal transaction with a signature anyone can open.
+  keeper wallet, and the buyer spends it in small batches across the hour.
+  Every purchase is a normal transaction with a signature anyone can open. The
+  buy being public is deliberate; only its schedule is not, and the next
+  section says why.
 * **Unspent SOL goes back.** If purchases cannot go through, the remainder
   returns to the people who put it in, split by their share, with the network
   fee taken out.
 * **Fee: 3% of the pool.** Today that is our only revenue.
+
+## "So traders will just front-run you"
+
+They will, and that is the product.
+
+The pool is announced on chain before a single coin is bought. Anyone can see
+that N SOL is about to be spent on a named list of coins, and act on it. We
+want them to. What a launcher is paying for is the crowd that turns up in
+anticipation. Our own buying is small and was never the point; the attention
+is, and it exists only because the buy cannot be faked and cannot be called
+off.
+
+That is also the honest difference from paying an influencer. Both are ways to
+buy attention. Only one of them leaves a receipt.
+
+What the design does not want is a machine that can compute the payoff exactly
+and take it without adding anything. Two things are in the way, and both are in
+this repository:
+
+**The split between coins is decided after the commitment is fixed.** The
+weights go on chain when the round closes; ORAO then produces the randomness
+that sets each coin's share. The number of draws is capped on purpose
+(`K_MAX = 70` in `vrf_engine.py`): more draws would pull every coin closer to
+its exact proportion, and with fifteen coins in a round the cap leaves a spread
+of about 16%. Nobody can work out what a single coin will get, however much
+compute they point at it, because the number does not exist yet.
+
+**The schedule is not published.** The buyer splits the window into slots,
+picks a random moment inside each one, keeps a minimum gap, and varies each
+amount by ±10%. You can know the hour. You cannot know the minute or the size.
+
+Where that stops: the pool total is public, so the aggregate pressure is known,
+and a round with a single coin has nothing to split, leaving only the timing
+uncertain. We would rather write that down than let someone find it and think
+it was hidden.
 
 ## The program on mainnet
 
