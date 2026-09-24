@@ -69,6 +69,24 @@ EMERGENCY_FULFILL_DELAY_SECONDS = 120
 # notices when the struct moves.
 LOTTERY_ACCOUNT_SIZE = 349
 
+# How often a round that is already buying is looked at. The draw is polled on
+# the loop's own interval; this one is separate because the two are waiting for
+# very different things.
+def _env_seconds(name: str, default: float) -> float:
+    """A positive number of seconds from the environment, or the default."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logging.warning("%s is not a number (%r); using %.1fs", name, raw, default)
+        return default
+    return value if value > 0 else default
+
+
+POST_VRF_POLL_INTERVAL_SECONDS = _env_seconds("POST_VRF_POLL_INTERVAL_SECONDS", 15.0)
+
 _ROUND_8 = Decimal("0.00000001")
 _ZERO = Decimal("0")
 _LAMPORTS_PER_SOL = Decimal("1000000000")
@@ -1175,6 +1193,23 @@ async def _close_lottery_onchain(
     return str(signature)
 
 
+_POST_VRF_LAST_POLL: dict[int, float] = {}
+
+
+def _post_vrf_poll_due(lottery_id: int, now: float | None = None) -> bool:
+    """Whether a round in the buying phase is due another look.
+
+    Keyed per round rather than globally: two rounds run side by side and one
+    of them arriving must not push the other's turn away.
+    """
+    moment = time.monotonic() if now is None else now
+    previous = _POST_VRF_LAST_POLL.get(lottery_id)
+    if previous is not None and moment - previous < POST_VRF_POLL_INTERVAL_SECONDS:
+        return False
+    _POST_VRF_LAST_POLL[lottery_id] = moment
+    return True
+
+
 def _parse_onchain_lottery_account(raw_data: bytes) -> OnchainLotteryState:
     # Exactly the size, not at least it. The pre-ORAO account was nine bytes
     # longer and differed from `vrf_force` onwards, so it reads cleanly under
@@ -2252,7 +2287,7 @@ async def _autostart_lottery_type(
             )
             return
 
-        display_type = "PUMP" if lottery_type == "pumpfun" else lottery_type.upper()
+        display_type = lottery_type.upper()
         lottery = LotteryModel(
             id=lottery_id,
             name=f"{display_type} Lottery {now_utc.strftime('%Y-%m-%d %H:%M:%S')} UTC",
@@ -2550,6 +2585,22 @@ async def _run_iteration(
             logging.exception("Phase 2 automation failed (lottery_id=%s): %s", candidate.lottery_id, exc)
 
     for candidate in post_vrf_candidates:
+        # Slower once the buying is under way, and only then.
+        #
+        # A round in `PROCEEDING_PURCHASES` is waiting for its window to run
+        # out, fifty-five minutes of it on mainnet, and nothing on chain changes
+        # in that window more than twice. Asking every second was the same
+        # question three thousand times for the same answer.
+        #
+        # `VRF_FULFILLED` is not that. It is the gap between the draw landing
+        # and `start_purchases_phase`, the transaction that releases the pool
+        # and starts the buying. Holding it back fifteen seconds would delay the
+        # thing the round exists to do, on the one page where a countdown is
+        # already running. It stays on the fast loop.
+        if candidate.status == LotteryStatus.PROCEEDING_PURCHASES and not _post_vrf_poll_due(
+            candidate.lottery_id
+        ):
+            continue
         try:
             runtime = _resolve_admin_runtime(candidate.lottery_id, runtimes)
             if runtime:

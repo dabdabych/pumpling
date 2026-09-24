@@ -23,7 +23,7 @@ class CoinResponse(BaseModel):
 class LotteryEntryResponse(BaseModel):
     rank: int
     lottery_id: int
-    lottery_type: str = "pumpfun"
+    lottery_type: str = "dex"
     coin: CoinResponse
     total_solana_bet: Decimal
     bet_count: int
@@ -47,7 +47,7 @@ class LotteryArchiveEntryResponse(BaseModel):
 
 class LotteryArchiveItemResponse(BaseModel):
     id: int
-    lottery_type: str = "pumpfun"
+    lottery_type: str = "dex"
     status: str
     lottery_pda: Optional[str] = None
     started_at: datetime
@@ -91,7 +91,7 @@ class LotteryVerificationResponse(BaseModel):
 
 
 class LotteryArchiveListResponse(BaseModel):
-    lottery_type: str = "pumpfun"
+    lottery_type: str = "dex"
     window_days: int = 7
     items: List[LotteryArchiveItemResponse] = Field(default_factory=list)
 
@@ -135,7 +135,7 @@ class MyCommitsResponse(BaseModel):
 
 class ActiveLotterySummaryResponse(BaseModel):
     id: int
-    lottery_type: str = "pumpfun"
+    lottery_type: str = "dex"
     status: str
     lottery_pda: Optional[str] = None
     vault_pda: Optional[str] = None
@@ -224,7 +224,7 @@ class LotteryListResponse(BaseModel):
 
 class CreateLotteryRequest(BaseModel):
     name: str
-    lottery_type: str = "pumpfun"
+    lottery_type: str = "dex"
     end_date: Optional[datetime] = None
     max_total: Optional[float] = None
 
@@ -244,7 +244,7 @@ class LotteryCycleControlsResponse(BaseModel):
 class LotteryResponse(BaseModel):
     id: int
     name: str
-    lottery_type: str = "pumpfun"
+    lottery_type: str = "dex"
     created_by_user_id: int
     created_at: datetime
     end_date: Optional[datetime]

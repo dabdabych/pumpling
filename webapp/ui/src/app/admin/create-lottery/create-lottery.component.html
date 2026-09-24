@@ -31,7 +31,6 @@
               [disabled]="hasGeneratedLotteryId()"
               (selectionChange)="onLotteryTypeChange()"
             >
-              <mat-option value="pumpfun">Pump.fun</mat-option>
               <mat-option value="dex">DEX</mat-option>
             </mat-select>
           </mat-form-field>
@@ -81,7 +80,7 @@
           </div>
 
           <div *ngIf="isBlockedByOpenLottery()" class="anchor-error">
-            Open {{ (openLotteryType || lotteryForm.get('lottery_type')?.value || 'pumpfun') | uppercase }} lottery already exists (ID: {{ openLotteryId }}, status: {{ openLotteryStatus }}). New ID generation is disabled.
+            Open {{ (openLotteryType || lotteryForm.get('lottery_type')?.value || 'dex') | uppercase }} lottery already exists (ID: {{ openLotteryId }}, status: {{ openLotteryStatus }}). New ID generation is disabled.
           </div>
 
           <div *ngIf="generateError" class="anchor-error">

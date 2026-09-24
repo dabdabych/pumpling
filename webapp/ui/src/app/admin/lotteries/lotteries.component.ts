@@ -24,7 +24,9 @@ interface UserDeposit {
   signature: string;
 }
 
-type CycleLotteryType = 'pumpfun' | 'dex';
+// One cycle. The `pumpfun` one was retired; a deployment that ran it keeps
+// its row, which this screen no longer lists.
+type CycleLotteryType = 'dex';
 
 interface LotteryCycleControl {
   lottery_type: CycleLotteryType;
@@ -52,13 +54,11 @@ export class LotteriesComponent implements OnInit {
   isLoadingDeposits = false;
   depositsError: string | null = null;
   totalDeposited = 0;
-  readonly cycleTypes: CycleLotteryType[] = ['pumpfun', 'dex'];
+  readonly cycleTypes: CycleLotteryType[] = ['dex'];
   cycleControls: Record<CycleLotteryType, LotteryCycleControl | null> = {
-    pumpfun: null,
     dex: null,
   };
   cycleActionInFlight: Record<CycleLotteryType, boolean> = {
-    pumpfun: false,
     dex: false,
   };
   cycleError: string | null = null;
@@ -111,7 +111,7 @@ export class LotteriesComponent implements OnInit {
       .subscribe({
         next: (payload) => {
           for (const item of payload.items || []) {
-            if (item.lottery_type === 'pumpfun' || item.lottery_type === 'dex') {
+            if (item.lottery_type === 'dex') {
               this.cycleControls[item.lottery_type] = item;
             }
           }
@@ -123,7 +123,7 @@ export class LotteriesComponent implements OnInit {
   }
 
   getCycleLabel(lotteryType: CycleLotteryType): string {
-    return lotteryType === 'pumpfun' ? 'PUMP' : 'DEX';
+    return lotteryType.toUpperCase();
   }
 
   isCycleEnabled(lotteryType: CycleLotteryType): boolean {

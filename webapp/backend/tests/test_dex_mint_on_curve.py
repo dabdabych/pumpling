@@ -21,7 +21,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@127.0.0.1:5432/test")
 
 from presentation.lottery import lottery_router as router  # noqa: E402
-from domain.lottery.entities.lottery import LotteryType  # noqa: E402
 
 MINT = "47MnKCEMVquA4TBppHacYBk9EhHMpjVeWhixYMRDpump"
 NATIVE_SOL = Pubkey.from_string("11111111111111111111111111111111")
@@ -57,7 +56,7 @@ def test_curve_decides_whether_a_poolless_coin_is_buyable(
     _curve(monkeypatch, is_pumpfun, graduated, quote)
 
     _mint, _network, is_pumpfun_mint, has_dex, pool_count, unverified = (
-        router._validate_mint_by_lottery_type(MINT, LotteryType.DEX)
+        router._validate_mint(MINT)
     )
 
     assert is_pumpfun_mint is expected_pumpfun
@@ -76,7 +75,7 @@ def test_broken_curve_probe_does_not_block_the_commit(monkeypatch):
     monkeypatch.setattr(router, "get_pumpfun_curve_info", boom)
 
     _mint, _network, is_pumpfun_mint, has_dex, _count, _unverified = (
-        router._validate_mint_by_lottery_type(MINT, LotteryType.DEX)
+        router._validate_mint(MINT)
     )
 
     assert is_pumpfun_mint is False
@@ -93,7 +92,7 @@ def test_provider_outage_falls_back_to_the_curve(monkeypatch):
     _curve(monkeypatch, True, False, NATIVE_SOL)
 
     _mint, _network, is_pumpfun_mint, _has_dex, _count, unverified = (
-        router._validate_mint_by_lottery_type(MINT, LotteryType.DEX)
+        router._validate_mint(MINT)
     )
 
     assert is_pumpfun_mint is True

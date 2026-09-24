@@ -12,7 +12,7 @@ import { LotteryArchiveListResponse } from '../../models/lottery-archive-list-re
 export interface GetLotteryArchiveLotteryArchiveGet$Params {
 
 /**
- * Lottery type: pumpfun or dex
+ * Lottery type: dex
  */
   lottery_type?: string;
 

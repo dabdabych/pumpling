@@ -17,8 +17,20 @@ class LotteryStatus(Enum):
 
 
 class LotteryType(Enum):
+    """The kinds of round the platform runs. There is one.
+
+    A second kind, `pumpfun`, took only coins still on the pump.fun curve and
+    ran as its own parallel cycle. It was retired: the ordinary round already
+    accepts those coins, and the buyer routes a coin on the curve to the curve
+    either way, so the split bought nothing and cost a whole second cycle.
+
+    Rounds created before it was retired still carry `"pumpfun"` in the
+    database. Nothing renders them — the pool page and the archive both ask for
+    `dex` and always have — but the column is a plain string, so reading one
+    must not raise. `database_lottery_repository` is where that is handled.
+    """
+
     DEX = "dex"
-    PUMPFUN = "pumpfun"
 
 
 @dataclass
@@ -37,7 +49,7 @@ class Lottery:
     initialize_abandoned_at: Optional[datetime] = None
     initialize_abandoned_error: Optional[str] = None
     is_offchain_vrf: bool = False
-    lottery_type: LotteryType = LotteryType.PUMPFUN
+    lottery_type: LotteryType = LotteryType.DEX
     status: LotteryStatus = LotteryStatus.ID_GENERATED
 
     def __post_init__(self):

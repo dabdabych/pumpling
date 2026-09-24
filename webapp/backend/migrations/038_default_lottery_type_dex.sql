@@ -1,0 +1,13 @@
+-- The pump.fun cycle is retired, but the column it shared still defaults to it.
+--
+-- `lotteries.lottery_type` has defaulted to 'pumpfun' since the column was
+-- added, from the days when that was the only kind of round. Every insert the
+-- application makes names the type explicitly, so the default has not been used
+-- in a long time — but it is still what any statement that omits the column
+-- would get, and that is now a round of a kind nothing can run.
+--
+-- Only the default moves. The rows are left exactly as they are: the rounds
+-- that carry 'pumpfun' really were pump.fun rounds, and rewriting them would
+-- turn a retired feature into a false record. Nothing renders them either way —
+-- the pool page and the archive have always asked for 'dex'.
+ALTER TABLE lotteries ALTER COLUMN lottery_type SET DEFAULT 'dex';

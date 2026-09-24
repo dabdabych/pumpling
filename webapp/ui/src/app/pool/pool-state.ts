@@ -27,7 +27,12 @@ import { LotteryEntryResponse } from '../api-client/models/lottery-entry-respons
  * interface phases is closed here rather than in the templates.
  */
 
-export type PoolMarket = 'dex' | 'pumpfun';
+/**
+ * There is one kind of pool. A second one, `pumpfun`, ran as its own cycle and
+ * was retired; rounds from it are still in the database and `marketOf` answers
+ * null for them, which is what keeps them out of the pool page.
+ */
+export type PoolMarket = 'dex';
 
 export type PoolPhase = 'loading' | 'launch' | 'waiting' | 'opening' | 'open' | 'locked' | 'buying' | 'done';
 
@@ -330,7 +335,7 @@ function drawnSolByMint(results: LotteryWinnerResultResponse[] | undefined): Map
 
 function marketOf(rawType: unknown): PoolMarket | null {
   const value = String(rawType ?? '').trim().toLowerCase();
-  return value === 'dex' || value === 'pumpfun' ? value : null;
+  return value === 'dex' ? value : null;
 }
 
 function normalizeStatus(rawStatus: unknown): string {

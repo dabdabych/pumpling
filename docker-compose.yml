@@ -176,6 +176,10 @@ services:
       - OFFCHAIN_API_TIMEOUT_SECONDS=${PHASE_WORKER_OFFCHAIN_API_TIMEOUT_SECONDS:-10.0}
       - PHASE2_AUTOMATION_ENABLED=${PHASE2_AUTOMATION_ENABLED:-true}
       - PHASE2_POLL_INTERVAL_SECONDS=${PHASE2_POLL_INTERVAL_SECONDS:-1.0}
+      # How often a round that is already buying is looked at. Separate from the
+      # line above because the two wait for different things: the draw wants a
+      # second, a buying window that runs the best part of an hour does not.
+      - POST_VRF_POLL_INTERVAL_SECONDS=${POST_VRF_POLL_INTERVAL_SECONDS:-15}
       - PHASE2_CAP_THRESHOLD_SOL=${PHASE2_CAP_THRESHOLD_SOL:-110.95}
       - PHASE2_WORKER_LOG_LEVEL=${PHASE2_WORKER_LOG_LEVEL:-INFO}
       - LOTTERY_ADMIN_SIGNER_KEYPAIR_JSON=${LOTTERY_ADMIN_SIGNER_KEYPAIR_JSON:-}

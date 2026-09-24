@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 from infrastructure.database.models.lottery_cycle_control_model import LotteryCycleControlModel
 
 
-SUPPORTED_LOTTERY_TYPES = ("pumpfun", "dex")
+# One cycle. The `pumpfun` one was retired; a deployment that ran it keeps its
+# row in `lottery_cycle_controls`, which nothing reads any more.
+SUPPORTED_LOTTERY_TYPES = ("dex",)
 _TABLE_READY = False
 
 
@@ -25,7 +27,7 @@ class LotteryCycleControl:
 def normalize_lottery_type(raw_value: str) -> str:
     value = (raw_value or "").strip().lower()
     if value not in SUPPORTED_LOTTERY_TYPES:
-        raise ValueError("lottery_type must be 'pumpfun' or 'dex'")
+        raise ValueError("lottery_type must be 'dex'")
     return value
 
 
@@ -71,7 +73,7 @@ def ensure_cycle_control_table(session: Session) -> None:
     """))
     session.execute(text("""
         INSERT INTO lottery_cycle_controls (lottery_type, enabled)
-        VALUES ('pumpfun', TRUE), ('dex', TRUE)
+        VALUES ('dex', TRUE)
         ON CONFLICT (lottery_type) DO NOTHING
     """))
     session.commit()

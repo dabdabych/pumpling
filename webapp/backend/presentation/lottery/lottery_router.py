@@ -54,7 +54,12 @@ from shared import token_metadata_queue
 from shared.coin_chart import coin_chart
 from shared.wallet_owner import LINKED_VIA_DEPOSIT, LINKED_VIA_SIGNATURE, find_wallet_owner_id, link_wallet
 from shared.settings import get_settings
-from shared.lottery_cycle_control import list_cycle_controls, normalize_lottery_type, set_cycle_enabled
+from shared.lottery_cycle_control import (
+    SUPPORTED_LOTTERY_TYPES,
+    list_cycle_controls,
+    normalize_lottery_type,
+    set_cycle_enabled,
+)
 from shared.blocked_bet_mints import BLOCKED_BET_MINT_ERROR, WSOL_MINT, is_blocked_bet_mint
 from shared.purchases_payload import (
     build_run_purchases_payload as _shared_build_run_purchases_payload,
@@ -488,12 +493,13 @@ def get_offchain_api_client() -> OffchainApiClient:
 
 
 def _parse_lottery_type(raw_value: str | None) -> LotteryType:
-    value = (raw_value or "pumpfun").strip().lower()
-    if value in {"dex"}:
+    # "pumpfun" used to be accepted here and is refused now that the cycle is
+    # gone. A caller asking for a kind of round that can no longer exist is
+    # better told so than quietly handed the other kind.
+    value = (raw_value or "dex").strip().lower()
+    if value == "dex":
         return LotteryType.DEX
-    if value in {"pumpfun", "pump", "pump_fun"}:
-        return LotteryType.PUMPFUN
-    raise HTTPException(status_code=400, detail="lottery_type must be 'dex' or 'pumpfun'")
+    raise HTTPException(status_code=400, detail="lottery_type must be 'dex'")
 
 
 def _to_lottery_response(lottery: Lottery) -> LotteryResponse:
@@ -1068,11 +1074,17 @@ def _is_jupiter_tradable(mint_address: str) -> bool:
     return True
 
 
-def _validate_mint_by_lottery_type(
+def _validate_mint(
     mint_address: str,
-    lottery_type: LotteryType,
     min_pumpswap_quote_lamports: int | None = None,
 ) -> tuple[str, NetworkType, bool, bool, int, bool]:
+    """Whether a coin can be committed to, and where it would be bought.
+
+    It used to branch on the kind of round and had a separate path that only
+    took coins on the pump.fun curve. There is one kind of round now, and this
+    path already handles a coin on the curve: no DEX pool is not a dead coin,
+    and `_has_live_pumpfun_curve` below is what tells the two apart.
+    """
     try:
         mint_pubkey = Pubkey.from_string(mint_address.strip())
     except Exception as exc:
@@ -1085,44 +1097,6 @@ def _validate_mint_by_lottery_type(
     settings = get_settings()
     rpc_url = settings.solana_http_endpoint or "https://api.mainnet-beta.solana.com"
     network_type = NetworkType.DEVNET if "devnet" in rpc_url else NetworkType.MAINNET
-
-    if lottery_type == LotteryType.PUMPFUN:
-        is_pumpfun, graduated, quote_mint = get_pumpfun_curve_info(canonical_mint, rpc_url=rpc_url)
-        if not is_pumpfun:
-            raise HTTPException(status_code=400, detail="Mint is not a valid pump.fun token")
-        if not graduated and quote_mint != NATIVE_SOL_QUOTE:
-            # Custom Pairs (pump.fun, 2026-09-09): the curve is denominated in USDC, WBTC or a
-            # tokenized stock. buy_exact_sol_in cannot touch it (the program answers
-            # UnsupportedQuoteMint), and while the coin is still ON the curve the only route from
-            # SOL runs through the quote asset and then the curve itself - two hops that do not
-            # fit in a transaction. Measured live on 2026-09-10: such swaps come back 1246-1402
-            # bytes against the 1232 limit, and lowering maxAccounts or forcing direct routes just
-            # loses the route entirely. Probing the quote is NOT enough to tell these apart - the
-            # quote succeeds and only the build fails - so reject outright rather than accept a bet
-            # we cannot fill.
-            #
-            # Once such a coin graduates it trades in an ordinary pool and routes fine (measured:
-            # 7 of 8 graduated non-SOL coins fit, 546-1130 bytes), so this only blocks the curve
-            # phase - the `graduated` branch below keeps handling them.
-            raise HTTPException(
-                status_code=400,
-                detail="Token's bonding curve is not denominated in SOL: it cannot be bought until it graduates",
-            )
-        if graduated:
-            # Bonding curve complete: the buyer purchases via Jupiter, else falls back to the
-            # canonical PumpSwap pool. Reject only if BOTH are dead — then the purchase would be
-            # abandoned and winners would get nothing.
-            buyable = _is_jupiter_tradable(canonical_mint) or has_live_pumpswap_pool(
-                canonical_mint,
-                rpc_url=rpc_url,
-                min_quote_lamports=min_pumpswap_quote_lamports or 1,
-            )
-            if not buyable:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Token graduated from pump.fun and has no tradable liquidity",
-                )
-        return canonical_mint, network_type, True, False, 0, False
 
     try:
         pools = _cached_dex_pools(canonical_mint)
@@ -1459,7 +1433,7 @@ async def get_current_lottery(
                 )
             return account_summary_by_lottery_id[lottery_id]
 
-        for lottery_type in ("pumpfun", "dex"):
+        for lottery_type in SUPPORTED_LOTTERY_TYPES:
             lottery = latest_by_type.get(lottery_type)
             if lottery is None or lottery.id is None:
                 continue
@@ -1486,7 +1460,7 @@ async def get_current_lottery(
             )
 
         latest_summaries: list[ActiveLotterySummaryResponse] = []
-        for lottery_type in ("pumpfun", "dex"):
+        for lottery_type in SUPPORTED_LOTTERY_TYPES:
             lottery = latest_any_by_type.get(lottery_type)
             if lottery is None or lottery.id is None:
                 continue
@@ -1594,7 +1568,7 @@ async def get_current_lottery(
 
 @router.get("/archive", response_model=LotteryArchiveListResponse)
 async def get_lottery_archive(
-    lottery_type: str = Query("dex", description="Lottery type: pumpfun or dex"),
+    lottery_type: str = Query("dex", description="Lottery type: dex"),
     include_empty: bool = Query(
         False,
         description="Show rounds where nobody committed anything",
@@ -2551,9 +2525,8 @@ async def place_bet(
         if not request.tx_signature or not request.tx_signature.strip():
             raise HTTPException(status_code=400, detail="Transaction signature is required")
 
-        canonical_mint, _, _, _, _, _ = _validate_mint_by_lottery_type(
+        canonical_mint, _, _, _, _, _ = _validate_mint(
             request.meme_coin_address,
-            current_lottery.lottery_type,
             min_pumpswap_quote_lamports=_sol_to_lamports(request.sol_amount),
         )
 
@@ -2690,10 +2663,12 @@ async def check_mint(
 ):
     del current_user_id
     try:
-        lottery_type = _parse_lottery_type(request.lottery_type)
-        canonical_mint, network_type, is_pumpfun, has_dex_liquidity, dex_pool_count, dex_check_unverified = _validate_mint_by_lottery_type(
+        # Nothing reads the result any more: the checks no longer differ by kind
+        # of round. The call stays because it still rejects a request naming a
+        # kind that does not exist, rather than answering it as if it did.
+        _parse_lottery_type(request.lottery_type)
+        canonical_mint, network_type, is_pumpfun, has_dex_liquidity, dex_pool_count, dex_check_unverified = _validate_mint(
             request.mint_address,
-            lottery_type,
         )
         existing_allowed = db.query(AllowedMintModel).filter(
             AllowedMintModel.mint == canonical_mint,
@@ -2728,12 +2703,11 @@ async def check_mint(
                 logger.exception("failed to persist checked mint metadata (mint=%s)", canonical_mint)
 
         market: dict[str, object] = {}
-        if lottery_type != LotteryType.PUMPFUN:
-            try:
-                market = _dex_market_info(canonical_mint, _cached_dex_pools(canonical_mint))
-            except Exception:
-                # The market card is a nice extra, not a condition of a commit.
-                logger.warning("market info unavailable (mint=%s)", canonical_mint)
+        try:
+            market = _dex_market_info(canonical_mint, _cached_dex_pools(canonical_mint))
+        except Exception:
+            # The market card is a nice extra, not a condition of a commit.
+            logger.warning("market info unavailable (mint=%s)", canonical_mint)
 
         return MintAllowTokenResponse(
             mint_address=canonical_mint,

@@ -158,12 +158,21 @@ bytes). So a non-SOL curve is **rejected when the commit is accepted**, rather
 than let through with a route check, because probing a quote does not tell these
 cases apart.
 
-The gate at commit time is `webapp/backend/mint_validator.py` →
-`get_pumpfun_curve_info` and `lottery_router._validate_mint_by_lottery_type`.
-Without it a round would take money it has no way to spend: the purchase would
-fall through to the PumpSwap fallback, which derives the pool with quote = WSOL
-and would get the wrong address for a non-SOL coin — `abandoned`, with the SOL
-stuck on the keeper.
+**This rejection no longer runs.** It lived in the `pumpfun` branch of
+`lottery_router._validate_mint_by_lottery_type`, and that branch went with the
+`pumpfun` round type. The remaining path (`lottery_router._validate_mint`) reads
+the curve through `get_pumpfun_curve_info` the same way, but only to tell a
+young coin from a dead one: `_has_live_pumpfun_curve` answers false for a
+non-SOL curve, and the coin then falls through to "allow at user's risk"
+alongside every coin with no pool.
+
+The ordinary round never had the rejection — it was only ever on the pump.fun
+round — so nothing regressed when the branch went. What is true is that the risk
+above is now unguarded: such a commit is taken, the purchase falls through to
+the PumpSwap fallback, which derives the pool with quote = WSOL and gets the
+wrong address for a non-SOL coin, and the buy ends `abandoned` with the SOL on
+the keeper. Whether to move the rejection into `_validate_mint` is a product
+call, not a leftover.
 
 ```
 1. fetchBondingCurveInfo() — reads on-chain state (reserves, creator,

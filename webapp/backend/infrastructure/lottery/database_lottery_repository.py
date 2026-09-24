@@ -170,11 +170,19 @@ class DatabaseLotteryRepository(LotteryRepository):
                 else:
                     status = LotteryStatus.ID_GENERATED
 
-        raw_lottery_type = str(getattr(lottery_model, "lottery_type", "pumpfun")).lower()
+        # The column is a plain string, and rounds from before the pump.fun
+        # cycle was retired still hold "pumpfun" in it — on production, most of
+        # them. Reading one must not raise, so an unknown value falls back
+        # rather than blowing up a list of rounds.
+        #
+        # The fallback relabels those rows as `dex` in memory only; the database
+        # keeps what actually happened. Nothing shows it either way: the pool
+        # page and the archive both request `dex` and always have.
+        raw_lottery_type = str(getattr(lottery_model, "lottery_type", "dex")).lower()
         try:
             lottery_type = LotteryType(raw_lottery_type)
         except ValueError:
-            lottery_type = LotteryType.PUMPFUN
+            lottery_type = LotteryType.DEX
 
         return Lottery(
             id=lottery_model.id,

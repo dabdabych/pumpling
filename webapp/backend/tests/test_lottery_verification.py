@@ -32,7 +32,7 @@ LOTTERY_ID = 1789840890636
 class FakeLottery:
     def __init__(self):
         self.id = LOTTERY_ID
-        self.lottery_type = "pumpfun"
+        self.lottery_type = "dex"
         self.status = "buying"
         self.vrf_seed = None
         self.is_offchain_vrf = False

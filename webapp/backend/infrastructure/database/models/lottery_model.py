@@ -22,7 +22,9 @@ class LotteryModel(Base):
     initialize_abandoned_at = Column(DateTime(timezone=True), nullable=True)
     initialize_abandoned_error = Column(String(1000), nullable=True)
     is_offchain_vrf = Column(Boolean, nullable=False, server_default="false", default=False)
-    lottery_type = Column(String(32), nullable=False, server_default="pumpfun", default="pumpfun")
+    # A plain string, not an enum type: rounds from the retired pump.fun cycle
+    # still hold "pumpfun" here and are left exactly as they were.
+    lottery_type = Column(String(32), nullable=False, server_default="dex", default="dex")
     status = Column(
         SQLEnum(
             LotteryStatus,

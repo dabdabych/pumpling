@@ -62,7 +62,7 @@ export class CreateLotteryComponent implements OnInit {
   ) {
     this.lotteryForm = this.fb.group({
       name: ['', [Validators.required, Validators.minLength(3)]],
-      lottery_type: ['pumpfun', [Validators.required]],
+      lottery_type: ['dex', [Validators.required]],
       lottery_id: [''],
       wallet_fee: [this.feeWalletPubkey.toBase58()],
       wallet_keeper: [this.keeperWalletPubkey.toBase58()],
@@ -322,11 +322,11 @@ export class CreateLotteryComponent implements OnInit {
     this.api.invoke(getAllLotteriesLotteryAllGet, { page_index: 0, page_size: 100 }).subscribe({
       next: (response) => {
         const openStatuses = new Set(['id_generated', 'created']);
-        const selectedType = (this.lotteryForm.get('lottery_type')?.value || 'pumpfun').toString().toLowerCase();
+        const selectedType = (this.lotteryForm.get('lottery_type')?.value || 'dex').toString().toLowerCase();
         const openLottery = response.items?.find(
           (lottery) =>
             openStatuses.has((lottery.status || '').toLowerCase())
-            && ((lottery.lottery_type || 'pumpfun').toString().toLowerCase() === selectedType)
+            && ((lottery.lottery_type || 'dex').toString().toLowerCase() === selectedType)
         );
         this.openLotteryExists = !!openLottery;
         this.openLotteryId = openLottery?.id ?? null;
@@ -336,7 +336,7 @@ export class CreateLotteryComponent implements OnInit {
         const draft = response.items?.find(
           (lottery) =>
             (lottery.status || '').toLowerCase() === 'id_generated'
-            && ((lottery.lottery_type || 'pumpfun').toString().toLowerCase() === selectedType)
+            && ((lottery.lottery_type || 'dex').toString().toLowerCase() === selectedType)
         );
         if (!draft) {
           return;
