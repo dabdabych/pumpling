@@ -22,10 +22,8 @@ if str(_BACKEND_DIR) not in sys.path:
 
 from anchorpy import EventParser, Idl
 from anchorpy.coder.coder import Coder
-from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
 from solders.rpc.config import RpcTransactionLogsFilterMentions
-from solders.signature import Signature
 from solana.rpc.websocket_api import connect
 import certifi
 
@@ -37,6 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from database.models.lottery_model import LotteryModel, LotteryStatus
 from shared.bet_confirmation import BET_STATUS_CONFIRMED
 from shared.deposit_event_decoder import DEPOSIT_EVENT_DISCRIMINATOR, decode_deposit_event
+from shared.solana_rpc import SolanaJsonRpc, signature_failed
 from shared.wallet_owner import resolve_wallet_owner_id
 
 _PROGRAM_ID: Optional[Pubkey] = None
@@ -1097,23 +1096,30 @@ async def _listen_events(stop_event: asyncio.Event, program_id: Pubkey, parser: 
 async def _poll_events(stop_event: asyncio.Event, program_id: Pubkey, parser: EventParser) -> None:
     """Fallback polling via HTTP RPC to avoid missing events."""
     seen_signatures: set[str] = set()
-    async with AsyncClient(SOLANA_HTTP_ENDPOINT) as client:
+    async with SolanaJsonRpc(SOLANA_HTTP_ENDPOINT) as rpc:
         while not stop_event.is_set():
             try:
-                sig_resp = await client.get_signatures_for_address(program_id, limit=20)
-                sig_list = sig_resp.value or []
-                new_sigs = [str(s.signature) for s in sig_list if str(s.signature) not in seen_signatures]
+                rows = await rpc.get_signatures_for_address(program_id, limit=20)
+                fresh = [row for row in rows if str(row.get("signature") or "") not in seen_signatures]
 
-                for sig in reversed(new_sigs):  # older → newer
-                    tx_resp = await client.get_transaction(
-                        Signature.from_string(sig),
+                for row in reversed(fresh):  # older → newer
+                    sig = str(row.get("signature") or "")
+                    if not sig:
+                        continue
+                    if signature_failed(row):
+                        # The listing already carries `err`, so a failed
+                        # transaction costs nothing to skip here.
+                        seen_signatures.add(sig)
+                        continue
+                    tx = await rpc.get_transaction(
+                        sig,
                         encoding="jsonParsed",
                         max_supported_transaction_version=0,
                     )
-                    if _extract_transaction_error(tx_resp.value) is not None:
+                    if tx is None or _extract_transaction_error(tx) is not None:
                         seen_signatures.add(sig)
                         continue
-                    log_messages = _extract_transaction_log_messages(tx_resp.value)
+                    log_messages = _extract_transaction_log_messages(tx)
                     if log_messages:
                         _parse_logs(parser, log_messages, sig)
                     seen_signatures.add(sig)

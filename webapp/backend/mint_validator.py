@@ -7,6 +7,7 @@ PUMP_PROGRAM_ID = Pubkey.from_string("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6
 PUMP_AMM_PROGRAM_ID = Pubkey.from_string("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA")
 WSOL_MINT = Pubkey.from_string("So11111111111111111111111111111111111111112")
 TOKEN_PROGRAM_ID = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+TOKEN_2022_PROGRAM_ID = Pubkey.from_string("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb")
 ASSOCIATED_TOKEN_PROGRAM_ID = Pubkey.from_string("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
 CANONICAL_POOL_INDEX = 0
 
@@ -171,3 +172,58 @@ if __name__ == "__main__":
     # Example
     mint = "DysNZiMXB5k4hxuz4cnyRA1MdTJyYb9qMytmArXiWoRs"  # Replace with the target mint.
     print(get_pumpfun_mint_status(mint))
+
+
+class MintCheckUnavailable(RuntimeError):
+    """The node did not answer, so nothing is known about this address."""
+
+
+# A mint account as the token programs store it: 4 + 32 + 8 + 1 + 1 + 4 + 32.
+# Token-2022 appends extensions after that, so this is a floor, not a size.
+# Taken from the layout in @solana/spl-token, which is vendored under
+# offchain/, rather than from memory.
+_MINT_ACCOUNT_MIN_SIZE = 82
+#: mint_authority_option(4) + mint_authority(32) + supply(8) + decimals(1)
+_MINT_IS_INITIALIZED_OFFSET = 45
+
+
+def is_spl_mint(mint_str: str, rpc_url: str = "https://api.mainnet-beta.solana.com") -> bool:
+    """Whether this address is an initialised SPL mint. One RPC call.
+
+    This is the cheapest question that can be asked about a coin, and it used
+    to be asked last or not at all. A pubkey anyone can generate offline went
+    through a DexScreener lookup, a bonding curve probe and a metadata fetch
+    that includes a Helius DAS call, and DAS costs ten credits against one for
+    an ordinary RPC call. Eleven credits to learn that a random 32 bytes is not
+    a coin.
+
+    So it is asked first now. An address that is not a mint cannot be committed
+    to, cannot be bought and has no metadata, and saying so costs one credit.
+
+    The checks mirror `unpackMint` in @solana/spl-token: the account exists, it
+    belongs to one of the two token programs, it is long enough to be a mint,
+    and its `is_initialized` flag is set. Both programs are accepted because
+    Token-2022 coins do turn up on pump.fun.
+
+    A malformed address is False. An RPC that cannot be reached raises
+    `MintCheckUnavailable` instead of answering False, because the two mean
+    opposite things: this check also guards `place_bet`, and a node having a bad
+    minute must not turn a real coin into a rejected commit.
+    """
+    try:
+        mint = Pubkey.from_string((mint_str or "").strip())
+    except Exception:
+        return False
+
+    try:
+        info = Client(rpc_url).get_account_info(mint).value
+    except Exception as exc:
+        raise MintCheckUnavailable(str(exc)) from exc
+    if info is None:
+        return False
+    if info.owner not in (TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID):
+        return False
+    data = bytes(info.data or b"")
+    if len(data) < _MINT_ACCOUNT_MIN_SIZE:
+        return False
+    return bool(data[_MINT_IS_INITIALIZED_OFFSET])

@@ -27,6 +27,17 @@ NATIVE_SOL = Pubkey.from_string("11111111111111111111111111111111")
 USDC = Pubkey.from_string("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
 
 
+@pytest.fixture(autouse=True)
+def the_address_is_a_real_mint(monkeypatch):
+    """`_validate_mint` now asks that first, over the network.
+
+    Every case in this file is about a coin that exists, so the answer is yes
+    and the question is not what is being tested. The check itself has its own
+    suite in `test_mint_existence_check.py`.
+    """
+    monkeypatch.setattr(router, "is_spl_mint", lambda mint, rpc_url=None: True)
+
+
 def _no_dex_pools(monkeypatch):
     monkeypatch.setattr(router, "_cached_dex_pools", lambda mint: [])
     monkeypatch.setattr(router, "_count_direct_liquidity_pools", lambda mint, pools: 0)

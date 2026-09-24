@@ -15,7 +15,15 @@ class DatabaseUserRepository(UserRepository):
         return await self.find_by_email(username)
 
     async def find_by_email(self, email: str) -> Optional[User]:
-        user_model = self.db.query(UserModel).filter(UserModel.email == email).first()
+        # Case-insensitive, like `find_by_nickname` below and like every mail
+        # provider. An exact match here meant that registering as Ivan@… and
+        # signing in as ivan@… found nobody, which the sign-in form reports as
+        # a wrong password.
+        user_model = (
+            self.db.query(UserModel)
+            .filter(func.lower(UserModel.email) == (email or "").strip().lower())
+            .first()
+        )
         if user_model:
             return self._model_to_entity(user_model)
         return None

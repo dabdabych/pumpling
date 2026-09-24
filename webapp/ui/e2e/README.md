@@ -33,6 +33,7 @@ Variables: `BASE` is the frontend address (default `http://localhost:3200`),
 | `share-card` | the card for Twitter |
 | `poll-rate` | how often the page polls the server, by phase |
 | `verify-round` | the "Verify this pool" button and window, including an emergency draw |
+| `sign-up` | the sign-up form: the password rule, when errors appear, the way out of an unconfirmed account |
 | `wallet-session` | signing in with a wallet and keeping the session |
 | `wallet-connect` | the wallet list, detection, and what happens when one is missing |
 | `wallet-switch` | signing out of one wallet and into another |

@@ -43,7 +43,12 @@
       <h2 class="auth-title" id="auth-flow-title" tabindex="-1">Sign in with email</h2>
 
       <form #signInForm="ngForm" class="auth-form" (ngSubmit)="submitSignIn(signInForm)" novalidate>
-        <div class="field" [class.field--invalid]="emailInput.invalid && (emailInput.touched || signInForm.submitted)">
+        <!-- dirty AND touched, not touched alone. The first field is focused
+             when the form opens, so moving to the next one used to mark it
+             touched, empty and therefore invalid, and it turned red before
+             anybody had typed anything. Errors now wait until either something
+             was typed and left, or the form was submitted. -->
+        <div class="field" [class.field--invalid]="emailInput.invalid && ((emailInput.dirty && emailInput.touched) || signInForm.submitted)">
           <label class="field__label" [for]="uid + '-email'">Email</label>
           <div class="field__control">
             <input class="field__input field__input--plain" type="email" [id]="uid + '-email'" name="email"
@@ -52,11 +57,11 @@
                    [(ngModel)]="email" #emailInput="ngModel" data-autofocus>
           </div>
           <div class="field__message" aria-live="polite">
-            @if (emailInput.invalid && (emailInput.touched || signInForm.submitted)) { Enter a valid email address. }
+            @if (emailInput.invalid && ((emailInput.dirty && emailInput.touched) || signInForm.submitted)) { Enter a valid email address. }
           </div>
         </div>
 
-        <div class="field field--with-toggle" [class.field--invalid]="passwordInput.invalid && (passwordInput.touched || signInForm.submitted)">
+        <div class="field field--with-toggle" [class.field--invalid]="passwordInput.invalid && ((passwordInput.dirty && passwordInput.touched) || signInForm.submitted)">
           <div class="field__label-row">
             <label class="field__label" [for]="uid + '-password'">Password</label>
             <button type="button" class="auth-link auth-link--small" (click)="go('forgot')">Forgot password?</button>
@@ -68,7 +73,7 @@
             <ng-container *ngTemplateOutlet="passwordToggle"></ng-container>
           </div>
           <div class="field__message" aria-live="polite">
-            @if (passwordInput.invalid && (passwordInput.touched || signInForm.submitted)) { Enter your password. }
+            @if (passwordInput.invalid && ((passwordInput.dirty && passwordInput.touched) || signInForm.submitted)) { Enter your password. }
           </div>
         </div>
 
@@ -79,6 +84,24 @@
 
         @if (error) {
           <div class="auth-error" role="alert">{{ error }}</div>
+        }
+        <!-- This is where people actually land when the first email never
+             arrived: they try to sign in and are told to confirm. -->
+        @if (needsConfirmation) {
+          <p class="auth-subtitle">
+            Did not get it? Check the spam folder, then
+            <button class="auth-link" type="button" [disabled]="resendBusy || resendIn > 0"
+                    (click)="resendConfirmation()">
+              @if (resendIn > 0) {
+                send it again in {{ resendIn }}s
+              } @else {
+                send it again
+              }
+            </button>.
+          </p>
+        }
+        @if (resendNote) {
+          <p class="auth-note" role="status">{{ resendNote }}</p>
         }
 
         <button class="auth-submit" type="submit" [disabled]="submitting">
@@ -101,7 +124,7 @@
       <h2 class="auth-title" id="auth-flow-title" tabindex="-1">Sign up with email</h2>
 
       <form #signUpForm="ngForm" class="auth-form" (ngSubmit)="submitSignUp(signUpForm)" novalidate>
-        <div class="field" [class.field--invalid]="nicknameInput.invalid && (nicknameInput.touched || signUpForm.submitted)">
+        <div class="field" [class.field--invalid]="nicknameInput.invalid && ((nicknameInput.dirty && nicknameInput.touched) || signUpForm.submitted)">
           <label class="field__label" [for]="uid + '-nickname'">Nickname</label>
           <div class="field__control">
             <input class="field__input field__input--plain" type="text" [id]="uid + '-nickname'" name="nickname"
@@ -109,7 +132,7 @@
                    [(ngModel)]="nickname" #nicknameInput="ngModel" data-autofocus>
           </div>
           <div class="field__message" aria-live="polite">
-            @if (nicknameInput.invalid && (nicknameInput.touched || signUpForm.submitted)) {
+            @if (nicknameInput.invalid && ((nicknameInput.dirty && nicknameInput.touched) || signUpForm.submitted)) {
               3 to 32 characters: letters, digits and underscores.
             } @else {
               <span class="field__hint">Shown in the chat.</span>
@@ -117,7 +140,7 @@
           </div>
         </div>
 
-        <div class="field" [class.field--invalid]="signUpEmail.invalid && (signUpEmail.touched || signUpForm.submitted)">
+        <div class="field" [class.field--invalid]="signUpEmail.invalid && ((signUpEmail.dirty && signUpEmail.touched) || signUpForm.submitted)">
           <label class="field__label" [for]="uid + '-signup-email'">Email</label>
           <div class="field__control">
             <input class="field__input field__input--plain" type="email" [id]="uid + '-signup-email'" name="email"
@@ -126,11 +149,11 @@
                    [(ngModel)]="email" #signUpEmail="ngModel">
           </div>
           <div class="field__message" aria-live="polite">
-            @if (signUpEmail.invalid && (signUpEmail.touched || signUpForm.submitted)) { Enter a valid email address. }
+            @if (signUpEmail.invalid && ((signUpEmail.dirty && signUpEmail.touched) || signUpForm.submitted)) { Enter a valid email address. }
           </div>
         </div>
 
-        <div class="field field--with-toggle" [class.field--invalid]="newPassword.invalid && (newPassword.touched || signUpForm.submitted)">
+        <div class="field field--with-toggle" [class.field--invalid]="newPassword.invalid && ((newPassword.dirty && newPassword.touched) || signUpForm.submitted)">
           <label class="field__label" [for]="uid + '-new-password'">Password</label>
           <div class="field__control">
             <input class="field__input field__input--plain" [type]="passwordVisible ? 'text' : 'password'"
@@ -139,14 +162,10 @@
             <ng-container *ngTemplateOutlet="passwordToggle"></ng-container>
           </div>
           <div class="field__message" aria-live="polite">
-            @if (newPassword.invalid && (newPassword.touched || signUpForm.submitted)) {
-              @if (newPassword.errors?.['required']) {
-                Choose a password.
-              } @else {
-                Still needed: {{ missingPasswordRules(newPassword.errors) }}.
-              }
+            @if (newPassword.invalid && ((newPassword.dirty && newPassword.touched) || signUpForm.submitted)) {
+              {{ passwordProblem(newPassword.errors) }}
             } @else {
-              <span class="field__hint">8+ characters with upper and lower case, a digit and a symbol.</span>
+              <span class="field__hint">{{ passwordRules }}</span>
             }
           </div>
         </div>
@@ -175,7 +194,7 @@
       <p class="auth-subtitle">Enter the email you signed up with. We will send a link to set a new password.</p>
 
       <form #forgotForm="ngForm" class="auth-form" (ngSubmit)="submitForgot(forgotForm)" novalidate>
-        <div class="field" [class.field--invalid]="forgotEmail.invalid && (forgotEmail.touched || forgotForm.submitted)">
+        <div class="field" [class.field--invalid]="forgotEmail.invalid && ((forgotEmail.dirty && forgotEmail.touched) || forgotForm.submitted)">
           <label class="field__label" [for]="uid + '-forgot-email'">Email</label>
           <div class="field__control">
             <input class="field__input field__input--plain" type="email" [id]="uid + '-forgot-email'" name="email"
@@ -184,7 +203,7 @@
                    [(ngModel)]="email" #forgotEmail="ngModel" data-autofocus>
           </div>
           <div class="field__message" aria-live="polite">
-            @if (forgotEmail.invalid && (forgotEmail.touched || forgotForm.submitted)) { Enter a valid email address. }
+            @if (forgotEmail.invalid && ((forgotEmail.dirty && forgotEmail.touched) || forgotForm.submitted)) { Enter a valid email address. }
           </div>
         </div>
 
@@ -212,6 +231,26 @@
       <p class="auth-subtitle">
         We sent a link to <strong>{{ email }}</strong>. Open it to activate your account, then sign in.
       </p>
+      <!-- Without this, an email that never arrived left nowhere to go: signing
+           in says "not confirmed" and the password reset does nothing for an
+           unconfirmed account. -->
+      <p class="auth-subtitle">
+        Nothing in your inbox? Check the spam folder, then
+        <button class="auth-link" type="button" [disabled]="resendBusy || resendIn > 0"
+                (click)="resendConfirmation()">
+          @if (resendIn > 0) {
+            send it again in {{ resendIn }}s
+          } @else {
+            send it again
+          }
+        </button>.
+      </p>
+      @if (resendNote) {
+        <p class="auth-note" role="status">{{ resendNote }}</p>
+      }
+      @if (error) {
+        <div class="auth-error" role="alert">{{ error }}</div>
+      }
       <button class="auth-submit" type="button" (click)="go('email-sign-in', 'sign-in')">Back to sign in</button>
     }
   }

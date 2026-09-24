@@ -40,6 +40,10 @@ RULES: tuple[tuple[str, Rule], ...] = (
     # Creating accounts and sending email is the most expensive thing available without signing in.
     ("/auth/register", Rule(limit=5, window_seconds=900)),
     ("/auth/request-password-reset", Rule(limit=5, window_seconds=900)),
+    # Asking for the confirmation link again. There is a per-address cooldown in
+    # the handler on top of this; this one is per client address, so one machine
+    # cannot work through a list of addresses.
+    ("/auth/resend-confirmation", Rule(limit=5, window_seconds=900)),
     ("/auth/reset-password", Rule(limit=10, window_seconds=900)),
     ("/auth/confirm-email", Rule(limit=20, window_seconds=900)),
     # Guessing a password or a wallet signature.
@@ -48,6 +52,13 @@ RULES: tuple[tuple[str, Rule], ...] = (
     ("/auth/wallet/verify", Rule(limit=30, window_seconds=300)),
     # Coin validation goes outside: we stay well below the sources' limits.
     ("/lottery/check-mint", Rule(limit=30, window_seconds=60)),
+    # The hover chart reaches DexScreener for the pool and GeckoTerminal for the
+    # points, and it takes the coin straight from the path, so it is an outside
+    # call anyone can aim at any address. GeckoTerminal is behind a global
+    # twenty-a-minute budget already; DexScreener was behind nothing but the
+    # default ceiling of six hundred. The browser caches per coin, so a person
+    # reading a full pool makes one request per row and no more.
+    ("/lottery/coin/", Rule(limit=120, window_seconds=60)),
     # A commit is bounded by the wallet and the network, but it should not be unlimited.
     ("/lottery/bet", Rule(limit=20, window_seconds=60)),
 )

@@ -28,7 +28,7 @@ export class AuthFlowService {
 
   async signInWithEmail(email: string, password: string, keepSignedIn: boolean): Promise<void> {
     const response = await firstValueFrom(this.api.invoke$Response(loginAuthLoginPost, {
-      body: { username: email.trim(), password, remember_me: keepSignedIn }
+      body: { username: normaliseEmail(email), password, remember_me: keepSignedIn }
     }));
     this.completeSignIn(response.body.access_token);
   }
@@ -80,15 +80,49 @@ export class AuthFlowService {
 
   async register(nickname: string, email: string, password: string): Promise<void> {
     await firstValueFrom(this.api.invoke$Response(registerAuthRegisterPost, {
-      body: { username: email.trim(), email: email.trim(), password, nickname: nickname.trim() }
+      body: { username: normaliseEmail(email), email: normaliseEmail(email), password, nickname: nickname.trim() }
     }));
   }
 
+  /**
+   * Ask for the confirmation link again.
+   *
+   * The answer is deliberately the same whether or not that address has an
+   * account, so there is nothing here to read back to the person beyond "we
+   * have sent it if there was anything to send".
+   */
+  async resendConfirmation(email: string): Promise<void> {
+    await firstValueFrom(this.http.post(`${environment.apiUrl}/auth/resend-confirmation`, { email: normaliseEmail(email) }));
+  }
+
+  /** Seconds the server asked us to wait, or 0 when this was a different failure. */
+  resendRetryAfter(error: unknown): number {
+    if (error instanceof HttpErrorResponse && error.status === 429) {
+      const header = Number(error.headers?.get('Retry-After'));
+      return Number.isFinite(header) && header > 0 ? header : 60;
+    }
+    return 0;
+  }
+
+  resendError(error: unknown): string {
+    if (error instanceof HttpErrorResponse && error.status === 0) {
+      return 'No connection to the server. Check your internet and try again.';
+    }
+    return 'Could not send it just now. Try again in a moment.';
+  }
+
   async requestPasswordReset(email: string): Promise<void> {
-    await firstValueFrom(this.http.post(`${environment.apiUrl}/auth/request-password-reset`, { email: email.trim() }));
+    await firstValueFrom(this.http.post(`${environment.apiUrl}/auth/request-password-reset`, { email: normaliseEmail(email) }));
   }
 
   // ------------------------------------------------------------ error texts
+
+  /** The sign-in was refused only because the address is still unconfirmed. */
+  isEmailNotConfirmed(error: unknown): boolean {
+    return error instanceof HttpErrorResponse
+      && error.status === 403
+      && error.error?.detail === 'Email is not verified';
+  }
 
   signInError(error: unknown): string {
     if (error instanceof HttpErrorResponse) {
@@ -96,7 +130,7 @@ export class AuthFlowService {
       if (error.status === 0) {
         return 'No connection to the server. Check your internet and try again.';
       }
-      if (error.status === 403 && detail === 'Email is not verified') {
+      if (this.isEmailNotConfirmed(error)) {
         return 'Your email is not confirmed yet. Open the link we sent you, then sign in.';
       }
       if (error.status === 401) {
@@ -160,4 +194,15 @@ export class AuthFlowService {
     bytes.forEach((byte) => binary += String.fromCharCode(byte));
     return btoa(binary);
   }
+}
+
+/**
+ * The address as the server stores it.
+ *
+ * Trimmed and lowercased. The server compares case-insensitively now, but
+ * sending the same address in two shapes from two screens is what made
+ * registering as Ivan@… and signing in as ivan@… look like a wrong password.
+ */
+function normaliseEmail(email: string): string {
+  return (email ?? '').trim().toLowerCase();
 }

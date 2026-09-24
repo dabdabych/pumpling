@@ -161,6 +161,7 @@ class TestTheListItself:
             helius_das_base_url = "https://mainnet.helius-rpc.com"
             network = "devnet"
             solana_http_endpoint = PUBLIC
+            rpc_proxy_public_fallback_url = PUBLIC
 
         monkeypatch.setattr(proxy, "get_settings", lambda: S())
         urls = proxy._upstream_urls()
@@ -175,6 +176,7 @@ class TestTheListItself:
             helius_das_base_url = ""
             network = "devnet"
             solana_http_endpoint = PUBLIC
+            rpc_proxy_public_fallback_url = PUBLIC
 
         monkeypatch.setattr(proxy, "get_settings", lambda: S())
         assert proxy._upstream_urls() == [PUBLIC]
@@ -183,3 +185,69 @@ class TestTheListItself:
         # These lines name the upstream that failed, and the key is in its query.
         assert "secret-key-value" not in proxy._safe_url(HELIUS)
         assert proxy._safe_url(HELIUS) == "https://devnet.helius-rpc.com/"
+
+
+class TestThePublicNodeGoesLast:
+    """Both paid entries can die on the same minute.
+
+    On mainnet the configured endpoint is a Helius URL as well, with a second
+    key. Helius counts credits per account, so two keys on one account run out
+    together and the "fallback" falls back to the same wall. A free node is the
+    only entry that fails independently.
+    """
+
+    HELIUS_A = "https://mainnet.helius-rpc.com/?api-key=key-one"
+    HELIUS_B = "https://mainnet.helius-rpc.com/?api-key=key-two"
+    FREE = "https://api.mainnet-beta.solana.com/"
+
+    def settings(self, monkeypatch, configured, public):
+        outer = self
+
+        class S:
+            helius_api_key = "key-one"
+            helius_das_base_url = "https://mainnet.helius-rpc.com"
+            network = "mainnet"
+            solana_http_endpoint = configured
+            rpc_proxy_public_fallback_url = public
+
+        monkeypatch.setattr(proxy, "get_settings", lambda: S())
+        del outer
+
+    def test_the_production_shape_is_three_deep(self, monkeypatch):
+        # Exactly what production had on 2026-09-24: two Helius keys and
+        # nothing that survives the account running out.
+        self.settings(monkeypatch, self.HELIUS_B, self.FREE)
+
+        urls = proxy._upstream_urls()
+
+        assert len(urls) == 3
+        assert urls[0] == self.HELIUS_A
+        assert urls[1] == self.HELIUS_B
+        assert urls[2] == self.FREE
+
+    def test_it_is_never_first(self, monkeypatch):
+        self.settings(monkeypatch, self.HELIUS_B, self.FREE)
+
+        # Nothing free is tried while something paid can still answer.
+        assert proxy._upstream_urls()[0] != self.FREE
+
+    def test_an_empty_setting_turns_it_off(self, monkeypatch):
+        self.settings(monkeypatch, self.HELIUS_B, "")
+
+        urls = proxy._upstream_urls()
+
+        assert urls == [self.HELIUS_A, self.HELIUS_B]
+
+    def test_it_is_not_added_twice_when_already_configured(self, monkeypatch):
+        self.settings(monkeypatch, self.FREE, self.FREE)
+
+        assert proxy._upstream_urls() == [self.HELIUS_A, self.FREE]
+
+    def test_a_trailing_slash_is_not_a_different_node(self, monkeypatch):
+        # One of the two is written without the slash in the environment.
+        self.settings(monkeypatch, "https://api.mainnet-beta.solana.com", self.FREE)
+
+        urls = proxy._upstream_urls()
+
+        assert len(urls) == 2
+        assert urls[1] == "https://api.mainnet-beta.solana.com"

@@ -7,14 +7,12 @@ from sqlalchemy.exc import IntegrityError
 from solders.pubkey import Pubkey
 from solders.signature import Signature
 from solana.rpc.api import Client
-from solana.rpc.async_api import AsyncClient
 from domain.lottery.services.lottery_service import LotteryService
 from domain.lottery.repositories.lottery_repository import LotteryRepository
 from infrastructure.lottery.database_lottery_repository import DatabaseLotteryRepository
 from infrastructure.lottery.offchain_api_client import OffchainApiClient, build_offchain_api_client
 from infrastructure.database.database import SessionLocal, get_db
 from infrastructure.database.models.user_model import UserModel
-from infrastructure.database.models.allowed_mint_model import AllowedMintModel
 from infrastructure.database.models.token_metadata_model import TokenMetadataModel
 from infrastructure.database.models.lottery_model import LotteryModel
 from infrastructure.database.models.smart_contract_event_model import SmartContractEventModel
@@ -41,6 +39,7 @@ import ssl
 from urllib import request as urllib_request, error as urllib_error
 import certifi
 from tenacity import Retrying, stop_after_attempt, wait_fixed, retry_if_exception_type, before_sleep_log
+from shared.solana_rpc import SolanaJsonRpc
 from shared.admin_wallets import configured_admin_pubkeys
 from shared.weights_commitment import build_weights_commitment
 from shared.bet_confirmation import (
@@ -69,8 +68,10 @@ from shared.purchases_payload import (
 )
 from mint_validator import (
     NATIVE_SOL_QUOTE,
+    MintCheckUnavailable,
     get_pumpfun_curve_info,
     has_live_pumpswap_pool,
+    is_spl_mint,
 )
 
 router = APIRouter(prefix="/lottery", tags=["lottery"])
@@ -78,7 +79,7 @@ router = APIRouter(prefix="/lottery", tags=["lottery"])
 # Unknown mints are loaded in the background, not inside a pool page request.
 token_metadata_queue.configure(lambda mint: _fill_token_metadata_in_background(mint))
 security = HTTPBearer()
-jwt_handler = JWTHandler("your-secret-key-here")
+jwt_handler = JWTHandler(get_settings().jwt_secret_key)
 logger = logging.getLogger(__name__)
 MAX_VRF_RETRIES_ONCHAIN = 2  # Must match MAX_VRF_RETRIES in lottery contract.
 ARCHIVE_WINDOW_DAYS = 7
@@ -1098,6 +1099,24 @@ def _validate_mint(
     rpc_url = settings.solana_http_endpoint or "https://api.mainnet-beta.solana.com"
     network_type = NetworkType.DEVNET if "devnet" in rpc_url else NetworkType.MAINNET
 
+    # Cheapest question first. An address that is not an initialised SPL mint
+    # is not a coin, and answering that costs one RPC credit; everything below
+    # costs eleven, most of it on a Helius DAS call for metadata that cannot
+    # exist. An unreachable node is not an answer, so that case falls through
+    # to the checks that follow rather than rejecting a real coin.
+    try:
+        if not is_spl_mint(canonical_mint, rpc_url):
+            raise HTTPException(
+                status_code=400,
+                detail="That address is not a coin on Solana. Check the mint address.",
+            )
+    except MintCheckUnavailable as exc:
+        logger.warning(
+            "mint existence check unavailable (mint=%s). continuing with the slower checks. error=%s",
+            canonical_mint,
+            exc,
+        )
+
     try:
         pools = _cached_dex_pools(canonical_mint)
     except DexLiquidityCheckUnavailable as exc:
@@ -1254,19 +1273,23 @@ async def _fetch_confirmed_deposit_event(signature: str) -> DepositEvent | None:
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid transaction signature")
 
-    async with AsyncClient(get_settings().solana_http_endpoint) as client:
-        response = await client.get_transaction(
+    # Read as JSON, not through the typed parser: a commit that failed on chain
+    # can carry an error variant this version of `solders` cannot decode, and
+    # that turns a plain "your transaction failed" into a 500. See
+    # `shared/solana_rpc.py`.
+    async with SolanaJsonRpc(get_settings().solana_http_endpoint) as rpc:
+        transaction = await rpc.get_transaction(
             parsed_signature,
             encoding="jsonParsed",
             commitment="confirmed",
             max_supported_transaction_version=0,
         )
 
-    transaction_error = _transaction_error(response.value)
+    transaction_error = _transaction_error(transaction)
     if transaction_error is not None:
         raise HTTPException(status_code=400, detail=f"Transaction failed on-chain: {transaction_error}")
 
-    logs = _extract_transaction_log_messages(response.value)
+    logs = _extract_transaction_log_messages(transaction)
     events = decode_deposit_events_from_logs(logs)
     return events[0] if events else None
 
@@ -2670,18 +2693,12 @@ async def check_mint(
         canonical_mint, network_type, is_pumpfun, has_dex_liquidity, dex_pool_count, dex_check_unverified = _validate_mint(
             request.mint_address,
         )
-        existing_allowed = db.query(AllowedMintModel).filter(
-            AllowedMintModel.mint == canonical_mint,
-            AllowedMintModel.network_type == network_type,
-        ).first()
-        if existing_allowed is None:
-            db.add(
-                AllowedMintModel(
-                    mint=canonical_mint,
-                    network_type=network_type,
-                )
-            )
-            db.commit()
+        # `allowed_mints` used to gain a row here, one per address anybody ever
+        # typed into the box. Nothing in the codebase reads that table, so the
+        # rows were only ever growth: a write on an unauthenticated-in-effect
+        # path, keyed by a value the caller chooses. The metadata cache below is
+        # the one thing worth keeping from a check, and it is keyed the same way
+        # but actually used.
 
         existing_metadata = db.query(TokenMetadataModel).filter(
             TokenMetadataModel.mint == canonical_mint

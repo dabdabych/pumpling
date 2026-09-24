@@ -9,6 +9,10 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class AppSettings:
+    #: Raw value of JWT_SECRET_KEY. Read it through `jwt_secret_key`, which
+    #: is where it gets checked. Stored unchecked so that a worker, which
+    #: signs nothing, is not stopped by a setting it never reads.
+    jwt_secret_key_raw: str
     network: str
     lottery_program_id: str
     lottery_admin_pubkey: str
@@ -70,14 +74,59 @@ class AppSettings:
     #: buyer's timeout: the buyer works for an hour, while a wallet request must
     #: either go through or fail.
     rpc_proxy_timeout_seconds: float
+    #: The last upstream the proxy tries, after every paid one has refused.
+    #: A public node is rate limited and cannot carry a round, but it keeps the
+    #: wallet working when the plan runs out, which is the failure we have
+    #: actually had. Empty disables it.
+    rpc_proxy_public_fallback_url: str
     #: The shared ceiling for reference lookups (DexScreener, Helius DAS,
     #: Jupiter). They sit on the path of a live human request, and it is better
     #: to show a coin without market numbers than to hold someone for half a minute.
     external_lookup_timeout_seconds: float
 
+    @property
+    def jwt_secret_key(self) -> str:
+        """The signing key, checked at the moment something wants to sign.
+
+        Checked here and not in the constructor because the workers build the
+        same settings object and never sign anything. A missing key must stop
+        the API, not the process that drives rounds.
+        """
+        return _checked_secret("JWT_SECRET_KEY", self.jwt_secret_key_raw)
+
 
 def _env_str(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
+
+
+#: Shorter than this is not worth signing with. 32 hex characters is 128 bits,
+#: which is what `openssl rand -hex 32` gives twice over.
+_MIN_SECRET_LENGTH = 32
+
+
+def _checked_secret(name: str, value: str) -> str:
+    """A secret with no default, because a default is what went wrong.
+
+    Session tokens used to be signed with the literal `your-secret-key-here`,
+    written into two routers. It shipped in the source and then in a public
+    repository. The signature says which user id a request belongs to, three of
+    those ids are administrators, and nothing else is checked, so the key was
+    the whole of the authentication.
+
+    Missing or too short stops the process. A service that cannot sign safely
+    should not answer at all: a token minted with a guessable key is worse than
+    a site that is down, because nobody can see it happening.
+    """
+    if not value:
+        raise ValueError(
+            f"{name} is not set. Generate one with `openssl rand -hex 32`. "
+            "Every session token is signed with it."
+        )
+    if len(value) < _MIN_SECRET_LENGTH:
+        raise ValueError(
+            f"{name} must be at least {_MIN_SECRET_LENGTH} characters, got {len(value)}"
+        )
+    return value
 
 
 def _env_float(name: str, default: float) -> float:
@@ -264,6 +313,7 @@ def get_settings() -> AppSettings:
     )
     network = _resolve_network()
     return AppSettings(
+        jwt_secret_key_raw=_env_str("JWT_SECRET_KEY"),
         network=network,
         lottery_program_id=_env_str("LOTTERY_PROGRAM_ID") or _env_str("PROGRAM_ID") or default_program_id,
         lottery_admin_pubkey=lottery_admin_pubkey,
@@ -353,5 +403,8 @@ def get_settings() -> AppSettings:
         rpc_proxy_rate_limit_per_minute=_env_int_non_negative("RPC_PROXY_RATE_LIMIT_PER_MINUTE", 240),
         rpc_proxy_max_batch_size=_env_int_non_negative("RPC_PROXY_MAX_BATCH_SIZE", 10),
         rpc_proxy_timeout_seconds=_env_float("RPC_PROXY_TIMEOUT_SECONDS", 15.0),
+        rpc_proxy_public_fallback_url=_env_str(
+            "RPC_PROXY_PUBLIC_FALLBACK_URL", _default_solana_http_endpoint(network)
+        ),
         external_lookup_timeout_seconds=_env_float("EXTERNAL_LOOKUP_TIMEOUT_SECONDS", 6.0),
     )

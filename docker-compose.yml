@@ -27,6 +27,8 @@ services:
     container_name: lottery-backend
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql://crypto_lottery:Online123$@postgres:5432/crypto_lottery}
+      # No default: the API refuses to start rather than sign tokens with a guessable key.
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       # The pool page shows the buying window: the value has to match the one the
       # worker lives by.
       - EXECUTION_COUNTDOWN_SECONDS=${EXECUTION_COUNTDOWN_SECONDS:-}

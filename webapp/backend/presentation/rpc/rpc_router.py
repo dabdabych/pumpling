@@ -62,17 +62,47 @@ def _upstream_urls() -> list[str]:
 
     So the configured endpoint is kept as a second entry, and the caller falls
     through to it when the first one says it is out or broken.
+
+    That second entry is not the safety net it looks like. On mainnet
+    `SOLANA_HTTP_ENDPOINT` is a Helius URL too, with a second key, and Helius
+    counts credits per account rather than per key. Two keys on one account both
+    stop on the same minute, which is exactly the failure above.
+
+    So a public node goes last. It is rate limited and it cannot carry a round,
+    and it is never reached while anything paid still answers. What it buys is
+    that a spent plan degrades the site instead of stopping it: a blockhash
+    still arrives, so a wallet can still sign. `RPC_PROXY_PUBLIC_FALLBACK_URL`
+    set to an empty string turns it off.
+
+    Ordering is the whole design here. Anything that can be reached is tried
+    before the free node, and the free node is never tried first, so normal
+    traffic never lands on it.
     """
     settings = get_settings()
     urls: list[str] = []
+    seen: set[str] = set()
+
+    def add(url: str) -> None:
+        candidate = (url or "").strip()
+        if not candidate:
+            return
+        # Compare without the trailing slash so the same node configured two
+        # ways does not become two attempts at the same dead endpoint.
+        key = candidate.rstrip("/")
+        if key in seen:
+            return
+        seen.add(key)
+        urls.append(candidate)
+
     if settings.helius_api_key:
         base = settings.helius_das_base_url.rstrip("/")
         if settings.network == "devnet" and base == "https://mainnet.helius-rpc.com":
             base = "https://devnet.helius-rpc.com"
-        urls.append(f"{base}/?api-key={settings.helius_api_key}")
-    fallback = (settings.solana_http_endpoint or "").strip()
-    if fallback and fallback not in urls:
-        urls.append(fallback)
+        add(f"{base}/?api-key={settings.helius_api_key}")
+
+    add(settings.solana_http_endpoint)
+    add(settings.rpc_proxy_public_fallback_url)
+
     return urls or [settings.solana_http_endpoint]
 
 

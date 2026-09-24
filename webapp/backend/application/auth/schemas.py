@@ -21,6 +21,15 @@ class EmailConfirmationRequest(BaseModel):
     token: str
 
 
+class ResendConfirmationRequest(BaseModel):
+    email: EmailStr
+
+
+class ResendConfirmationResponse(BaseModel):
+    """Says nothing about whether the address has an account."""
+    message: str
+
+
 class EmailConfirmationResponse(BaseModel):
     email: str
     message: str

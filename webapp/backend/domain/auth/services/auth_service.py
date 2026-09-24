@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 import bcrypt
 from ..entities.user import User, UserRole
 from ..repositories.user_repository import UserRepository
+from .password_rules import validate_password
 from .registration_email_sender import NoopRegistrationEmailSender, RegistrationEmailSender
 
 
@@ -34,6 +35,14 @@ class AuthService:
         nickname = nickname.strip()
         if not re.fullmatch(r"[A-Za-z0-9_]{3,32}", nickname):
             raise ValueError("Nickname must contain 3-32 letters, digits, or underscores")
+        # Before anything is written and before an email goes out: a rejected
+        # password should cost nothing and leave nothing behind.
+        validate_password(password)
+        # Stored lowercase so the row matches whatever case it is typed in next
+        # time. `username` is the same address: the browser sends the email for
+        # both, and `find_by_username` is `find_by_email`.
+        email = (email or "").strip().lower()
+        username = (username or "").strip().lower() or email
         existing_user = await self._user_repository.find_by_username(username)
         if existing_user and existing_user.is_email_verified:
             raise ValueError("Username already exists")
@@ -82,6 +91,35 @@ class AuthService:
         await self._registration_email_sender.send_registration_email(saved_user, confirmation_url)
         return saved_user
 
+    async def resend_confirmation(self, email: str) -> Optional[User]:
+        """Send the confirmation email again, with a fresh link.
+
+        Returns None when there is nothing to send: no such account, or one
+        that is already confirmed. The caller answers the same way either way,
+        so this never says which it was.
+
+        A new token every time, and the old one stops working. If the first
+        email did arrive and is opened after a resend, the link in it is dead —
+        which is the right trade: the alternative is that a link mailed months
+        ago stays valid forever.
+        """
+        email = (email or "").strip().lower()
+        if not email:
+            return None
+
+        user = await self._user_repository.find_by_email(email)
+        if not user or user.is_email_verified:
+            return None
+
+        token = self._create_email_verification_token()
+        user.email_verification_token_hash = self.hash_email_verification_token(token)
+        user.email_verification_expires_at = self._utc_now() + EMAIL_VERIFICATION_TOKEN_TTL
+        saved_user = await self._user_repository.save(user)
+        await self._registration_email_sender.send_registration_email(
+            saved_user, self._build_email_confirmation_url(token)
+        )
+        return saved_user
+
     async def confirm_email(self, token: str) -> User:
         token_hash = self.hash_email_verification_token(token)
         user = await self._user_repository.find_by_email_verification_token_hash(token_hash)
@@ -121,6 +159,10 @@ class AuthService:
         expires_at = user.password_reset_expires_at
         if not expires_at or self._ensure_utc(expires_at) <= self._utc_now():
             raise ValueError("Password reset link has expired")
+
+        # The same rules as registration. This path used to have none at all,
+        # so the reset link was a way around them.
+        validate_password(password)
 
         user.hashed_password = self.hash_password(password)
         user.password_reset_token_hash = None

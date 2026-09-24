@@ -1,6 +1,8 @@
 import base64
 import logging
 import secrets
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
@@ -15,6 +17,8 @@ from application.auth.schemas import (
     UserRegistrationRequest,
     EmailConfirmationRequest,
     EmailConfirmationResponse,
+    ResendConfirmationRequest,
+    ResendConfirmationResponse,
     PasswordResetRequest,
     PasswordResetResponse,
     PasswordResetConfirmRequest,
@@ -42,8 +46,73 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
-jwt_handler = JWTHandler("your-secret-key-here")
+jwt_handler = JWTHandler(get_settings().jwt_secret_key)
 REMEMBER_ME_TOKEN_TTL = timedelta(days=30)
+
+
+#: How long before the confirmation email can be asked for again, and how many
+#: times in an hour. Sixty seconds is the usual figure: long enough that a
+#: double click or a reload sends one email, short enough that somebody waiting
+#: on a message is not stuck. Three an hour covers "it did not arrive, try the
+#: other address" without turning into a way to mail somebody repeatedly at our
+#: expense — every send costs a Brevo credit and lands in a real inbox.
+CONFIRMATION_RESEND_COOLDOWN_SECONDS = 60
+CONFIRMATION_RESEND_MAX_PER_HOUR = 3
+
+
+class _ResendCooldown:
+    """When each address last asked, whether or not it has an account.
+
+    Keyed by the address that was typed, not by a user row, and recorded even
+    when nothing is sent. That is deliberate: if only real accounts were
+    counted, the 429 would itself answer "is this address registered", which is
+    the question the neutral response exists to avoid.
+
+    In process memory, like the chat and RPC limiters, because the backend runs
+    as a single uvicorn process. A restart forgets the cooldowns; deploys are
+    ours and rare, and the per-address ceiling is not the only thing standing
+    here — `shared/rate_limit.py` limits this path per client address as well.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._asked: dict[str, list[float]] = {}
+
+    def check(self, email: str) -> None:
+        """Raises `_ResendTooSoon` when this address has to wait."""
+        key = (email or "").strip().lower()
+        now = time.monotonic()
+        with self._lock:
+            self._sweep(now)
+            recent = self._asked.setdefault(key, [])
+            if recent and now - recent[-1] < CONFIRMATION_RESEND_COOLDOWN_SECONDS:
+                raise _ResendTooSoon(
+                    int(CONFIRMATION_RESEND_COOLDOWN_SECONDS - (now - recent[-1])) + 1
+                )
+            if len(recent) >= CONFIRMATION_RESEND_MAX_PER_HOUR:
+                raise _ResendTooSoon(int(3600 - (now - recent[0])) + 1)
+            recent.append(now)
+
+    def _sweep(self, now: float) -> None:
+        for key in list(self._asked):
+            kept = [at for at in self._asked[key] if now - at < 3600]
+            if kept:
+                self._asked[key] = kept
+            else:
+                del self._asked[key]
+
+    def reset_for_tests(self) -> None:
+        with self._lock:
+            self._asked.clear()
+
+
+class _ResendTooSoon(Exception):
+    def __init__(self, retry_after_seconds: int):
+        self.retry_after_seconds = max(1, retry_after_seconds)
+        super().__init__(f"retry after {self.retry_after_seconds}s")
+
+
+resend_cooldown = _ResendCooldown()
 
 
 def get_user_repository(db: Session = Depends(get_db)) -> UserRepository:
@@ -139,6 +208,44 @@ async def confirm_email(request: EmailConfirmationRequest, auth_service: AuthSer
         return EmailConfirmationResponse(email=user.email, message="Email confirmed")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/resend-confirmation", response_model=ResendConfirmationResponse)
+async def resend_confirmation(
+    request: ResendConfirmationRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    """Send the confirmation email again.
+
+    Before this existed, an account whose first email never arrived had nowhere
+    to go. Signing in answered "your email is not confirmed"; the password
+    reset does nothing for an unconfirmed account and says so in the same
+    neutral sentence it always uses. The only way through was to register again
+    with the same address, which happens to work, and nothing told anyone that.
+
+    The answer is the same whether or not the address has an account, and the
+    same whether or not anything was sent. A different answer would turn this
+    into a way to find out who has registered.
+    """
+    try:
+        resend_cooldown.check(request.email)
+    except _ResendTooSoon as too_soon:
+        raise HTTPException(
+            status_code=429,
+            detail="We just sent one. Check your inbox, then try again in a moment.",
+            headers={"Retry-After": str(too_soon.retry_after_seconds)},
+        ) from too_soon
+
+    try:
+        await auth_service.resend_confirmation(request.email)
+    except Exception:
+        # A provider having a bad minute is ours to see, not the caller's to
+        # read a hint from: the answer below does not change.
+        logger.exception("Failed to resend the confirmation email")
+
+    return ResendConfirmationResponse(
+        message="If that address needs confirming, we have sent the link again."
+    )
 
 
 @router.post("/request-password-reset", response_model=PasswordResetResponse)

@@ -1,0 +1,21 @@
+-- One address, one account, whatever case it was typed in.
+--
+-- `ix_users_email` is unique on the raw column, so `Ivan@Gmail.com` and
+-- `ivan@gmail.com` are two different accounts to this database. Nobody means
+-- them to be: the domain part is case-insensitive by RFC and every mail
+-- provider in practice treats the local part that way too. The nickname column
+-- next door already has `ux_users_nickname_lower` for exactly this reason,
+-- which is what makes the omission on email an oversight rather than a choice.
+--
+-- What it cost: registering in one case and signing in in another found no
+-- user, and the answer to that is "Wrong email or password". People read it as
+-- a forgotten password and try again, which is what they reported.
+--
+-- Checked before writing this: no two rows on production differ only by case,
+-- so the index builds without touching anything. Three rows are not lowercase
+-- at all, all of them synthetic `wallet_...@onchain.local` addresses from an
+-- older wallet sign-in format, and they stay as they are. Their local part is a
+-- base58 public key, which IS case-sensitive, so rewriting them would be wrong.
+-- The index does not rewrite anything; it only forbids a second row that
+-- matches an existing one apart from case.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email_lower ON users (lower(email));

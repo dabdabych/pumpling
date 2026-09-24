@@ -4,13 +4,12 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from solana.rpc.async_api import AsyncClient
 from solders.pubkey import Pubkey
-from solders.signature import Signature
 
 import events_worker as event_worker
 from database.database import SessionLocal
 from database.models.backfill_state_model import BackfillStateModel
+from shared.solana_rpc import SolanaJsonRpc, signature_failed
 
 
 def _default_solana_http_endpoint() -> str:
@@ -64,49 +63,66 @@ def _save_state(session, program_id: Pubkey, last_signature: str) -> None:
     session.commit()
 
 
-async def _collect_new_signatures(client: AsyncClient, program_id: Pubkey, last_signature: Optional[str]) -> list[str]:
-    collected: list[str] = []
-    before: Optional[Signature] = None
+async def _collect_new_signatures(
+    rpc: SolanaJsonRpc, program_id: Pubkey, last_signature: Optional[str]
+) -> list[dict]:
+    """The rows newer than the cursor, newest first.
+
+    Whole rows rather than signature strings: `err` is in there, and it saves
+    fetching a transaction only to find out it failed.
+    """
+    collected: list[dict] = []
+    before: Optional[str] = None
     reached_last = False
 
     while len(collected) < BACKFILL_MAX_SIGNATURES:
-        resp = await client.get_signatures_for_address(program_id, limit=BACKFILL_BATCH_LIMIT, before=before)
-        sig_list = resp.value or []
-        if not sig_list:
+        rows = await rpc.get_signatures_for_address(
+            program_id, limit=BACKFILL_BATCH_LIMIT, before=before
+        )
+        if not rows:
             break
 
-        for sig_info in sig_list:
-            sig_str = str(sig_info.signature)
+        for row in rows:
+            sig_str = str(row.get("signature") or "")
+            if not sig_str:
+                continue
             if last_signature and sig_str == last_signature:
                 reached_last = True
                 break
-            collected.append(sig_str)
+            collected.append(row)
 
         if reached_last:
             break
 
-        before = sig_list[-1].signature
+        before = str(rows[-1].get("signature") or "")
+        if not before:
+            break
 
     return collected
 
 
-async def _process_signature(client: AsyncClient, program_id: Pubkey, parser, signature: str) -> None:
-    tx_resp = await client.get_transaction(
-        Signature.from_string(signature),
+async def _process_signature(
+    rpc: SolanaJsonRpc, program_id: Pubkey, parser, signature: str
+) -> None:
+    tx = await rpc.get_transaction(
+        signature,
         encoding="jsonParsed",
         max_supported_transaction_version=0,
     )
-    if event_worker._extract_transaction_error(tx_resp.value) is not None:
+    if tx is None:
+        logging.debug("No transaction for signature %s during backfill", signature)
+        return
+    if event_worker._extract_transaction_error(tx) is not None:
         logging.debug("Skipping failed transaction %s during backfill", signature)
         return
-    log_messages = event_worker._extract_transaction_log_messages(tx_resp.value)
+    log_messages = event_worker._extract_transaction_log_messages(tx)
     if log_messages:
         event_worker._parse_logs(parser, log_messages, signature)
     else:
         logging.debug("No logs for signature %s", signature)
 
 
-async def _backfill_once(client: AsyncClient, program_id: Pubkey, parser) -> None:
+async def _backfill_once(rpc: SolanaJsonRpc, program_id: Pubkey, parser) -> None:
     session = SessionLocal()
     try:
         state = _load_state(session, program_id)
@@ -114,12 +130,21 @@ async def _backfill_once(client: AsyncClient, program_id: Pubkey, parser) -> Non
     finally:
         session.close()
 
-    new_signatures = await _collect_new_signatures(client, program_id, last_signature)
-    if not new_signatures:
+    new_rows = await _collect_new_signatures(rpc, program_id, last_signature)
+    if not new_rows:
         return
 
-    for sig in reversed(new_signatures):
-        await _process_signature(client, program_id, parser, sig)
+    for row in reversed(new_rows):  # older -> newer, so the cursor only moves forward
+        sig = str(row.get("signature") or "")
+        if not sig:
+            continue
+        if signature_failed(row):
+            # The listing already said it failed, and a failed transaction
+            # emits nothing we store. Fetching it would cost a round trip to
+            # learn what we have been told.
+            logging.debug("Skipping failed transaction %s during backfill", sig)
+        else:
+            await _process_signature(rpc, program_id, parser, sig)
         session = SessionLocal()
         try:
             _save_state(session, program_id, sig)
@@ -144,10 +169,10 @@ async def main() -> None:
         BACKFILL_INTERVAL_SECONDS,
     )
 
-    async with AsyncClient(SOLANA_HTTP_ENDPOINT) as client:
+    async with SolanaJsonRpc(SOLANA_HTTP_ENDPOINT) as rpc:
         while True:
             try:
-                await _backfill_once(client, program_id, parser)
+                await _backfill_once(rpc, program_id, parser)
             except Exception as exc:  # noqa: BLE001
                 logging.exception("Backfill error: %s", exc)
             await asyncio.sleep(BACKFILL_INTERVAL_SECONDS)

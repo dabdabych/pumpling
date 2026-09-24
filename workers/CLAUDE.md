@@ -98,3 +98,39 @@ the pre-ORAO account was nine bytes longer and carried different fields at the
 same offsets, and both shapes have the same Anchor discriminator. Change the
 struct and change that constant in the same commit;
 `tests/test_onchain_account_layout.py` checks it against the IDL.
+
+## Two RPC calls that do not go through solana-py
+
+`getSignaturesForAddress` and `getTransaction` are read as plain JSON, through
+`shared/solana_rpc.py`, not through `AsyncClient`. Both workers walk over other
+people's failed transactions, and a failed transaction carries whatever error
+the validator felt like emitting.
+
+`solders` decodes that error into a typed enum, and the RPC response is an
+**untagged** enum, so a variant it does not know does not arrive as a null
+field: the whole response fails to parse. One row poisons the other ninety-nine.
+
+That is not theoretical. From 2026-07-28 to 2026-09-24 the backfill worker
+processed nothing. A transaction that failed with
+`err: {"InstructionError": [1, "BorshIoError"]}` sat in the program's history;
+Solana v3 made `BorshIoError` a bare variant and `solders` 0.14.4 still expects
+the string it used to hold. The worker needed rows 0 to 46 of a page and the
+unreadable row was number 52, so it never read any of them. It logged
+`data did not match any variant of untagged enum Resp` once a minute, which
+reads like a network problem, and the cursor sat still for two months.
+
+So: take the fields we use (`signature`, `err`, `meta.logMessages`), leave the
+rest as the node sent it. `_extract_transaction_error` and
+`_extract_transaction_log_messages` in `events_worker` already accept raw dicts
+in the wire's camelCase, which is why this needed no new parsing.
+
+Two consequences worth knowing. A JSON-RPC error now arrives as
+`SolanaRpcError` with the node's own code, so an exhausted plan (-32429) is no
+longer indistinguishable from a parse failure. And because the listing already
+carries `err`, a failed transaction is skipped without fetching it, which is a
+round trip saved per failed row on a rate-limited plan.
+
+The proper fix is `solana-py` 0.40 + `anchorpy` 0.21 + `solders` 0.28, where the
+typed path understands v3. That is a real migration across all five services and
+it has not been done. Until it is, do not route these two calls back through
+`AsyncClient`.
