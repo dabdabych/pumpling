@@ -1,0 +1,14 @@
+-- When a round actually stopped buying.
+--
+-- The pause before the next pool, and the countdown the site shows for it, were
+-- both measured from a fixed point: the moment buying started plus the length
+-- of the window. That was exact while the buying always took the same time.
+--
+-- It no longer does. The main window is fifty minutes, and a round that could
+-- not buy everything in it gets a second pass of up to fifteen more. Measured
+-- from the fixed point, the pause after a long round would already be over
+-- before the round closed, and the next pool would open with no pause at all.
+--
+-- So the moment of closing is recorded, and the pause runs from it. Rows from
+-- before this column keep a NULL and fall back to the old arithmetic.
+ALTER TABLE lotteries ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP WITH TIME ZONE NULL;

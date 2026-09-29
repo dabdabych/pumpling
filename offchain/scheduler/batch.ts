@@ -28,6 +28,7 @@ import { classifyError, isSlippageError } from "./errors";
 import { getErrorVenue } from "../solana/transaction";
 import { inspectMint } from "../solana/tokenExtensions";
 import { PostSendError } from "../pumpfun/buy";
+import { signatureOutcome } from "../solana/signatureOutcome";
 import { logger as rootLogger, Logger } from "../logger";
 import type { BuyResult } from "../buy";
 
@@ -75,30 +76,56 @@ const DEFAULT_MAX_SLIPPAGE_BPS = 1300;
 async function checkPendingSignature(
     error: unknown
 ): Promise<string | null> {
+    const verdict = await pendingVerdict(error, 0);
+    return verdict.kind === "landed" ? verdict.signature : null;
+}
+
+/** How often, and how many times, the retry ladder asks about a transaction still in flight. */
+const IN_FLIGHT_POLL_MS = 5_000;
+const IN_FLIGHT_POLLS = 24;
+
+type PendingVerdict =
+    | { kind: "landed"; signature: string }
+    /** Nothing in flight: never sent, expired on the way, or failed on chain. */
+    | { kind: "clear" }
+    /** It may still land. Signing another now could buy twice. */
+    | { kind: "in_flight"; signature: string };
+
+/**
+ * What became of the transaction behind a failed attempt.
+ *
+ * `confirmed` without `err` is a purchase; `err` is a transaction that failed
+ * on chain — a slippage rejection looks exactly like that, and counting it as
+ * bought switched the retry off and left the SOL on the keeper.
+ *
+ * A signature the node does not know yet is only "clear" once its blockhash has
+ * expired (see `signatureOutcome`). With `polls` above zero we wait for that,
+ * because the caller is about to sign a replacement at once. An error that does
+ * not carry the blockhash limit is judged as it always was: not found, clear.
+ */
+async function pendingVerdict(error: unknown, polls: number): Promise<PendingVerdict> {
     if (!(error instanceof PostSendError) || !error.signature) {
-        return null;
+        return { kind: "clear" };
     }
-
-    try {
-        const status = await connection.getSignatureStatus(error.signature);
-        if (
-            (status.value?.confirmationStatus === "confirmed" ||
-                status.value?.confirmationStatus === "finalized") &&
-            // err matters: a transaction that arrived and failed on chain is
-            // also "confirmed". Without this check a failure counted as a
-            // purchase — the retry was switched off, the SOL stayed on the
-            // keeper, and the round reported success. A slippage rejection
-            // looks exactly like this, so it was the most common case.
-            !status.value?.err
-        ) {
-            return error.signature;
+    const signature = error.signature;
+    for (let poll = 0; ; poll++) {
+        const outcome = await signatureOutcome(signature, error.lastValidBlockHeight);
+        if (outcome === "landed") {
+            return { kind: "landed", signature };
         }
-    } catch {
-        // An RPC error during the check: safer not to retry.
-        // But the blockhash has most likely expired anyway, so we skip.
+        if (outcome === "absent" || outcome === "failed") {
+            return { kind: "clear" };
+        }
+        // Unknown. Without the limit there is nothing to wait for, and this is
+        // what the check always did: an RPC error during the check, carry on.
+        if (error.lastValidBlockHeight === undefined) {
+            return { kind: "clear" };
+        }
+        if (poll >= polls) {
+            return { kind: "in_flight", signature };
+        }
+        await sleepUntil(Date.now() + IN_FLIGHT_POLL_MS);
     }
-
-    return null;
 }
 
 /**
@@ -435,6 +462,7 @@ export async function batchBuy(params: BatchBuyParams): Promise<BatchBuyResult> 
             retryBufferMinutes,
             startSlippageBps,
             maxSlippageBps,
+            hadAtaAtStart: hasAta,
         },
         stateFilePath
     );
@@ -722,6 +750,9 @@ export async function batchBuy(params: BatchBuyParams): Promise<BatchBuyResult> 
         const retryWindowMs = adaptiveRetryWindowMinutes * 60 * 1000;
         const retryStart = Date.now();
         const retryEnd = retryStart + retryWindowMs;
+        // The site reads this: while a second pass is running the round is
+        // still buying, and its countdown is this one, not the main window's.
+        stateManager.markRetryWindow(retryStart, retryEnd);
         const retryInterval = retryWindowMs / (failedPurchases.length + 1);
 
         for (let i = 0; i < failedPurchases.length; i++) {
@@ -737,7 +768,11 @@ export async function batchBuy(params: BatchBuyParams): Promise<BatchBuyResult> 
             // Check the pending signature: the tx may have confirmed since the main loop
             if (purchase.pendingSignature) {
                 try {
-                    const status = await connection.getSignatureStatus(purchase.pendingSignature);
+                    // History too: the pending purchase is minutes old by now,
+                    // past the recent status cache (see checkPendingSignature).
+                    const status = await connection.getSignatureStatus(purchase.pendingSignature, {
+                        searchTransactionHistory: true,
+                    });
                     if (
                         (status.value?.confirmationStatus === "confirmed" ||
                             status.value?.confirmationStatus === "finalized") &&
@@ -851,8 +886,25 @@ export async function batchBuy(params: BatchBuyParams): Promise<BatchBuyResult> 
                     }, `Retry succeeded via ${result.venue}`);
                     break; // Success — leave the retry loop
                 } catch (retryError) {
-                    // Check the pending signature from the retry
-                    const retryConfirmedSig = await checkPendingSignature(retryError);
+                    // Check the pending signature from the retry. The ladder
+                    // signs its next attempt straight away, so a transaction
+                    // that may still land is waited out first: two in flight
+                    // at once is how a coin gets bought twice.
+                    const verdict = await pendingVerdict(retryError, IN_FLIGHT_POLLS);
+                    if (verdict.kind === "in_flight") {
+                        stateManager.updatePurchase(purchase.index, { pendingSignature: verdict.signature });
+                        stateManager.markFailed(
+                            purchase.index,
+                            retryError instanceof Error ? retryError.message : String(retryError)
+                        );
+                        stateManager.incrementMetric("retry.inFlightStopped");
+                        rlog.warn({
+                            event: "purchase.in_flight_stopped",
+                            signature: verdict.signature.slice(0, 16),
+                        }, "Last attempt may still land; not signing another");
+                        break;
+                    }
+                    const retryConfirmedSig = verdict.kind === "landed" ? verdict.signature : null;
                     if (retryConfirmedSig) {
                         stateManager.markCompleted(
                             purchase.index,

@@ -27,7 +27,7 @@ import {
 } from "../solana/config";
 import { PUMPFUN_IDL } from "./idl";
 import { extractPumpErrorName } from "./errors";
-import { PostSendError, signTransaction } from "../solana/transaction";
+import { getSignedTransactionSignature, PostSendError, signTransaction } from "../solana/transaction";
 import { budgetInstructions, COMPUTE_UNITS } from "../solana/priorityFee";
 import { logger as rootLogger, Logger } from "../logger";
 
@@ -868,6 +868,14 @@ export async function buyPumpfun(
         const msg = error instanceof Error ? error.message : String(error);
         l.error({ event: "pumpfun.send_failed", mint: mint.toBase58(), signature, error: msg },
             "Transaction send/confirm failed");
-        throw new PostSendError(`Transaction send/confirm failed: ${msg}`, signature, error);
+        // The signature is known from the moment of signing. If the send call
+        // itself failed (a dropped connection) the node may still have taken
+        // the transaction, and without the signature the retry could not ask.
+        throw new PostSendError(
+            `Transaction send/confirm failed: ${msg}`,
+            signature ?? getSignedTransactionSignature(signed),
+            error,
+            signed.context.lastValidBlockHeight
+        );
     }
 }

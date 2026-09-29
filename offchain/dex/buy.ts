@@ -354,6 +354,6 @@ export async function buyDex(
         const msg = error instanceof Error ? error.message : String(error);
         l.error({ event: "dex.send_failed", mint: mint.toBase58(), signature, error: msg },
             "DEX transaction send/confirm failed");
-        throw new PostSendError(`DEX transaction send/confirm failed: ${msg}`, signature, error);
+        throw new PostSendError(`DEX transaction send/confirm failed: ${msg}`, signature, error, lastValidBlockHeight);
     }
 }

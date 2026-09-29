@@ -1,5 +1,5 @@
 import { formatClock, formatLongCountdown, formatShortClock, formatSol, msUntil, PoolPhase, PoolSnapshot } from './pool-state';
-import { PurchaseFeed } from './purchases.service';
+import type { PurchaseFeed } from './purchases.service';
 
 /**
  * What to say about a pool in words: the title, the timer, the caption on the
@@ -129,6 +129,45 @@ export function buildPoolView(snapshot: PoolSnapshot, nowMs: number, feed?: Purc
       const bought = feed && feed.available && feed.targetSol > 0
         ? linear(`${formatSol(feed.boughtSol)} of ${formatSol(feed.targetSol)} SOL bought`, percent(feed.boughtSol, feed.targetSol))
         : null;
+      const progress = bought ?? (windowMs !== null && leftMs !== null && windowMs > 0
+        ? linear('Buy window', percent(windowMs - leftMs, windowMs))
+        : null);
+
+      // The second pass. The main window is over and something could not be
+      // bought in full, so those coins are being bought again. It is its own
+      // countdown: the main one has already run out, and leaving it at zero
+      // while purchases are still going out reads as a stuck page.
+      if (feed?.phase === 'fallback') {
+        const fallbackLeftMs = msUntil(feed.fallbackEndsAtMs, nowMs);
+        return {
+          phase: 'buying',
+          chip: { label: 'Buying', tone: 'buying' },
+          title: { lead: 'Buying what is', plate: 'left' },
+          lede: 'Some of the buys did not go through the first time round, so the coins that came up short are being bought again. Everything that gets bought goes to the people who backed those coins, exactly as before.',
+          timer: fallbackLeftMs !== null
+            ? { label: 'Second pass ends in', value: formatClock(fallbackLeftMs), note: 'then this pool wraps up', ticking: true }
+            : { label: 'Second pass', value: 'Running', note: 'buying what the first pass missed', ticking: false },
+          progress,
+          step: 2,
+          canCommit: false
+        };
+      }
+
+      // Everything has been bought and the window has not run out. Saying
+      // nothing here leaves a countdown ticking with nothing behind it.
+      if (feed?.phase === 'finished') {
+        return {
+          phase: 'buying',
+          chip: { label: 'Buying', tone: 'buying' },
+          title: { lead: 'The buys are', plate: 'done' },
+          lede: 'Every buy this pool planned has been made. The tokens are on their way to the wallets that backed each coin.',
+          timer: { label: 'Buys', value: 'All done', note: 'this pool wraps up shortly', ticking: false },
+          progress,
+          step: 2,
+          canCommit: false
+        };
+      }
+
       return {
         phase: 'buying',
         chip: { label: 'Buying', tone: 'buying' },
@@ -137,25 +176,35 @@ export function buildPoolView(snapshot: PoolSnapshot, nowMs: number, feed?: Purc
         timer: leftMs !== null
           ? { label: 'Buys end in', value: formatClock(leftMs), note: 'then this pool wraps up', ticking: true }
           : { label: 'Buys', value: 'Starting', note: null, ticking: false },
-        progress: bought ?? (windowMs !== null && leftMs !== null && windowMs > 0
-          ? linear('Buy window', percent(windowMs - leftMs, windowMs))
-          : null),
+        progress,
         step: 2,
         canCommit: false
       };
     }
     case 'done': {
-      // The pause between rounds: while it runs, the page shows how long until
-      // the next pool rather than a vague "soon".
+      // The round is over: bought, delivered, the change returned.
+      //
+      // What this used to say was that the next pool opens on its own, with a
+      // countdown to it. That is only true while the cycle is running, and the
+      // cycle is a switch of its own — after the launch round of 2026-09-25 it
+      // was turned off on purpose, and the page went on promising a pool that
+      // nothing was going to open. The countdown here comes from this round's
+      // own buying window, so it cannot tell a stopped cycle from a running
+      // one and there is nothing honest to count down to.
+      //
+      // So it says what is true either way and points at the archive, and the
+      // page still switches by itself the moment a pool does open.
       const nextLeftMs = msUntil(snapshot.nextPoolAtMs, nowMs);
       return {
         phase: 'done',
         chip: { label: 'Done', tone: 'done' },
         title: { lead: 'This pool', plate: 'is done' },
-        lede: 'The buys are over. The next pool opens on its own, and this page switches over the moment it does.',
+        lede: 'The buys are over. The tokens went to the wallets that backed each coin, and the SOL that was not spent went back.',
+        // Never null: the card reads `timer.label` without a guard, and a null
+        // here threw on every render and left the page on its loading skeleton.
         timer: nextLeftMs !== null && nextLeftMs > 0
           ? { label: 'Next pool in', value: formatShortClock(nextLeftMs), note: 'this page switches on its own', ticking: true }
-          : { label: 'Next pool', value: 'Opening', note: 'this page switches on its own', ticking: false },
+          : { label: 'This pool', value: 'Closed', note: 'the page switches on its own when a pool opens', ticking: false },
         progress: null,
         step: 3,
         canCommit: false
@@ -180,13 +229,33 @@ export function poolCardLine(snapshot: PoolSnapshot, nowMs: number): string {
     case 'locked':
       return snapshot.draw === 'running' ? 'Pool locked · draw in progress' : 'Pool locked · draw starting';
     case 'buying': {
-      const left = formatClock(msUntil(snapshot.buysEndAtMs, nowMs));
-      return left ? `Buys running · ${left} left` : 'Buys starting';
+      // Zero left does not mean the buying is over: what the first pass could
+      // not buy is bought again afterwards, and that has its own clock, which
+      // this card does not follow. Better to drop the number than to show a
+      // countdown stuck at nothing.
+      const leftMs = msUntil(snapshot.buysEndAtMs, nowMs);
+      const left = leftMs !== null && leftMs > 0 ? formatClock(leftMs) : '';
+      return left ? `Buys running · ${left} left` : 'Buys running';
     }
     case 'waiting':
     case 'done':
       return 'Next pool opens soon';
   }
+}
+
+/**
+ * A second line for the card, while there is no pool to look at.
+ *
+ * "Next pool opens soon" says nothing about when, and a person who has come
+ * between rounds has nothing to do with that. This is the one thing they can
+ * do: the X account is where a pool is announced before it opens. It is not
+ * shown while a pool is running — then the card has the round itself to talk
+ * about, and a second line would only get in the way.
+ */
+export function poolCardNote(snapshot: PoolSnapshot): string | null {
+  return snapshot.phase === 'waiting' || snapshot.phase === 'done'
+    ? 'We announce the next pool on our X'
+    : null;
 }
 
 /** A bar where the width equals the share: the window time, the bought fraction. */

@@ -1,3 +1,4 @@
+from enum import Enum
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
@@ -18,9 +19,10 @@ from infrastructure.database.models.lottery_model import LotteryModel
 from infrastructure.database.models.smart_contract_event_model import SmartContractEventModel
 from application.lottery.schemas import LotteryListResponse, LotteryEntryResponse, PricePointResponse, CoinResponse, CreateLotteryRequest, LotteryResponse, PagedLotteryResponse, ProblemDetails, CreateBetRequest, BetParticipationResponse, VrfPreviewResponse, MintAllowTokenRequest, MintAllowTokenResponse, Phase2AccountsResponse, RunPurchasesPayload, RunPurchasesResponse, OffchainVrfRequest, ActiveLotterySummaryResponse, LotteryWinnerResultResponse, LotteryArchiveListResponse, LotteryArchiveItemResponse, LotteryArchiveEntryResponse, LotteryCycleControlResponse, LotteryCycleControlsResponse, HypeCountdownResponse
 from application.lottery.schemas import PurchaseFeedResponse, PurchaseFeedCoinResponse, PurchaseFeedItemResponse
+from application.lottery.schemas import PurchaseFeedCoinBurnResponse, PurchaseFeedDeliveryResponse, PurchaseFeedBurnResponse, PurchaseFeedRefundResponse
 from application.lottery.schemas import CoinChartResponse, CoinChartPointResponse
 from application.lottery.schemas import MyCommitsResponse, MyCommitRoundResponse, MyCommitCoinResponse
-from application.lottery.schemas import LotteryVerificationResponse
+from application.lottery.schemas import LotteryVerificationResponse, VerificationBurnResponse, VerificationBurnBetResponse, VerificationBurnTxResponse
 from application.lottery.vrf_engine import VrfEngine
 from domain.lottery.entities.lottery import Lottery, LotteryStatus, LotteryType
 from domain.lottery.entities.allowed_mint import NetworkType
@@ -41,13 +43,18 @@ import certifi
 from tenacity import Retrying, stop_after_attempt, wait_fixed, retry_if_exception_type, before_sleep_log
 from shared.solana_rpc import SolanaJsonRpc
 from shared.admin_wallets import configured_admin_pubkeys
-from shared.weights_commitment import build_weights_commitment
+from shared.weights_commitment import (
+    build_lamports_commitment,
+    build_weights_commitment,
+    sol_to_lamports,
+)
 from shared.bet_confirmation import (
     BET_STATUS_CONFIRMED,
     active_bet_condition,
     is_orphaned_bet,
 )
 from shared.deposit_event_decoder import DepositEvent, decode_deposit_events_from_logs
+from shared.burn_memo import burn_bps_from_logs
 from shared.jwt_handler import JWTHandler
 from shared import token_metadata_queue
 from shared.coin_chart import coin_chart
@@ -72,6 +79,13 @@ from mint_validator import (
     get_pumpfun_curve_info,
     has_live_pumpswap_pool,
     is_spl_mint,
+    can_burn,
+)
+
+#: Said to the person, so it names the way out rather than the error code.
+_WRONG_QUOTE_DETAIL = (
+    "This coin trades against something other than SOL on pump.fun, so it cannot "
+    "be bought until it graduates. Pick another coin."
 )
 
 router = APIRouter(prefix="/lottery", tags=["lottery"])
@@ -307,6 +321,18 @@ def _cached_purchase_feed(lottery_id: int) -> dict[str, object] | None:
     return payload
 
 
+def _average_burn_bps(burn_weight: object, total_sol: object) -> float:
+    """Σ(sol × burn_bps) / Σ sol, to two decimals; zero when there is nothing to weigh."""
+    try:
+        total = float(total_sol or 0.0)
+        weight = float(burn_weight or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+    if total <= 0:
+        return 0.0
+    return round(min(10_000.0, max(0.0, weight / total)), 2)
+
+
 def _purchase_time(raw_value: object) -> datetime:
     """The purchase time from the buyer's milliseconds; junk becomes "now"."""
     try:
@@ -329,6 +355,13 @@ def _get_coin_metadata(db: Session, mint: str) -> tuple[str, str, str]:
 
     row = db.query(TokenMetadataModel).filter(TokenMetadataModel.mint == mint).first()
     if row and (row.name or row.symbol or row.logo_url):
+        # A name but no picture. That happens when the metadata was read before
+        # the image was uploaded, and it used to be permanent: the row existed,
+        # so nothing ever asked again and the coin stayed a grey circle for the
+        # whole round. The queue leaves half an hour between attempts and gives
+        # up after a few, so this is "now and then", not a poll.
+        if not row.logo_url:
+            token_metadata_queue.request_fill(mint)
         fallback_name, fallback_symbol, fallback_logo = _build_fallback_coin_metadata(mint)
         return row.name or fallback_name, row.symbol or fallback_symbol, row.logo_url or fallback_logo
 
@@ -337,7 +370,13 @@ def _get_coin_metadata(db: Session, mint: str) -> tuple[str, str, str]:
 
 
 def _fill_token_metadata_in_background(mint: str) -> bool:
-    """Download the metadata and store it. Called by the background queue thread."""
+    """Download the metadata and store it. Called by the background queue thread.
+
+    Returns whether there is nothing left to want. A coin that came back with a
+    name and no picture counts as not done: the queue then waits half an hour
+    and tries again, which is how a picture uploaded after the coin joined a
+    round eventually reaches the card.
+    """
     fetched_metadata = _fetch_token_metadata(mint)
     if not any(fetched_metadata.values()):
         return False
@@ -345,7 +384,7 @@ def _fill_token_metadata_in_background(mint: str) -> bool:
     session = SessionLocal()
     try:
         _persist_helius_metadata(session, mint, fetched_metadata, commit=True)
-        return True
+        return bool(fetched_metadata.get("token_image_url"))
     except Exception:
         session.rollback()
         logger.exception("failed to persist token metadata (mint=%s)", mint)
@@ -1099,23 +1138,35 @@ def _validate_mint(
     rpc_url = settings.solana_http_endpoint or "https://api.mainnet-beta.solana.com"
     network_type = NetworkType.DEVNET if "devnet" in rpc_url else NetworkType.MAINNET
 
-    # Cheapest question first. An address that is not an initialised SPL mint
-    # is not a coin, and answering that costs one RPC credit; everything below
-    # costs eleven, most of it on a Helius DAS call for metadata that cannot
-    # exist. An unreachable node is not an answer, so that case falls through
-    # to the checks that follow rather than rejecting a real coin.
-    try:
-        if not is_spl_mint(canonical_mint, rpc_url):
-            raise HTTPException(
-                status_code=400,
-                detail="That address is not a coin on Solana. Check the mint address.",
+    # Cheapest question first, on mainnet only. An address that is not an
+    # initialised SPL mint is not a coin, and answering that costs one RPC
+    # credit; everything below costs eleven, most of it on a Helius DAS call
+    # for metadata that cannot exist.
+    #
+    # Not on devnet, and this is the important part. The stand runs against a
+    # devnet node while the coin data still comes from DexScreener and
+    # pump.fun, which only know mainnet. So testing there means typing a
+    # mainnet address at a devnet node, and `getAccountInfo` rightly answers
+    # that no such account exists. Enforcing this check there turns every real
+    # test coin into "that address is not a coin", which is how it broke on
+    # 2026-09-24. There is no Helius key on the stand either, so the credits
+    # this saves are not being spent in the first place.
+    #
+    # An unreachable node is not an answer, so that case falls through to the
+    # checks that follow rather than rejecting a real coin.
+    if network_type == NetworkType.MAINNET:
+        try:
+            if not is_spl_mint(canonical_mint, rpc_url):
+                raise HTTPException(
+                    status_code=400,
+                    detail="That address is not a coin on Solana. Check the mint address.",
+                )
+        except MintCheckUnavailable as exc:
+            logger.warning(
+                "mint existence check unavailable (mint=%s). continuing with the slower checks. error=%s",
+                canonical_mint,
+                exc,
             )
-    except MintCheckUnavailable as exc:
-        logger.warning(
-            "mint existence check unavailable (mint=%s). continuing with the slower checks. error=%s",
-            canonical_mint,
-            exc,
-        )
 
     try:
         pools = _cached_dex_pools(canonical_mint)
@@ -1127,7 +1178,10 @@ def _validate_mint(
         )
         # DEX check failed due to provider availability.
         # Product policy: allow at user's risk, but mark as unverified.
-        if _has_live_pumpfun_curve(canonical_mint, rpc_url):
+        curve = _pumpfun_curve_state(canonical_mint, rpc_url)
+        if curve is CurveState.WRONG_QUOTE:
+            raise HTTPException(status_code=400, detail=_WRONG_QUOTE_DETAIL)
+        if curve is CurveState.BUYABLE:
             return canonical_mint, network_type, True, False, 0, False
         return canonical_mint, network_type, False, False, 0, True
 
@@ -1137,25 +1191,78 @@ def _validate_mint(
         # the pump.fun curve, and there is somewhere to buy it. The buyer's
         # router looks at the curve first and sends such a coin to pump.fun
         # rather than the aggregator, so there is nothing to warn about here.
-        if _has_live_pumpfun_curve(canonical_mint, rpc_url):
+        curve = _pumpfun_curve_state(canonical_mint, rpc_url)
+        if curve is CurveState.WRONG_QUOTE:
+            raise HTTPException(status_code=400, detail=_WRONG_QUOTE_DETAIL)
+        if curve is CurveState.BUYABLE:
             return canonical_mint, network_type, True, False, 0, False
         # Product policy: allow at user's risk when mint didn't pass DEX pool check.
         return canonical_mint, network_type, False, False, 0, False
     return canonical_mint, network_type, False, True, positive_pool_count, False
 
 
-def _has_live_pumpfun_curve(mint_address: str, rpc_url: str) -> bool:
-    """The coin is still on the pump.fun curve and trades for SOL.
+def _coin_can_burn(mint: str, network_type: NetworkType) -> bool:
+    """Whether to offer the burn choice for this coin.
 
-    The check goes straight to the network, so we only call it when no pool was
-    found: an extra RPC on every coin check is not needed.
+    One read of the mint account. On mainnet an unanswered question is a no: a
+    choice the buyer then cannot keep leaves the participant's share on the
+    keeper, neither burned nor delivered. On devnet it is a yes, because the
+    stand's node does not have the mainnet coins people test with, and the
+    stand is where the choice gets tried.
+    """
+    rpc_url = get_settings().solana_http_endpoint or "https://api.mainnet-beta.solana.com"
+    try:
+        answer = can_burn(mint, rpc_url)
+    except Exception:
+        answer = None
+    if answer is None:
+        return network_type == NetworkType.DEVNET
+    return answer
+
+
+class CurveState(Enum):
+    """What the pump.fun curve says about a coin, in the three ways it matters."""
+
+    #: Live, quoted in SOL: the buyer can buy it there.
+    BUYABLE = "buyable"
+    #: Live, quoted in something else. Nothing can buy it for SOL — see below.
+    WRONG_QUOTE = "wrong_quote"
+    #: Not on a curve at all: graduated, never launched there, or unreadable.
+    NONE = "none"
+
+
+def _pumpfun_curve_state(mint_address: str, rpc_url: str) -> CurveState:
+    """Which of the three states the coin is in.
+
+    These used to be two: a single boolean that said "buyable on the curve",
+    with a coin quoted in USDC or a tokenised stock answering the same `False`
+    as a coin that was never on pump.fun. That difference is the whole point.
+
+    pump.fun opened Custom Pairs on 2026-09-09, so a curve can be denominated
+    in something other than SOL. Such a coin cannot be bought:
+
+      * on the curve, `buy_exact_sol_in` answers `UnsupportedQuoteMint` (6063);
+      * through the aggregator, while it is still on the curve, the route runs
+        SOL to the quote to the curve and the transaction does not fit — 1246
+        to 1402 bytes against a 1232 limit (measured 2026-09-10);
+      * through the PumpSwap fallback, which derives the pool with quote = WSOL
+        and gets the wrong address entirely.
+
+    So the round takes money it has no way to spend: every purchase ends
+    `abandoned` with the SOL sitting on the keeper until the refunds run.
+
+    A coin with no pool and no readable curve stays allowed at the person's own
+    risk, as before. Only the case we know cannot be bought is refused.
     """
     try:
         is_pumpfun, graduated, quote_mint = get_pumpfun_curve_info(mint_address, rpc_url=rpc_url)
     except Exception:
         logger.warning("pumpfun curve probe failed (mint=%s)", mint_address)
-        return False
-    return bool(is_pumpfun and not graduated and quote_mint == NATIVE_SOL_QUOTE)
+        return CurveState.NONE
+
+    if not is_pumpfun or graduated:
+        return CurveState.NONE
+    return CurveState.BUYABLE if quote_mint == NATIVE_SOL_QUOTE else CurveState.WRONG_QUOTE
 
 
 def _parse_lottery_account(raw_data: bytes) -> dict[str, object]:
@@ -1267,7 +1374,14 @@ def _transaction_error(tx: object) -> object | None:
     return None
 
 
-async def _fetch_confirmed_deposit_event(signature: str) -> DepositEvent | None:
+async def _fetch_confirmed_deposit(signature: str) -> tuple[DepositEvent | None, int]:
+    """The commit's deposit event and the burn it asks for, from one read of its transaction.
+
+    Both come from the same log: the burn is a memo in the same transaction,
+    and the events worker reads it from the same lines when it sees the deposit
+    first, so whichever path records the commit records the same choice. See
+    `shared/burn_memo.py`.
+    """
     try:
         parsed_signature = Signature.from_string(signature)
     except Exception:
@@ -1276,13 +1390,14 @@ async def _fetch_confirmed_deposit_event(signature: str) -> DepositEvent | None:
     # Read as JSON, not through the typed parser: a commit that failed on chain
     # can carry an error variant this version of `solders` cannot decode, and
     # that turns a plain "your transaction failed" into a 500. See
-    # `shared/solana_rpc.py`.
+    # `shared/solana_rpc.py`. Version 1: a wallet may build the commit as a v1
+    # transaction, and asking with 0 would refuse it outright.
     async with SolanaJsonRpc(get_settings().solana_http_endpoint) as rpc:
         transaction = await rpc.get_transaction(
             parsed_signature,
             encoding="jsonParsed",
             commitment="confirmed",
-            max_supported_transaction_version=0,
+            max_supported_transaction_version=1,
         )
 
     transaction_error = _transaction_error(transaction)
@@ -1291,7 +1406,7 @@ async def _fetch_confirmed_deposit_event(signature: str) -> DepositEvent | None:
 
     logs = _extract_transaction_log_messages(transaction)
     events = decode_deposit_events_from_logs(logs)
-    return events[0] if events else None
+    return (events[0] if events else None), burn_bps_from_logs(logs)
 
 
 def _validate_deposit_event_matches_request(
@@ -1342,7 +1457,10 @@ def _expected_draw_seconds() -> int:
     )
 
 
-def _next_pool_at(proceeding_started_at: datetime | None) -> datetime | None:
+def _next_pool_at(
+    proceeding_started_at: datetime | None,
+    closed_at: datetime | None = None,
+) -> datetime | None:
     """When the next pool opens: the end of the buying window plus the "done" pause.
 
     Computed exactly the way the autostart worker decides it
@@ -1352,11 +1470,21 @@ def _next_pool_at(proceeding_started_at: datetime | None) -> datetime | None:
     if proceeding_started_at is None:
         return None
     settings = get_settings()
+    gap = int(settings.lottery_autostart_gap_seconds)
+    # The pause runs from the moment the round closed. A round that had to buy
+    # something a second time closes up to `fallback_countdown_seconds` later
+    # than the window arithmetic would say, and a countdown that has already
+    # expired is worse than one that is a little long.
+    if closed_at is not None:
+        closed = closed_at if closed_at.tzinfo else closed_at.replace(tzinfo=timezone.utc)
+        return closed + timedelta(seconds=gap)
     started = proceeding_started_at
     if started.tzinfo is None:
         started = started.replace(tzinfo=timezone.utc)
     return started + timedelta(
-        seconds=int(settings.execution_countdown_seconds) + int(settings.lottery_autostart_gap_seconds)
+        seconds=int(settings.execution_countdown_seconds)
+        + int(settings.fallback_countdown_seconds)
+        + gap
     )
 
 
@@ -1475,7 +1603,10 @@ async def get_current_lottery(
                     proceeding_purchases_started_at=lottery.proceeding_purchases_started_at,
                     execution_countdown_seconds=execution_countdown_seconds,
                     draw_seconds=_expected_draw_seconds(),
-                    next_pool_at=_next_pool_at(lottery.proceeding_purchases_started_at),
+                    next_pool_at=_next_pool_at(
+                        lottery.proceeding_purchases_started_at,
+                        getattr(lottery, "closed_at", None),
+                    ),
                     max_total=lottery.max_total,
                     total_pool_sol=total_pool_by_lottery_id.get(lottery.id, 0.0),
                     winner_results=_build_lottery_winner_results(db, lottery),
@@ -1502,7 +1633,10 @@ async def get_current_lottery(
                     proceeding_purchases_started_at=lottery.proceeding_purchases_started_at,
                     execution_countdown_seconds=execution_countdown_seconds,
                     draw_seconds=_expected_draw_seconds(),
-                    next_pool_at=_next_pool_at(lottery.proceeding_purchases_started_at),
+                    next_pool_at=_next_pool_at(
+                        lottery.proceeding_purchases_started_at,
+                        getattr(lottery, "closed_at", None),
+                    ),
                     max_total=lottery.max_total,
                     total_pool_sol=total_pool_by_lottery_id.get(lottery.id, 0.0),
                     winner_results=_build_lottery_winner_results(db, lottery),
@@ -1543,7 +1677,8 @@ async def get_current_lottery(
             bet_stats = db.query(
                 BetParticipationModel.meme_coin_address,
                 func.sum(BetParticipationModel.sol_amount).label('total_solana_bet'),
-                func.count(BetParticipationModel.id).label('bet_count')
+                func.count(BetParticipationModel.id).label('bet_count'),
+                func.sum(BetParticipationModel.sol_amount * BetParticipationModel.burn_bps).label('burn_weight'),
             ).filter(
                 BetParticipationModel.lottery_id == lottery_id,
                 active_bet_condition(BetParticipationModel),
@@ -1553,7 +1688,7 @@ async def get_current_lottery(
                 func.sum(BetParticipationModel.sol_amount).desc()
             ).all()
 
-            for rank, (meme_coin_address, total_bet, bet_count) in enumerate(bet_stats, 1):
+            for rank, (meme_coin_address, total_bet, bet_count, burn_weight) in enumerate(bet_stats, 1):
                 coin_name, coin_symbol, coin_logo = _get_coin_metadata(db, str(meme_coin_address))
 
                 coin_response = CoinResponse(
@@ -1574,6 +1709,7 @@ async def get_current_lottery(
                     coin=coin_response,
                     total_solana_bet=float(total_bet),
                     bet_count=bet_count,
+                    burn_bps_avg=_average_burn_bps(burn_weight, total_bet),
                 )
                 response_entries.append(response_entry)
 
@@ -1733,6 +1869,7 @@ async def get_my_commits(
         }
 
         by_mint: dict[str, MyCommitCoinResponse] = {}
+        burn_weight_by_mint: dict[str, float] = {}
         for bet in mine:
             mint = str(bet.meme_coin_address)
             entry = by_mint.get(mint)
@@ -1750,10 +1887,13 @@ async def get_my_commits(
                     signatures=[],
                 )
                 by_mint[mint] = entry
+            burn_weight_by_mint[mint] = burn_weight_by_mint.get(mint, 0.0) + float(bet.sol_amount or 0.0) * int(getattr(bet, "burn_bps", 0) or 0)
             entry.my_sol = round(entry.my_sol + float(bet.sol_amount or 0.0), 8)
             entry.my_commits += 1
             if bet.tx_signature:
                 entry.signatures.append(str(bet.tx_signature))
+        for mint, entry in by_mint.items():
+            entry.burn_bps = _average_burn_bps(burn_weight_by_mint.get(mint, 0.0), entry.my_sol)
 
         coins = sorted(by_mint.values(), key=lambda item: item.my_sol, reverse=True)
         my_sol = round(sum(item.my_sol for item in coins), 8)
@@ -2055,9 +2195,21 @@ def get_lottery_verification(lottery_id: int, db: Session = Depends(get_db)):
         .group_by(BetParticipationModel.meme_coin_address)
         .all()
     )
-    commitment = build_weights_commitment([(str(mint), Decimal(str(total))) for mint, total in rows])
-    weights_payload = commitment[0] if commitment else None
-    weights_recomputed = commitment[1] if commitment else None
+    # Two rules have been used. Rounds from 2026-09-24 on pin whole lamports;
+    # everything before that pinned SOL rounded to eight decimals. Both are
+    # rebuilt and the one that matches what is on chain is the one published,
+    # so a round from either era verifies against its own preimage and nobody
+    # is told our own check failed because the rule moved under them.
+    #
+    # Which matched is decided below, once the on-chain hash has been read.
+    lamports_commitment = build_lamports_commitment(
+        [(str(mint), sol_to_lamports(total)) for mint, total in rows]
+    )
+    legacy_commitment = build_weights_commitment(
+        [(str(mint), Decimal(str(total))) for mint, total in rows]
+    )
+    weights_payload = lamports_commitment[0] if lamports_commitment else None
+    weights_recomputed = lamports_commitment[1] if lamports_commitment else None
 
     onchain: dict[str, object] = {}
     if lottery_pda:
@@ -2095,6 +2247,16 @@ def get_lottery_verification(lottery_id: int, db: Session = Depends(get_db)):
 
     network = "devnet" if "devnet" in (settings.solana_http_endpoint or "") else "mainnet"
 
+    # A round pinned under the older rule: publish the preimage that actually
+    # hashes to what the program holds, not the one today's rule would produce.
+    if (
+        weights_onchain
+        and legacy_commitment
+        and weights_recomputed != weights_onchain
+        and legacy_commitment[1] == weights_onchain
+    ):
+        weights_payload, weights_recomputed = legacy_commitment
+
     return LotteryVerificationResponse(
         lottery_id=int(lottery_id),
         lottery_type=lottery.lottery_type.value if hasattr(lottery.lottery_type, "value") else str(lottery.lottery_type),
@@ -2121,7 +2283,94 @@ def get_lottery_verification(lottery_id: int, db: Session = Depends(get_db)):
         vrf_seed=seed,
         vrf_algorithm_hash=onchain.get("vrf_algorithm_hash") if onchain else None,
         winner_results=_build_lottery_winner_results(db, lottery),
+        burns=_verification_burns(db, int(lottery_id), rows),
     )
+
+
+def _verification_burns(db: Session, lottery_id: int, coin_rows) -> list[VerificationBurnResponse]:
+    """Every coin of the round with a burn, from the commits and the buyer's record.
+
+    The commits say who asked and for how much: each one's memo is in its own
+    transaction. The buyer's feed says what was bought, owed and burned, with
+    the signatures. Without the feed (the buyer silent, or a round too old for
+    it) the commits are still shown and the figures are left empty rather than
+    guessed.
+    """
+    from infrastructure.database.models.bet_participation_model import BetParticipationModel
+
+    asked = (
+        db.query(BetParticipationModel)
+        .filter(
+            BetParticipationModel.lottery_id == lottery_id,
+            active_bet_condition(BetParticipationModel),
+            BetParticipationModel.burn_bps > 0,
+        )
+        .order_by(BetParticipationModel.created_at.asc())
+        .all()
+    )
+    if not asked:
+        return []
+
+    coin_sol = {str(mint): float(total or 0.0) for mint, total in coin_rows}
+    try:
+        feed = _cached_purchase_feed(lottery_id)
+    except Exception:  # noqa: BLE001 - the page shows what is known
+        logger.warning("verification: purchase feed unavailable (lottery_id=%s)", lottery_id)
+        feed = None
+    tokens = {str(t.get("mint")): t for t in (feed or {}).get("tokens") or [] if isinstance(t, dict)}
+    burns_by_mint: dict[str, list[VerificationBurnTxResponse]] = {}
+    for burn in (feed or {}).get("burns") or []:
+        if not isinstance(burn, dict):
+            continue
+        raw = _feed_raw(burn.get("rawAmount"))
+        signature = str(burn.get("signature") or "")
+        if raw is None or not signature:
+            continue
+        burns_by_mint.setdefault(str(burn.get("mint")), []).append(
+            VerificationBurnTxResponse(signature=signature, raw_amount=raw, at=_purchase_time(burn.get("at")))
+        )
+    final = (feed or {}).get("phase") == "finished"
+
+    by_mint: dict[str, list] = {}
+    for bet in asked:
+        by_mint.setdefault(str(bet.meme_coin_address), []).append(bet)
+
+    result: list[VerificationBurnResponse] = []
+    for mint, bets in by_mint.items():
+        name, symbol, _ = _get_coin_metadata(db, mint)
+        total = coin_sol.get(mint, 0.0)
+        weight = sum(float(bet.sol_amount or 0.0) * int(bet.burn_bps or 0) for bet in bets)
+        token = tokens.get(mint) or {}
+        burn = _feed_coin_burn(token.get("burn"))
+        result.append(
+            VerificationBurnResponse(
+                mint=mint,
+                name=name,
+                symbol=symbol,
+                decimals=_feed_decimals(token.get("decimals")),
+                coin_sol=round(total, 8),
+                burn_bps=_average_burn_bps(weight, total),
+                bets=[
+                    VerificationBurnBetResponse(
+                        wallet=str(bet.wallet_address),
+                        sol=float(bet.sol_amount or 0.0),
+                        burn_bps=int(bet.burn_bps or 0),
+                        signature=str(bet.tx_signature) if bet.tx_signature else None,
+                    )
+                    for bet in bets
+                ],
+                bought_raw=burn.bought_raw if burn else None,
+                owed_raw=burn.owed_raw if burn else None,
+                burned_raw=burn.burned_raw if burn else None,
+                supply_at_start=burn.supply_at_start if burn else None,
+                supply_at_end=burn.supply_at_end if burn else None,
+                blocked_reason=burn.blocked_reason if burn else None,
+                transactions=sorted(burns_by_mint.get(mint, []), key=lambda tx: tx.at),
+                final=final,
+            )
+        )
+    result.sort(key=lambda item: item.coin_sol, reverse=True)
+    return result
 
 
 @router.get("/{lottery_id}", response_model=LotteryResponse)
@@ -2571,7 +2820,7 @@ async def place_bet(
             )
 
         try:
-            deposit_event = await _fetch_confirmed_deposit_event(request.tx_signature.strip())
+            deposit_event, burn_bps = await _fetch_confirmed_deposit(request.tx_signature.strip())
         except HTTPException:
             raise
         except Exception as exc:
@@ -2617,6 +2866,7 @@ async def place_bet(
             confirmation_status=BET_STATUS_CONFIRMED,
             confirmed_at=datetime.now(timezone.utc),
             created_at=bet_time,
+            burn_bps=burn_bps,
         )
 
         db.add(bet_participation)
@@ -2729,6 +2979,7 @@ async def check_mint(
         return MintAllowTokenResponse(
             mint_address=canonical_mint,
             is_pumpfun_mint=is_pumpfun,
+            can_burn=_coin_can_burn(canonical_mint, network_type),
             has_dex_liquidity=has_dex_liquidity,
             dex_liquidity_pool_count=dex_pool_count,
             dex_liquidity_check_unverified=dex_check_unverified,
@@ -2787,7 +3038,7 @@ async def get_coin_chart(mint: str):
         canonical,
         pool_address,
         venue,
-        timeout_seconds=settings.external_lookup_timeout_seconds,
+        timeout_seconds=settings.chart_lookup_timeout_seconds,
     )
 
     return CoinChartResponse(
@@ -2817,6 +3068,9 @@ async def get_lottery_purchases(lottery_id: int, db: Session = Depends(get_db)):
     totals = payload.get("totals") or {}
     tokens = payload.get("tokens") or []
     purchases = payload.get("purchases") or []
+    deliveries = payload.get("deliveries") or []
+    burns = payload.get("burns") or []
+    refunds = payload.get("refunds") or []
 
     coins: list[PurchaseFeedCoinResponse] = []
     for token in tokens:
@@ -2835,6 +3089,9 @@ async def get_lottery_purchases(lottery_id: int, db: Session = Depends(get_db)):
                 completed_purchases=int(token.get("completedPurchases") or 0),
                 planned_purchases=int(token.get("plannedPurchases") or 0),
                 status=str(token.get("status") or "pending"),
+                decimals=_feed_decimals(token.get("decimals")),
+                burn_bps=_feed_float(token.get("burnBps")),
+                burn=_feed_coin_burn(token.get("burn")),
             )
         )
 
@@ -2862,7 +3119,69 @@ async def get_lottery_purchases(lottery_id: int, db: Session = Depends(get_db)):
             )
         )
 
+    def coin_of(mint: str) -> tuple[str, str, str | None, int | None]:
+        coin = metadata_by_mint.get(mint)
+        if coin:
+            return coin.name, coin.symbol, coin.logo_url, coin.decimals
+        name, symbol, logo_url = _get_coin_metadata(db, mint)
+        return name, symbol, logo_url or None, None
+
+    delivery_items: list[PurchaseFeedDeliveryResponse] = []
+    for delivery in deliveries:
+        mint = str(delivery.get("mint") or "")
+        signature = str(delivery.get("signature") or "")
+        raw_amount = _feed_raw(delivery.get("rawAmount"))
+        if not mint or not signature or raw_amount is None:
+            continue
+        name, symbol, logo_url, decimals = coin_of(mint)
+        recipients = [str(r) for r in (delivery.get("recipients") or []) if isinstance(r, str)]
+        delivery_items.append(
+            PurchaseFeedDeliveryResponse(
+                mint=mint, name=name, symbol=symbol, logo_url=logo_url, signature=signature,
+                raw_amount=raw_amount, decimals=decimals, recipients=recipients,
+                at=_purchase_time(delivery.get("at")),
+            )
+        )
+
+    burn_items: list[PurchaseFeedBurnResponse] = []
+    for burn in burns:
+        mint = str(burn.get("mint") or "")
+        signature = str(burn.get("signature") or "")
+        raw_amount = _feed_raw(burn.get("rawAmount"))
+        if not mint or not signature or raw_amount is None:
+            continue
+        name, symbol, logo_url, decimals = coin_of(mint)
+        burn_items.append(
+            PurchaseFeedBurnResponse(
+                mint=mint, name=name, symbol=symbol, logo_url=logo_url, signature=signature,
+                raw_amount=raw_amount, decimals=decimals, at=_purchase_time(burn.get("at")),
+            )
+        )
+
+    refund_items: list[PurchaseFeedRefundResponse] = []
+    for refund in refunds:
+        if not isinstance(refund, dict):
+            continue
+        mint = str(refund.get("mint") or "")
+        signature = str(refund.get("signature") or "")
+        try:
+            sol = float(refund.get("sol"))
+        except (TypeError, ValueError):
+            continue
+        if not mint or not signature or not sol > 0:
+            continue
+        name, symbol, logo_url, _ = coin_of(mint)
+        refund_items.append(
+            PurchaseFeedRefundResponse(
+                mint=mint, name=name, symbol=symbol, logo_url=logo_url, signature=signature, sol_amount=sol,
+                recipients=[str(r) for r in (refund.get("recipients") or []) if isinstance(r, str)],
+                at=_purchase_time(refund.get("at")),
+            )
+        )
+
     summary = payload.get("summary") or {}
+    phase = str(payload.get("phase") or "buying")
+    fallback_ends_at = payload.get("fallbackEndsAt")
     return PurchaseFeedResponse(
         lottery_id=lottery_id,
         available=True,
@@ -2870,9 +3189,51 @@ async def get_lottery_purchases(lottery_id: int, db: Session = Depends(get_db)):
         bought_sol=float(totals.get("spentSol") or 0.0),
         completed_purchases=int(totals.get("completedPurchases") or 0),
         planned_purchases=int(totals.get("plannedPurchases") or 0),
+        # The round's own finish, which comes after the refunds. The buying is
+        # over earlier than that, and `phase` is what says so.
         finished=summary.get("finishedAt") is not None,
+        phase=phase if phase in ("buying", "fallback", "finished") else "buying",
+        fallback_ends_at=_purchase_time(fallback_ends_at) if fallback_ends_at else None,
         coins=coins,
         purchases=items,
+        deliveries=delivery_items,
+        burns=burn_items,
+        refunds=refund_items,
+    )
+
+
+def _feed_raw(value: object) -> str | None:
+    """A raw token amount from the buyer: a string of digits, or nothing."""
+    text = str(value) if isinstance(value, (str, int)) and not isinstance(value, bool) else ""
+    return text if text.isdigit() else None
+
+
+def _feed_decimals(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 18 else None
+
+
+def _feed_float(value: object) -> float:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _feed_coin_burn(value: object) -> PurchaseFeedCoinBurnResponse | None:
+    """A coin's burn from the buyer's feed, only when its figures are whole."""
+    if not isinstance(value, dict):
+        return None
+    bought, owed, burned = (_feed_raw(value.get(key)) for key in ("boughtRaw", "owedRaw", "burnedRaw"))
+    if bought is None or owed is None or burned is None:
+        return None
+    reason = value.get("blockedReason")
+    return PurchaseFeedCoinBurnResponse(
+        bought_raw=bought,
+        owed_raw=owed,
+        burned_raw=burned,
+        blocked_reason=str(reason) if isinstance(reason, str) and reason else None,
+        supply_at_start=_feed_raw(value.get("supplyAtStart")),
+        supply_at_end=_feed_raw(value.get("supplyAtEnd")),
     )
 
 

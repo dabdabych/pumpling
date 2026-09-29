@@ -4,6 +4,7 @@
 import { CoinResponse } from '../models/coin-response';
 export interface LotteryEntryResponse {
   bet_count: number;
+  burn_bps_avg?: number;
   coin: CoinResponse;
   lottery_id: number;
   lottery_type?: string;

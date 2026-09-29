@@ -39,7 +39,12 @@ offchain/
 │   ├── transaction.ts          # signTransaction(), sendTransaction()
 │   ├── priorityFee.ts          # compute budget and priority price per path
 │   ├── rateLimiter.ts          # send rate limiting shared across paths
+│   ├── debits.ts               # readKeeperEffects() — SOL and token deltas of a transaction
+│   ├── signatureOutcome.ts     # landed / absent / failed / unknown, blockhash expiry aware
 │   └── config.ts               # Program addresses, PDA derivations, Jupiter config
+│
+├── scripts/
+│   └── reconcileRounds.ts      # bought − delivered − burned per round, from the chain
 │
 ├── scheduler/                  # Layer 2: batch purchase orchestrator
 │   ├── index.ts                # Barrel exports
@@ -60,7 +65,12 @@ offchain/
 │   ├── sendRounds.ts           # calculateSendN(), assignRounds(), executeSendRounds()
 │   ├── batchTransfer.ts        # buildBatchSendTransaction() — up to 5 recipients per tx
 │   ├── refunds.ts              # returns unspent SOL to the people who committed it
+│   ├── refundLedger.ts         # what each coin was given and really cost, from the chain
 │   ├── resume.ts               # picks up rounds left unfinished by a crash
+│   ├── shares.ts               # who gets what of a coin's tokens, and what is burned
+│   ├── purchaseTokens.ts       # B: what the purchases really brought, from their transactions
+│   ├── burns.ts                # burnDueFor() — the burn, signed before it is sent
+│   ├── settle.ts               # after the buying: final burn, top-ups, finishBurns()
 │   └── state.ts                # OrchestratorStateManager — JSON persistence
 │
 ├── api/                        # HTTP wrapper around the buyer → api/CLAUDE.md
@@ -587,6 +597,66 @@ come slower, the duty cycle drops and RPS with it.
   confirmed" status with a signature, and that signature is checked on chain
   before any repeat.
 
+- **Honest refund accounting** — `solana/debits.ts` + `orchestrator/refundLedger.ts`.
+  The refund is "allocated minus spent", and both halves used to be taken from
+  the plan. The plan does not know about the network fee, the priority price or
+  the rent of an account a transaction had to create, so the spend was
+  under-stated; and the allocation had the delivery reserve taken out of it, so
+  whatever delivery did not use never went back to anyone.
+
+  Now the spend is read off the chain: `readKeeperDebits()` asks
+  `getTransactions` for every signature the round emitted and takes the keeper's
+  own balance change, `preBalances[i] - postBalances[i]`. That one number covers
+  the swap, the fee, the priority and the rent without knowing which venue was
+  used, and a transaction that never landed comes back as zero rather than as a
+  guess.
+
+  The delivery reserve is settled **for the round, not per coin**, and that is
+  load-bearing. Delivery costs what the recipients cost, about 0.0015 of rent
+  per wallet that has never held the coin, while a coin's allocation is its
+  share of the draw. A coin drawn small but backed by eight people costs more
+  to deliver than it was given: charged to that coin its refund goes negative
+  and is dropped, the keeper covers those deliveries, and every other coin
+  refunds its own unused share of the same reserve away. Worked through on a 35
+  SOL round with five coins, the difference is 0.0077 SOL of the keeper's own
+  money. Pooled, the round comes out level.
+
+  **Every read of a transaction asks for `maxSupportedTransactionVersion: 1`,
+  and reads the raw JSON.** Version 1 transactions are live on mainnet, devnet
+  and testnet; a node asked with `0` refuses a v1 transaction exactly as it
+  refuses a v0 one when the option is left out, which is what stopped the
+  backfill worker for two months (see `workers/CLAUDE.md`). web3.js 1.x cannot
+  decode a v1 message at all, so `solana/debits.ts` posts the JSON-RPC batch
+  itself and takes only `meta` and the account keys, which `jsonParsed` gives as
+  plain strings in every version (checked on a real v1, v0 and legacy
+  transaction: `tests/unit/solana/keeperEffects.test.ts`). The Python reader
+  (`webapp/backend/shared/solana_rpc.py`) defaults to `1` too.
+
+  Measured on round 1790348400190 (2026-09-25, 10.1365 SOL, one coin, 29
+  purchases, six deliveries in five transactions), every figure read back from
+  the chain on 2026-09-26:
+
+  | | |
+  |---|---|
+  | planned purchases, what the batch called "spent" | 10.124230 |
+  | actually taken by the purchases | 10.126363 |
+  | of which fees, priority and the keeper's token account | 0.002133 |
+  | delivery reserve held back | 0.004140 |
+  | delivery actually cost | 0.003053 |
+  | **keeper's balance over the round, old rule** | **-0.000696** |
+  | **keeper's balance over the round, new rule** | **+0.000305** |
+
+  The +0.000305 is the one participant's share too small to be worth a
+  transaction, which stays by design. The sizes are small and the sign is the
+  point: the keeper's balance is what buys the next round, and `insufficient
+  funds` is not a retryable error.
+
+  Where the chain cannot be read the spend is estimated upwards — a purchase at
+  the reserve ceiling, the token account included once — so the failure mode is
+  refunding a few lamports too little rather than paying out of our own pocket.
+  `refundLedger` is pure and takes the debits as an argument, so the whole of it
+  is checked against that round in `tests/unit/orchestrator/refundLedger.test.ts`.
+
 - **Crash recovery** — `orchestrator/resume.ts`. On startup the buyer finds
   rounds in `./logs` with no finish time and continues them through the same
   code as a normal run (`runBuyAndSend`). Only the remainder is bought: how much
@@ -627,6 +697,47 @@ come slower, the duty cycle drops and RPS with it.
   (`solana/transaction.ts`), PumpSwap (`pumpswap/buy.ts`), Jupiter
   (`dex/buy.ts`). On a bigger plan the limit goes up through an environment
   variable, the code does not change.
+
+- **The burn** — a participant can ask for part of what is bought for them to be
+  burned instead of delivered. See "The burn" below.
+
+- **Settlement after the buying** — `orchestrator/settle.ts`, phase 2.4. Round
+  1790348400190 bought purchase #28 in its second pass after the last delivery
+  round; the sweep only picks up deliveries still in the queue, so its
+  10,532,688,345,348 raw sat on the keeper. Now, once the buying is over, every
+  wallet short of its share gets a top-up in the queue and the sweep sends it.
+  A top-up is skipped only when the tokens are worth less than the delivery's
+  own fee (`TOP_UP_MIN_SOL = TX_FEE_SOL`) at the coin's average price. The
+  replay of that round is in `tests/unit/orchestrator/burnDelivery.test.ts`.
+
+- **No transaction is re-signed while the first may still land.** "Not found" is
+  only "never arrives" once the chain is past the blockhash's
+  `lastValidBlockHeight` (solana.com/developers/guides/advanced/retry: "If the
+  initial blockhash is still valid, it is possible for both transactions to be
+  accepted by the network"). `solana/signatureOutcome.ts` reads the finalized
+  height first, then the status with the full history, and answers `unknown`
+  until the height is past the limit plus 32 blocks. Every path uses it: burns,
+  deliveries (a `processed` status is no longer a reason to send again),
+  refunds, and the purchase retry ladder, which now waits a transaction out
+  before signing another (`scheduler/batch.ts`, `pendingVerdict`).
+
+- **A delivery's signature is written before it is sent** — `sendTransaction`
+  takes an `onSigned` callback and `sendRounds` records `pendingSignature` there.
+  Until then a delivery was recorded only on error, and a process killed while
+  one was being confirmed (a deploy mid-round) left it `in_progress` with no
+  signature: recovery put it back in the queue and it went out twice.
+  `resume.ts`'s promise that the signature is checked before a repeat now holds.
+  A wallet with a transfer of unknown fate gets nothing that round from any of
+  its records, so a second record cannot send the same tokens again.
+
+- **Past rounds** — `scripts/reconcileRounds.ts` reads every round's purchases,
+  deliveries and burns from the chain and reports bought − delivered − burned
+  per coin, against what the keeper holds now. Read only, takes the keeper's
+  address, never its key:
+  inside the buyer container,
+  `node offchain/api/dist/scripts/reconcileRounds.js --keeper <address> [--dir ./logs]`
+  (the image is built from `offchain/api/tsconfig.json`).
+  A public node refuses batches; use the buyer's own RPC.
 
 ### Not done
 
@@ -857,3 +968,69 @@ write (tmp + rename). Format: `./logs/lottery_{lotteryId}.json`
 | sendRounds | 28 | calculateSendN, assignRounds (spread), generateSendRecords, calculateRoundAmounts |
 | batchTransfer | 8 | 1/3/5 recipients per tx, caching of token program and decimals |
 | orchestrator | 7 | happy path, partial buy failure, send reserve, state persistence, config |
+
+
+---
+
+## The burn
+
+A participant can ask for part of what is bought for them to be burned instead
+of delivered: 25, 50 or 100% on the site. The choice is a memo in the commit
+transaction (`pumpling burn 50%`), read back by the backend
+(`webapp/backend/shared/burn_memo.py`) and passed in the payload per wallet as
+`amountLamports`, `burnWeight` = Σ(lamports × bps) over its commits, and
+`burnBps` (the same rounded, for display). `api/validation.ts` refuses a payload
+whose fields disagree; the contract with the backend is pinned by
+`tests/unit/fixtures/payload-contract.json`, which both sides test against.
+
+**The rule** (`orchestrator/shares.ts`), all in bigint:
+
+    delivered to i = B × s_i × (10000 − bps_i) / (S × 10000)
+    burned         = B × Σ(s_i × bps_i)      / (S × 10000)
+
+B is every token bought for the coin, S every commit behind it, burners
+included. What a wallet gets depends on its own commit and its own choice only.
+400 random rounds through the real delivery code on a fake chain keep this to
+the raw unit; the same harness breaks it in 359 of 400 with the old formula
+(`tests/unit/orchestrator/burnDelivery.test.ts`).
+
+**B comes from the purchases' own transactions** (`purchaseTokens.ts`), never
+from the keeper's balance: a balance read straight after our own transaction
+can be stale, and a burn worked out from an inflated balance destroys other
+people's tokens. A purchase not read yet does not count, which under-burns and
+under-delivers for a round at most. An earlier attempt that quietly landed
+counts too (its tokens are on the keeper); one not on chain five minutes after
+its record last changed is recorded as zero.
+
+**When.** At the start of every delivery round, before its deliveries
+(`burnDueFor` in `sendRounds.ts`), once more in the settlement (`final`), and
+after the sweep for any burn whose last transaction was still of unknown fate
+(`finishBurns`). A coin where everybody burns everything has no deliveries and
+is visited anyway.
+
+**Never twice.** A burn is signed, its signature and `lastValidBlockHeight`
+written to the state, and only then sent. Before anything is burned again an
+open signature is looked up: landed is counted, absent or failed may be sent
+again, unknown skips the coin for the round.
+
+**Refusals.** `0x41` (ConfidentialMintBurn) and `0xc` (PermissionedBurn) block
+the coin at once; `0x11` (frozen) and `0x43` (paused) are retried until the
+settlement, then blocked. A blocked coin's burn share stays on the keeper and is
+reported; it is never delivered. Codes are matched whole: `0x1` is not `0x11`.
+
+**Deliveries of a coin with burners** count what left the keeper
+(`SendRecord.grossAmount`), so on a transfer-fee mint each wallet's fee comes
+out of its own share and never out of the burn. Coins without burners keep the
+old basis (balance + delivered), unchanged.
+
+**Costs.** One burn is a delivery-path transaction, ~0.00001 SOL; the reserve
+holds `(rounds + 4) × TX_FEE_SOL` per coin with burners, and the refund ledger
+charges burns to the delivery reserve. A wallet that burns everything needs no
+token account, so no rent is held for it. `supplyAtStart` and `decimals` are read
+for every coin before the first purchase, `supplyAtEnd` for coins with burners
+after the round; the verification page shows them.
+
+**The feed** (`api/purchaseFeed.ts`) carries `deliveries` (one row per
+transaction, the sum that arrived and the wallets) and `burns`, each capped at
+200, and per coin `decimals`, `burnBps` and a `burn` block (bought, owed,
+burned, blocked reason, supply before and after).

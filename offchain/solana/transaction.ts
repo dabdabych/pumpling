@@ -19,6 +19,12 @@ export class PostSendError extends Error {
         message: string,
         public readonly signature?: string,
         public readonly cause?: unknown,
+        /**
+         * The last block height at which the transaction can still land. Until
+         * the chain is past it, "not found" does not mean "never arrives", and
+         * signing a replacement risks both landing (see `signatureOutcome`).
+         */
+        public readonly lastValidBlockHeight?: number,
     ) {
         super(message);
         this.name = "PostSendError";
@@ -144,19 +150,35 @@ export async function sendSignedTransaction(
         throw new PostSendError(
             `Transaction send/confirm failed: ${message}`,
             signature,
-            error
+            error,
+            tx.context?.lastValidBlockHeight
         );
     }
+}
+
+/** What `sendTransaction` reports between signing and sending. */
+export interface SignedNotice {
+    signature: string;
+    lastValidBlockHeight: number;
 }
 
 /**
  * Signs and sends a transaction (the combo)
  * TODO: add a Jito bundle for production
+ *
+ * `onSigned` is called after signing and before anything goes out. A caller
+ * that writes the signature down there can always find out later whether the
+ * transaction landed, even if the process dies while it is being confirmed.
  */
 export async function sendTransaction(
     tx: Transaction,
-    signer: Keypair
+    signer: Keypair,
+    onSigned?: (notice: SignedNotice) => void
 ): Promise<string> {
     const signed = await signTransaction(tx, signer);
+    const signature = getSignedTransactionSignature(signed);
+    if (onSigned && signature) {
+        onSigned({ signature, lastValidBlockHeight: signed.context.lastValidBlockHeight });
+    }
     return sendSignedTransaction(signed);
 }

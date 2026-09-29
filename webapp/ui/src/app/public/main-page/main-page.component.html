@@ -4,6 +4,15 @@
      section strip was only visible at the very top. `clip` clips the same way
      without creating a scroll container. -->
 <main #root class="qres-root overflow-x-clip bg-[var(--qres-white)] text-[var(--qres-black)]">
+  <!-- Arriving at /#how and the like: the story is measured while the page it
+       came from is still in the document, so the first position is wrong by a
+       screen or two and corrects itself a fifth of a second later. Rather than
+       show that correction, the page is held behind its own background until
+       the position is the real one. It clears on a timer as well, so nothing
+       can leave the page blank. -->
+  @if (jumpCover) {
+    <div class="qres-jump-cover" aria-hidden="true"></div>
+  }
   <!-- ============================ HEADER ============================ -->
   <header #siteHeader class="qres-site-header sticky top-0 z-30 px-[16px] sm:px-8">
     <div class="relative mx-auto w-full max-w-7xl">
@@ -184,6 +193,19 @@
           @if (card.line) {
             <span class="relative z-20 mt-4 text-sm font-semibold uppercase tracking-wide opacity-70"
                   [@lineSwap]="card.phase">{{ card.line }}</span>
+          }
+          <!-- Between rounds: where the next pool is announced. Smaller than the
+               line above it and in ordinary case, and allowed to wrap, so a
+               narrow card keeps it whole instead of hiding half of it under
+               `overflow-hidden`. The X link itself is under the headline; this
+               card is a link of its own and cannot hold another one.
+
+               The same 70% as the line above, not less: the card turns purple
+               on hover, and black at 60% on that purple gives 3.9:1, under the
+               4.5:1 small text needs. At 70% it is 5.1:1. -->
+          @if (card.note) {
+            <span class="qres-card-note relative z-20 mt-2 max-w-[90%] text-center text-xs font-medium leading-snug opacity-70"
+                  [@lineSwap]="card.phase">{{ card.note }}</span>
           }
         }
       </a>

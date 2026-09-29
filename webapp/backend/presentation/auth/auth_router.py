@@ -203,11 +203,27 @@ async def register(request: UserRegistrationRequest, auth_service: AuthService =
 
 @router.post("/confirm-email", response_model=EmailConfirmationResponse)
 async def confirm_email(request: EmailConfirmationRequest, auth_service: AuthService = Depends(get_auth_service)):
+    """Confirm the address and hand back a session.
+
+    The link is single use, expires in twenty-four hours and goes only to the
+    address being confirmed, so opening it proves the same thing a password
+    does. Making somebody type their password immediately afterwards adds a
+    step and no safety, and it is the step people bounce off.
+
+    The session comes back in the body rather than a cookie, the same way the
+    sign-in endpoint returns one, so the page stores it exactly as it would
+    after signing in.
+    """
     try:
         user = await auth_service.confirm_email(request.token)
-        return EmailConfirmationResponse(email=user.email, message="Email confirmed")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    return EmailConfirmationResponse(
+        email=user.email,
+        message="Email confirmed",
+        access_token=jwt_handler.create_access_token(user.id, user.role.value),
+    )
 
 
 @router.post("/resend-confirmation", response_model=ResendConfirmationResponse)

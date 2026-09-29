@@ -26,6 +26,56 @@ export interface PurchaseCoin {
   completed: number;
   planned: number;
   status: string;
+  /** The mint's decimals; null for a round from before the buyer recorded them. */
+  decimals: number | null;
+  /** The coin's burn share, commit-weighted, in basis points. */
+  burnBps: number;
+  /** Where the coin's burn stands. Null when nobody behind the coin burns. */
+  burn: CoinBurn | null;
+}
+
+/** Raw token units, as decimal strings. */
+export interface CoinBurn {
+  boughtRaw: string;
+  owedRaw: string;
+  burnedRaw: string;
+  blockedReason: string | null;
+  supplyAtStart: string | null;
+  supplyAtEnd: string | null;
+}
+
+/** One delivery transaction: up to five wallets. */
+export interface DeliveryItem {
+  mint: string;
+  name: string;
+  symbol: string;
+  signature: string;
+  /** What arrived, summed over the wallets, raw units. */
+  raw: string;
+  decimals: number | null;
+  recipients: string[];
+  atMs: number;
+}
+
+export interface BurnItem {
+  mint: string;
+  name: string;
+  symbol: string;
+  signature: string;
+  raw: string;
+  decimals: number | null;
+  atMs: number;
+}
+
+/** Unspent SOL returned at the end of the round: one transaction, one coin. */
+export interface RefundItem {
+  mint: string;
+  name: string;
+  symbol: string;
+  signature: string;
+  sol: number;
+  recipients: string[];
+  atMs: number;
 }
 
 export interface PurchaseItem {
@@ -39,6 +89,16 @@ export interface PurchaseItem {
   atMs: number;
 }
 
+/**
+ * What the buyer is doing.
+ *
+ * `fallback` is the second pass: the main window is over and the coins it
+ * could not buy in full are being bought again, for up to fifteen minutes. The
+ * page shows that countdown instead of the main one and says what it is for —
+ * otherwise the timer would sit at zero while purchases were still going out.
+ */
+export type BuyPhase = 'buying' | 'fallback' | 'finished';
+
 export interface PurchaseFeed {
   /** false means the buyer has not started or is not answering: that is waiting, not zero purchases. */
   available: boolean;
@@ -47,8 +107,15 @@ export interface PurchaseFeed {
   completed: number;
   planned: number;
   finished: boolean;
+  phase: BuyPhase;
+  /** When the second pass runs out, ms. Null outside it. */
+  fallbackEndsAtMs: number | null;
   coins: PurchaseCoin[];
   purchases: PurchaseItem[];
+  /** Newest first. Deliveries and burns are on chain as much as purchases are. */
+  deliveries: DeliveryItem[];
+  burns: BurnItem[];
+  refunds: RefundItem[];
 }
 
 export interface FeedRequest {
@@ -64,8 +131,13 @@ export const EMPTY_FEED: PurchaseFeed = {
   completed: 0,
   planned: 0,
   finished: false,
+  phase: 'buying',
+  fallbackEndsAtMs: null,
   coins: [],
-  purchases: []
+  purchases: [],
+  deliveries: [],
+  burns: [],
+  refunds: []
 };
 
 const MIN_DELAY_MS = 12_000;
@@ -166,8 +238,13 @@ export class PurchasesService {
       completed: num(body.completed_purchases),
       planned: num(body.planned_purchases),
       finished: !!body.finished,
+      phase: toPhase(body.phase),
+      fallbackEndsAtMs: toMs(body.fallback_ends_at),
       coins: Array.isArray(body.coins) ? body.coins.map(toCoin) : [],
-      purchases: Array.isArray(body.purchases) ? body.purchases.map(toItem) : []
+      purchases: Array.isArray(body.purchases) ? body.purchases.map(toItem) : [],
+      deliveries: Array.isArray(body.deliveries) ? body.deliveries.map(toDelivery).filter(isPresent) : [],
+      burns: Array.isArray(body.burns) ? body.burns.map(toBurn).filter(isPresent) : [],
+      refunds: Array.isArray(body.refunds) ? body.refunds.map(toRefund).filter(isPresent) : []
     };
   }
 
@@ -191,7 +268,12 @@ export class PurchasesService {
 
   /** How often to ask: from the expected purchase pace, slowing down in silence. */
   private delayFor(request: FeedRequest, feed: PurchaseFeed): number {
-    if (feed.finished || (feed.planned > 0 && feed.completed >= feed.planned)) {
+    if (feed.phase === 'finished' || feed.finished) {
+      return FINISHED_DELAY_MS;
+    }
+    // The second pass buys what is left, so "everything planned is done" is no
+    // longer a reason to stop watching.
+    if (feed.phase !== 'fallback' && feed.planned > 0 && feed.completed >= feed.planned) {
       return FINISHED_DELAY_MS;
     }
     if (!feed.available) {
@@ -223,8 +305,93 @@ function toCoin(raw: any): PurchaseCoin {
     boughtSol: num(raw?.bought_sol),
     completed: num(raw?.completed_purchases),
     planned: num(raw?.planned_purchases),
-    status: String(raw?.status ?? 'pending')
+    status: String(raw?.status ?? 'pending'),
+    decimals: toDecimals(raw?.decimals),
+    burnBps: num(raw?.burn_bps),
+    burn: toCoinBurn(raw?.burn)
   };
+}
+
+function toCoinBurn(raw: any): CoinBurn | null {
+  const bought = rawAmount(raw?.bought_raw);
+  const owed = rawAmount(raw?.owed_raw);
+  const burned = rawAmount(raw?.burned_raw);
+  if (bought === null || owed === null || burned === null) {
+    return null;
+  }
+  return {
+    boughtRaw: bought,
+    owedRaw: owed,
+    burnedRaw: burned,
+    blockedReason: typeof raw?.blocked_reason === 'string' && raw.blocked_reason ? raw.blocked_reason : null,
+    supplyAtStart: rawAmount(raw?.supply_at_start),
+    supplyAtEnd: rawAmount(raw?.supply_at_end)
+  };
+}
+
+function toDelivery(raw: any): DeliveryItem | null {
+  const amount = rawAmount(raw?.raw_amount);
+  const signature = String(raw?.signature ?? '');
+  if (amount === null || !signature) {
+    return null;
+  }
+  return {
+    mint: String(raw?.mint ?? ''),
+    name: String(raw?.name ?? ''),
+    symbol: String(raw?.symbol ?? ''),
+    signature,
+    raw: amount,
+    decimals: toDecimals(raw?.decimals),
+    recipients: Array.isArray(raw?.recipients) ? raw.recipients.filter((r: unknown): r is string => typeof r === 'string') : [],
+    atMs: Date.parse(String(raw?.at ?? '')) || Date.now()
+  };
+}
+
+function toBurn(raw: any): BurnItem | null {
+  const amount = rawAmount(raw?.raw_amount);
+  const signature = String(raw?.signature ?? '');
+  if (amount === null || !signature) {
+    return null;
+  }
+  return {
+    mint: String(raw?.mint ?? ''),
+    name: String(raw?.name ?? ''),
+    symbol: String(raw?.symbol ?? ''),
+    signature,
+    raw: amount,
+    decimals: toDecimals(raw?.decimals),
+    atMs: Date.parse(String(raw?.at ?? '')) || Date.now()
+  };
+}
+
+function toRefund(raw: any): RefundItem | null {
+  const signature = String(raw?.signature ?? '');
+  const sol = num(raw?.sol_amount);
+  if (!signature || !(sol > 0)) {
+    return null;
+  }
+  return {
+    mint: String(raw?.mint ?? ''),
+    name: String(raw?.name ?? ''),
+    symbol: String(raw?.symbol ?? ''),
+    signature,
+    sol,
+    recipients: Array.isArray(raw?.recipients) ? raw.recipients.filter((r: unknown): r is string => typeof r === 'string') : [],
+    atMs: Date.parse(String(raw?.at ?? '')) || Date.now()
+  };
+}
+
+/** A raw token amount: digits only, as a string. */
+function rawAmount(value: unknown): string | null {
+  return typeof value === 'string' && /^\d+$/.test(value) ? value : null;
+}
+
+function toDecimals(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 18 ? value : null;
+}
+
+function isPresent<T>(value: T | null): value is T {
+  return value !== null;
 }
 
 function toItem(raw: any): PurchaseItem {
@@ -245,6 +412,19 @@ function num(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function toPhase(raw: unknown): BuyPhase {
+  return raw === 'fallback' || raw === 'finished' ? raw : 'buying';
+}
+
+/** An ISO time from the server, or null when there is none. */
+function toMs(raw: unknown): number | null {
+  if (typeof raw !== 'string' || !raw) {
+    return null;
+  }
+  const at = Date.parse(raw);
+  return Number.isFinite(at) ? at : null;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -252,11 +432,36 @@ function clamp(value: number, min: number, max: number): number {
 /** The feed has not changed — we do not hand out a new object, so the screen does not twitch. */
 function sameFeed(a: PurchaseFeed, b: PurchaseFeed): boolean {
   return a.available === b.available
+    && a.phase === b.phase
+    && a.fallbackEndsAtMs === b.fallbackEndsAtMs
     && a.completed === b.completed
     && a.planned === b.planned
     && a.finished === b.finished
     && Math.abs(a.boughtSol - b.boughtSol) < 1e-9
     && Math.abs(a.targetSol - b.targetSol) < 1e-9
     && a.purchases.length === b.purchases.length
-    && (a.purchases[0]?.signature ?? '') === (b.purchases[0]?.signature ?? '');
+    && (a.purchases[0]?.signature ?? '') === (b.purchases[0]?.signature ?? '')
+    // A delivery or a burn is news too: without these the feed stood still
+    // while tokens were going out.
+    && a.deliveries.length === b.deliveries.length
+    && (a.deliveries[0]?.signature ?? '') === (b.deliveries[0]?.signature ?? '')
+    && a.burns.length === b.burns.length
+    && (a.burns[0]?.signature ?? '') === (b.burns[0]?.signature ?? '')
+    && a.refunds.length === b.refunds.length
+    && (a.refunds[0]?.signature ?? '') === (b.refunds[0]?.signature ?? '')
+    && sameBurns(a.coins, b.coins);
+}
+
+/** The coins' burn figures: the verification window reads them from here. */
+function sameBurns(a: PurchaseCoin[], b: PurchaseCoin[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  return a.every((coin, index) => {
+    const other = b[index];
+    return coin.mint === other.mint
+      && (coin.burn?.burnedRaw ?? '') === (other.burn?.burnedRaw ?? '')
+      && (coin.burn?.owedRaw ?? '') === (other.burn?.owedRaw ?? '')
+      && (coin.burn?.blockedReason ?? '') === (other.burn?.blockedReason ?? '');
+  });
 }

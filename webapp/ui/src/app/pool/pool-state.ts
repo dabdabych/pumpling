@@ -50,6 +50,8 @@ export interface PoolCoin {
   poolShare: number;
   /** SOL for buying this coin after the draw and the fee; 0 means the share went to zero; null means the draw has not happened. */
   drawnSol: number | null;
+  /** The share of this coin's tokens its backers asked to burn, SOL-weighted, in basis points. 0 is none. */
+  burnBps: number;
 }
 
 export interface PoolAccounts {
@@ -91,7 +93,11 @@ export const MIN_COMMIT_SOL = 0.05;
 /** A fallback cap until the first API answer; the real one arrives in max_total. */
 export const DEFAULT_CAP_SOL = 111;
 /** A fallback buying window length; the real one arrives in execution_countdown_seconds. */
-export const DEFAULT_BUY_WINDOW_SECONDS = 65 * 60;
+// The main buying pass, when the server does not say. It is the buyer's own
+// window (`BUY_WINDOW_MINUTES`), not a guess with a margin: what the first pass
+// cannot buy goes into a second one, and that has a deadline of its own which
+// arrives with the purchase feed.
+export const DEFAULT_BUY_WINDOW_SECONDS = 50 * 60;
 /** A fallback draw length; the real one arrives in draw_seconds. */
 // The fallback when the server does not say. Under ORAO the draw is the
 // request landing, an answer a second later and the pause before buying; the
@@ -176,7 +182,12 @@ export function buildPoolSnapshot(body: LotteryListResponse | null | undefined, 
   }
 
   const drawn = draw === 'ready' ? drawnSolByMint(summary.winner_results) : null;
-  const coins = buildCoins(body?.entries, market, poolId, totalSol, drawn);
+  // `done` means the buying window and the pause after it have both elapsed:
+  // the round is over, the tokens are delivered and the change is returned.
+  // Its table used to stay on the page until the next pool replaced it, which
+  // reads as a pool that is still running. The round is not lost — it is in the
+  // archive, and its own verification page still opens.
+  const coins = phase === 'done' ? [] : buildCoins(body?.entries, market, poolId, totalSol, drawn);
 
   return {
     market,
@@ -309,7 +320,8 @@ function buildCoins(
         sol,
         commits: Math.max(0, Math.floor(toFiniteNumber(entry?.bet_count) ?? 0)),
         poolShare: totalSol > 0 ? sol / totalSol : 0,
-        drawnSol: drawn ? (drawn.get(mint) ?? 0) : null
+        drawnSol: drawn ? (drawn.get(mint) ?? 0) : null,
+        burnBps: Math.min(10_000, Math.max(0, toFiniteNumber(entry?.burn_bps_avg) ?? 0))
       };
     })
     .filter((coin) => coin.mint.length > 0);

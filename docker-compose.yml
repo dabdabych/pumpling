@@ -239,7 +239,10 @@ services:
       # The cluster for Solscan links: empty means mainnet, `?cluster=devnet` a stand.
       - SOLANA_EXPLORER_QUERY=${SOLANA_EXPLORER_QUERY-}
       # Where the "how to check this yourself" link in the verification dialog leads.
-      - VERIFY_DOCS_URL=${VERIFY_DOCS_URL:-https://github.com/dabdabych/pumpling}
+      # The repository the site points at, both in the footer and from
+      # "How to check this yourself". The Colosseum export lives elsewhere
+      # and is not what a visitor should be sent to.
+      - VERIFY_DOCS_URL=${VERIFY_DOCS_URL:-https://github.com/pumplingxyz/public-docs}
       # Which file nginx serves as the site. `index.html` is the app;
       # `coming-soon.html` is the holding page, and then the app shell is never
       # delivered at all. Change it in .env and `docker compose up -d ui`.

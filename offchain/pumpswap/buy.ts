@@ -124,6 +124,6 @@ export async function buyPumpswap(
         const msg = error instanceof Error ? error.message : String(error);
         l.error({ event: "pumpswap.send_failed", mint: mint.toBase58(), pool: pool.toBase58(), signature, error: msg },
             "PumpSwap transaction send/confirm failed");
-        throw new PostSendError(`PumpSwap transaction send/confirm failed: ${msg}`, signature, error);
+        throw new PostSendError(`PumpSwap transaction send/confirm failed: ${msg}`, signature, error, lastValidBlockHeight);
     }
 }

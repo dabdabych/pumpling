@@ -449,9 +449,14 @@
   cursor: pointer;
 }
 
-.commit-pick__coin:hover:not(:disabled),
 .commit-pick__coin:focus-visible {
   background: var(--qres-purple);
+}
+
+@media (hover: hover) {
+  .commit-pick__coin:hover:not(:disabled) {
+    background: var(--qres-purple);
+  }
 }
 
 .commit-pick__coin:disabled {
@@ -583,8 +588,13 @@
   transition: background 0.16s ease, color 0.16s ease;
 }
 
-.commit__priority-option:hover:not(:disabled) {
-  background: rgba(175, 143, 255, 0.18);
+/* Only where there is a real pointer. On a phone a tap leaves :hover stuck on
+   the button, and this rule outranks .is-active: the chosen level turned pale
+   purple with white text on it, unreadable. */
+@media (hover: hover) {
+  .commit__priority-option:hover:not(:disabled):not(.is-active) {
+    background: rgba(175, 143, 255, 0.18);
+  }
 }
 
 .commit__priority-option.is-active {
@@ -626,4 +636,108 @@
 
 .commit__wallet-change {
   margin-left: 6px;
+}
+
+/* ------------------------------------------------------------------ the burn
+   The same pattern as the priority below it: a title with a hint, a row of
+   equal cards, the chosen one black. Under the cards, the choice in a whole
+   sentence: on the narrowest phones the cards keep only their percentages. */
+
+.commit__burn {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.commit__burn-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.commit__burn-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.commit__burn-option {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  padding: 8px 4px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  color: var(--qres-black);
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+@media (hover: hover) {
+  .commit__burn-option:hover:not(:disabled):not(.is-active) {
+    background: rgba(175, 143, 255, 0.18);
+  }
+}
+
+.commit__burn-option.is-active {
+  background: var(--qres-black);
+  color: var(--qres-white);
+}
+
+.commit__burn-option:focus-visible,
+.commit__priority-option:focus-visible {
+  outline: 2px solid var(--qres-purple);
+  outline-offset: 2px;
+}
+
+.commit__burn-option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.commit__burn-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.commit__burn-keep {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.commit__burn-line {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgba(2, 2, 2, 0.78);
+}
+
+.commit__burn-line b {
+  color: var(--qres-black);
+}
+
+/* Below 360px four cards leave about 65px each: the percentage fits, its
+   caption does not. The sentence below says everything the captions did. */
+@media (max-width: 359px) {
+  .commit__burn-keep,
+  .commit__burn-flame {
+    display: none;
+  }
+
+  .commit__burn-option {
+    padding: 10px 2px;
+  }
 }

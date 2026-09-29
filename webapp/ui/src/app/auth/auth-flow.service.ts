@@ -184,6 +184,17 @@ export class AuthFlowService {
     return 'Could not send the reset link. Please try again.';
   }
 
+  /**
+   * Take a session that was issued somewhere other than the sign-in form.
+   *
+   * Confirming an email hands one back: opening a single-use link sent to that
+   * address proves the same thing a password does, so the person lands signed
+   * in instead of being asked to type it again.
+   */
+  adoptSession(accessToken: string): void {
+    this.completeSignIn(accessToken);
+  }
+
   private completeSignIn(accessToken: string): void {
     localStorage.setItem('jwt', accessToken);
     this.store.dispatch(signIn());

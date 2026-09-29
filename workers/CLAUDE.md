@@ -99,6 +99,33 @@ same offsets, and both shapes have the same Anchor discriminator. Change the
 struct and change that constant in the same commit;
 `tests/test_onchain_account_layout.py` checks it against the IDL.
 
+## The buying window, and the second pass
+
+A round is `proceeding_purchases` for `EXECUTION_COUNTDOWN_SECONDS`: fifty
+minutes, which is exactly the buyer's own main pass (`BUY_WINDOW_MINUTES`).
+Whatever the buyer could not buy in that time it buys again afterwards, in a
+window it sizes itself from the number of purchases that have to be repeated —
+three minutes at the least, fifteen at the most, and none at all when
+everything went through.
+
+The worker therefore does not close a round on the clock alone. Once the main
+window is over it asks the buyer what it is doing
+(`GET /execute/{id}/purchases`, the `phase` field):
+
+```
+phase = "fallback"  and the ceiling has not passed  -> wait
+anything else, or no answer at all                  -> close
+```
+
+The ceiling is `EXECUTION_COUNTDOWN_SECONDS + FALLBACK_COUNTDOWN_SECONDS`. A
+buyer we cannot reach must never be able to hold a public round open, so
+silence closes it.
+
+`lotteries.closed_at` records the moment. The pause before the next pool runs
+from there rather than from arithmetic on the start of the window: a round that
+used its second pass closes up to fifteen minutes later, and by the old
+arithmetic its pause would already have expired before it closed.
+
 ## Two RPC calls that do not go through solana-py
 
 `getSignaturesForAddress` and `getTransaction` are read as plain JSON, through
@@ -130,7 +157,26 @@ longer indistinguishable from a parse failure. And because the listing already
 carries `err`, a failed transaction is skipped without fetching it, which is a
 round trip saved per failed row on a rate-limited plan.
 
+Both read with `maxSupportedTransactionVersion: 1`. Version 1 transactions are
+live on mainnet, and a node asked with `0` refuses one outright (-32015); a
+wallet may build a commit that way. The fields read here are the same in every
+version.
+
 The proper fix is `solana-py` 0.40 + `anchorpy` 0.21 + `solders` 0.28, where the
 typed path understands v3. That is a real migration across all five services and
 it has not been done. Until it is, do not route these two calls back through
 `AsyncClient`.
+
+
+## The burn choice on a commit
+
+A commit can carry a memo, `pumpling burn 50%`, asking for that share of what is
+bought for the wallet to be burned rather than delivered. `events_worker` reads
+it when it records a deposit (`_handle_deposit` → `burn_bps` on the bet), from
+the same log lines the deposit event came from: the websocket path has nothing
+else, and the backend reads the same log when the browser reports the commit,
+so whichever gets there first records the same choice. The rules — only the
+non-upgradeable memo program at the top level, exactly one burn memo, anything
+doubtful counts as none — are in `webapp/backend/shared/burn_memo.py`, one
+module for both paths. The column comes from migration 041; the workers' copy of
+the model (`database/models/bet_participation_model.py`) has it too.

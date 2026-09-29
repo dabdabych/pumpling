@@ -54,7 +54,12 @@ from domain.auth.entities.user import UserRole
 from shared.admin_wallets import configured_admin_pubkeys
 from shared.bet_confirmation import active_bet_condition
 from shared.lottery_cycle_control import SUPPORTED_LOTTERY_TYPES, is_cycle_enabled, reconcile_hype_countdown
-from shared.weights_commitment import build_number_string, build_weights_payload
+from shared.weights_commitment import (
+    build_lamports_payload,
+    build_number_string,
+    build_weights_payload,
+    sol_to_lamports,
+)
 from shared.purchases_payload import build_run_purchases_payload
 from shared.settings import AppSettings, get_settings
 
@@ -740,17 +745,24 @@ def _has_non_terminal_lottery(session: Session, lottery_type: str) -> bool:
 
 def _has_active_execution_window(session: Session, lottery_type: str, now_utc: datetime) -> bool:
     settings = _settings()
-    # The buying window plus the "done" pause: the next pool does not open
-    # until people have had time to see how the last one ended.
-    execution_seconds = max(0, settings.execution_countdown_seconds) + max(
-        0, settings.lottery_autostart_gap_seconds
+    gap_seconds = max(0, settings.lottery_autostart_gap_seconds)
+    # The buying, plus the "done" pause: the next pool does not open until
+    # people have had time to see how the last one ended.
+    ceiling_seconds = (
+        max(0, settings.execution_countdown_seconds)
+        + max(0, settings.fallback_countdown_seconds)
+        + gap_seconds
     )
-    if execution_seconds <= 0:
+    if ceiling_seconds <= 0:
         return False
 
     terminal_values = [status.value for status in _TERMINAL_STATUSES]
     latest_execution_lottery = (
-        session.query(LotteryModel.id, LotteryModel.proceeding_purchases_started_at)
+        session.query(
+            LotteryModel.id,
+            LotteryModel.proceeding_purchases_started_at,
+            LotteryModel.closed_at,
+        )
         .filter(
             LotteryModel.lottery_type == lottery_type,
             LotteryModel.status.in_(terminal_values),
@@ -766,7 +778,15 @@ def _has_active_execution_window(session: Session, lottery_type: str, now_utc: d
     if proceeding_started_at is None:
         return False
 
-    execution_ends_at = proceeding_started_at + timedelta(seconds=execution_seconds)
+    # The pause runs from the close. Without it — a round from before the
+    # column, or one closed by something that did not record the moment — the
+    # ceiling stands in: buying could have taken the whole of its second pass.
+    closed_at = _to_utc(getattr(latest_execution_lottery, "closed_at", None))
+    execution_ends_at = (
+        closed_at + timedelta(seconds=gap_seconds)
+        if closed_at is not None
+        else proceeding_started_at + timedelta(seconds=ceiling_seconds)
+    )
     if now_utc >= execution_ends_at:
         return False
 
@@ -806,17 +826,21 @@ def _build_weights_hash(session: Session, lottery_id: int) -> Optional[bytes]:
     if not rows:
         return None
 
-    pairs: list[tuple[str, Decimal]] = []
+    # Whole lamports, which is what the draw weighs by. Rounding to eight
+    # decimals of SOL pinned a figure ten lamports coarse than the one the
+    # draw used, and a commit is checked against the chain in lamports, so the
+    # two could be made to disagree on purpose.
+    pairs: list[tuple[str, int]] = []
     for mint, total_sol in rows:
-        amount = _normalize_decimal(total_sol).quantize(_ROUND_8, rounding=ROUND_HALF_UP)
-        if amount <= _ZERO:
+        lamports = sol_to_lamports(total_sol)
+        if lamports <= 0:
             continue
-        pairs.append((str(mint), amount))
+        pairs.append((str(mint), lamports))
 
     if not pairs:
         return None
 
-    payload = build_weights_payload(pairs)
+    payload = build_lamports_payload(pairs)
     if payload is None:
         return None
     return hashlib.sha256(payload.encode("utf-8")).digest()
@@ -914,6 +938,101 @@ def _mark_proceeding_purchases(session: Session, lottery: LotteryModel) -> None:
         session.refresh(lottery)
 
 
+#: The buyer's answer, held for a few seconds. The worker goes round its loop
+#: every second, and a fifteen minute second pass would otherwise be nine
+#: hundred requests to ask one question whose answer changes once.
+_BUYER_PHASE_CACHE_SECONDS = 15.0
+_buyer_phase_cache: dict[int, tuple[float, Optional[dict]]] = {}
+
+
+async def _buyer_phase_payload(lottery_id: int) -> Optional[dict]:
+    now = time.monotonic()
+    cached = _buyer_phase_cache.get(lottery_id)
+    if cached and now - cached[0] < _BUYER_PHASE_CACHE_SECONDS:
+        return cached[1]
+
+    try:
+        # Blocking HTTP: off the event loop, the same way the buyer is started.
+        payload = await asyncio.to_thread(build_offchain_api_client().fetch_purchases, lottery_id)
+    except Exception:
+        payload = None
+
+    _buyer_phase_cache[lottery_id] = (time.monotonic(), payload if isinstance(payload, dict) else None)
+    if len(_buyer_phase_cache) > 16:
+        for key, _ in sorted(_buyer_phase_cache.items(), key=lambda item: item[1][0])[:8]:
+            _buyer_phase_cache.pop(key, None)
+    return _buyer_phase_cache[lottery_id][1]
+
+
+async def _close_is_due(
+    lottery: LotteryModel,
+    proceeding_started_at: datetime,
+    now_utc: datetime,
+) -> bool:
+    """Whether the round may be closed now.
+
+    A round is closed when the buying is over, and the buying is over at one of
+    two moments: the end of the main window, or the end of the second pass if
+    the main window left something unbought. The buyer is the only one who
+    knows which, so it is asked (`GET /execute/{id}/purchases`, the `phase`).
+
+    ```
+    before main_end - buffer   never
+    before main_end            only if the buyer says it has finished
+    after  main_end            unless the buyer is on its second pass and the
+                               ceiling has not passed
+    ```
+
+    The buffer lets a round that is demonstrably done close a few minutes
+    early; it is invisible on the site, which goes on showing the buying until
+    the window ends either way. A buyer that says nothing — it is down, it has
+    no state for this round, the call failed — never holds a round open: the
+    clock decides, exactly as it did before any of this existed.
+    """
+    settings = _settings()
+    main_end = proceeding_started_at + timedelta(seconds=max(0, settings.execution_countdown_seconds))
+    buffer_seconds = max(0, settings.close_lottery_buffer_seconds)
+    fallback_seconds = max(0, settings.fallback_countdown_seconds)
+
+    if now_utc < main_end - timedelta(seconds=buffer_seconds):
+        return False
+
+    phase = await _buyer_phase(lottery.id)
+
+    if now_utc < main_end:
+        # Early, and only on the buyer's word that there is nothing left to buy.
+        return phase == "finished"
+
+    if fallback_seconds <= 0 or phase != "fallback":
+        return True
+
+    ceiling = main_end + timedelta(seconds=fallback_seconds)
+    if now_utc >= ceiling:
+        # A buyer stuck in a loop must not be able to hold a public round open.
+        return True
+
+    _throttled_log(
+        logging.INFO,
+        f"close-waits-for-fallback:{lottery.id}",
+        "Close held back: the buyer is on its second pass (lottery_id=%s, until=%s)",
+        lottery.id,
+        ceiling.isoformat(),
+    )
+    return False
+
+
+async def _buyer_phase(lottery_id: int) -> Optional[str]:
+    """What the buyer says it is doing, or None when it says nothing."""
+    try:
+        payload = await _buyer_phase_payload(lottery_id)
+    except Exception:
+        payload = None
+    if not isinstance(payload, dict):
+        return None
+    phase = payload.get("phase")
+    return phase if isinstance(phase, str) else None
+
+
 def _mark_closed(
     session: Session,
     lottery: LotteryModel,
@@ -930,6 +1049,11 @@ def _mark_closed(
             session.refresh(lottery)
         return
     lottery.status = LotteryStatus.CLOSED
+    # The pause before the next pool runs from here, not from arithmetic on the
+    # start of the window: a round that needed a second buying pass closes up to
+    # fifteen minutes later than that arithmetic would say.
+    if getattr(lottery, "closed_at", None) is None:
+        lottery.closed_at = datetime.now(timezone.utc)
     changed = True
     session.commit()
     session.refresh(lottery)
@@ -2200,10 +2324,7 @@ async def _process_post_vrf_candidate(
         if proceeding_started_at is None:
             return
 
-        close_at = proceeding_started_at + timedelta(
-            seconds=max(0, settings.execution_countdown_seconds - settings.close_lottery_buffer_seconds)
-        )
-        if datetime.now(timezone.utc) < close_at:
+        if not await _close_is_due(lottery, proceeding_started_at, datetime.now(timezone.utc)):
             return
 
         signature = await _close_lottery_onchain(
@@ -2270,6 +2391,33 @@ async def _autostart_lottery_type(
         wallet_keeper = str(Pubkey.from_string(settings.lottery_autostart_keeper_wallet))
         if wallet_fee == wallet_keeper:
             raise ValueError("LOTTERY_AUTOSTART_FEE_WALLET and LOTTERY_AUTOSTART_KEEPER_WALLET must differ")
+
+        # The keeper written into the round is the wallet the pool is paid out
+        # to when the buying starts. If the buyer does not hold its key, the
+        # money lands where the buyer cannot reach it: nothing is bought and
+        # nothing is refunded, and the round looks fine until the refunds fail.
+        # That happened on the stand on 2026-09-24 — the two are configured in
+        # different files and nothing compared them.
+        #
+        # A buyer that does not answer is not evidence of a mismatch, so that
+        # case warns and lets the round open: an outage of the buyer must not
+        # also stop rounds from being created.
+        # In a thread: it is a blocking HTTP call, and the loop drives every
+        # round's phases on a one second tick.
+        buyer_keeper = await asyncio.to_thread(build_offchain_api_client().keeper_pubkey)
+        if buyer_keeper and buyer_keeper != wallet_keeper:
+            raise ValueError(
+                "LOTTERY_AUTOSTART_KEEPER_WALLET is not the wallet the buyer signs with "
+                f"(round would pay {wallet_keeper}, buyer holds {buyer_keeper}). "
+                "The pool would be stranded: fix KEEPER_SECRET_KEY or the wallet setting."
+            )
+        if not buyer_keeper:
+            logging.warning(
+                "Could not check the buyer's keeper before opening a round "
+                "(lottery_type=%s, configured keeper=%s)",
+                lottery_type,
+                wallet_keeper,
+            )
 
         max_total_sol = settings.lottery_autostart_max_total_sol
         max_total_lamports = _decimal_sol_to_lamports(max_total_sol)

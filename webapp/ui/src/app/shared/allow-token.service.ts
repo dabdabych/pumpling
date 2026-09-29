@@ -11,6 +11,8 @@ export interface AllowTokenRequest {
 
 export interface AllowTokenResponse {
   is_pumpfun_mint?: boolean;
+  /** Whether the buyer can burn this coin, so whether the burn choice is offered. */
+  can_burn?: boolean;
   has_dex_liquidity?: boolean;
   dex_liquidity_pool_count?: number;
   dex_liquidity_check_unverified?: boolean;

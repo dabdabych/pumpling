@@ -177,7 +177,10 @@ class TestWhatGetsAsked:
         # Sending `before: null` is not the same request as not sending it.
         assert seen[0]["params"][1] == {"limit": 20}
 
-    def test_the_transaction_options_match_what_the_workers_used(self):
+    def test_the_transaction_options_ask_for_version_1(self):
+        # Version 1 transactions are live on mainnet; a node asked with 0
+        # refuses one outright (-32015). Every reader here takes only `meta`
+        # and the log, which are the same in every version.
         transport, seen = answering({"jsonrpc": "2.0", "id": 1, "result": None})
 
         run(with_rpc(transport, lambda rpc: rpc.get_transaction("sig", commitment="confirmed")))
@@ -186,7 +189,7 @@ class TestWhatGetsAsked:
         assert seen[0]["params"][1] == {
             "encoding": "jsonParsed",
             "commitment": "confirmed",
-            "maxSupportedTransactionVersion": 0,
+            "maxSupportedTransactionVersion": 1,
         }
 
     def test_objects_are_stringified(self):

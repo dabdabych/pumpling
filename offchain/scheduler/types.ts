@@ -85,6 +85,16 @@ export interface BatchSummary {
     startedAt: number;
     /** When it finished (if it did) */
     finishedAt?: number;
+    /**
+     * When the second pass began, and when it runs out.
+     *
+     * Set only if the main window left something unbought. The site shows the
+     * difference: a round in its second pass is still buying, and its own
+     * countdown ends at `retryEndsAt` rather than at the end of the main
+     * window. A batch that needed no second pass never has these.
+     */
+    retryStartedAt?: number;
+    retryEndsAt?: number;
 }
 
 export interface BatchState {
@@ -102,6 +112,14 @@ export interface BatchState {
         retryBufferMinutes: number;
         startSlippageBps: number;
         maxSlippageBps: number;
+        /**
+         * Whether the keeper already held a token account for this coin.
+         *
+         * False means the first purchase also paid its rent — about 0.0015 SOL,
+         * measured 2026-09-25 — and the refund accounting has to know when it
+         * cannot read that purchase from the chain.
+         */
+        hadAtaAtStart?: boolean;
     };
     /** The purchases */
     purchases: PurchaseRecord[];
@@ -142,6 +160,8 @@ export interface BatchMetrics {
         slippageInstantRetrySuccess: number; // #17
         slippageInstantRetryFail: number;    // #18
         pendingTxConfirmed: number;          // #19, #23, #28
+        /** The retry ladder stopped: its last attempt might still land. */
+        inFlightStopped?: number;
         nonRetryableAbandon: number;         // #20, #25
         retryableDeferred: number;           // #21
         unknownDeferred: number;             // #22

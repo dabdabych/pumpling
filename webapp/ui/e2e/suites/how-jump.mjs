@@ -34,7 +34,20 @@ for (const screen of SCREENS) {
   // whole move, not only what is left when it is over.
   await p.evaluate(() => {
     window.__jumpSamples = [];
-    const id = setInterval(() => window.__jumpSamples.push(Math.round(window.scrollY)), 30);
+    window.__jumpTrace = [];
+    const id = setInterval(() => {
+      window.__jumpSamples.push(Math.round(window.scrollY));
+      // The path travels with the sample: counting how long the first screen
+      // was on show means counting only the samples taken on the main page.
+      // And so does whether anything was over the page: time spent behind the
+      // cover is time nobody saw, and it is what the cover is for.
+      const cover = document.querySelector('.qres-jump-cover');
+      window.__jumpTrace.push({
+        y: Math.round(window.scrollY),
+        path: location.pathname,
+        covered: !!cover && Number(getComputedStyle(cover).opacity) > 0.9,
+      });
+    }, 30);
     setTimeout(() => clearInterval(id), 9000);
   });
   await p.locator('.pool-link', { hasText: 'How it works' }).first().click();
@@ -46,6 +59,26 @@ for (const screen of SCREENS) {
   // A jump shows up as two positions: where we stood and where we arrived. A
   // ride shows up as dozens. Three allows for one intermediate frame.
   ok(positions.length <= 3, `${name}: no scroll ride through the story (${positions.length} positions: ${positions.slice(0, 8).join(', ')})`);
+
+  // How long the first screen was on show before the section arrived.
+  //
+  // Counting distinct positions alone did not catch this: standing at the top
+  // of the main page for a second and a half and then jumping is still only
+  // two positions, and it passed. It was reported as the link lagging, going
+  // to the main page and only then flicking across. Measured at 1884ms, of
+  // which 1550 was the first screen — the story was settled twice over, half a
+  // second each at best, before the section was claimed once at the end.
+  const trace = await p.evaluate(() => window.__jumpTrace);
+  const atTop = trace.filter((s) => s.path === '/' && s.y < 200 && !s.covered).length;
+  const atTopMs = atTop * 30;
+  ok(atTopMs <= 400, `${name}: the first screen is not left on show (${atTopMs}ms at the top)`);
+
+  // The cover is not a way to pass the check above. A page held blank is its
+  // own kind of broken, and the whole move — Angular takes about two tenths of
+  // a second to take the old page out, the story is measured after that — is
+  // done inside a second on the machine this was written on.
+  const coveredMs = trace.filter((s) => s.covered).length * 30;
+  ok(coveredMs <= 900, `${name}: the cover is not up for long (${coveredMs}ms)`);
 
   const hash = await p.evaluate(() => location.hash);
   ok(new URL(p.url()).pathname === '/' && hash === '#how', `${name}: lands on the main page at ${hash}`);

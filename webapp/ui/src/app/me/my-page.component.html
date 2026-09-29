@@ -47,6 +47,10 @@
                 <span class="mcoin__names">
                   <b>${{ coin.ticker }}</b>
                   <span class="mcoin__name">{{ coin.name }}</span>
+                  @if (burnChip(coin.burnBps); as chip) {
+                    <!-- What I asked to have burned, as my commit's memo says. -->
+                    <span class="mcoin__burn"><app-flame [size]="12" />{{ chip }}</span>
+                  }
                 </span>
 
                 <span class="mcoin__mine">

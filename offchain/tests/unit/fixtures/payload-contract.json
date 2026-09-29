@@ -1,0 +1,21 @@
+{
+  "_about": "The contract between the backend's buyer payload (webapp/backend/shared/purchases_payload.py, recipients_for) and the buyer's validation (offchain/api/validation.ts). Both sides test against this file: the backend must build exactly `recipients` from `bets`, and the buyer must accept it and derive the shares in `shares`. Wallet addresses are generated test keys.",
+  "mint": "56AsKxgMEVXcXSdqgzHHcPGJ7owdJwzfd9GyRvh8pump",
+  "bets": [
+    { "wallet": "CKDnmEAGppboDxFefVB73QX1GADsrDiKs4ETdfjfJK3X", "sol": 1.0, "burn_bps": 0 },
+    { "wallet": "CKDnmEAGppboDxFefVB73QX1GADsrDiKs4ETdfjfJK3X", "sol": 2.0, "burn_bps": 5000 },
+    { "wallet": "utReHGHFFJav9dJQEehifNGcXWpUvZHmdpeeJ4ctMhq", "sol": 0.1, "burn_bps": 10000 },
+    { "wallet": "utReHGHFFJav9dJQEehifNGcXWpUvZHmdpeeJ4ctMhq", "sol": 0.2, "burn_bps": 10000 },
+    { "wallet": "EBP8hhiuqqWB4YFKrDAMPMWG27XsrnToJVwtTcxLifYn", "sol": 0.3, "burn_bps": 2500 }
+  ],
+  "recipients": [
+    { "publickey": "CKDnmEAGppboDxFefVB73QX1GADsrDiKs4ETdfjfJK3X", "amount": 3.0, "amountLamports": "3000000000", "burnBps": 3333.33, "burnWeight": "10000000000000" },
+    { "publickey": "utReHGHFFJav9dJQEehifNGcXWpUvZHmdpeeJ4ctMhq", "amount": 0.3, "amountLamports": "300000000", "burnBps": 10000.0, "burnWeight": "3000000000000" },
+    { "publickey": "EBP8hhiuqqWB4YFKrDAMPMWG27XsrnToJVwtTcxLifYn", "amount": 0.3, "amountLamports": "300000000", "burnBps": 2500.0, "burnWeight": "750000000000" }
+  ],
+  "shares": [
+    { "wallet": "CKDnmEAGppboDxFefVB73QX1GADsrDiKs4ETdfjfJK3X", "stake": "3000000000", "burn": "10000000000000" },
+    { "wallet": "utReHGHFFJav9dJQEehifNGcXWpUvZHmdpeeJ4ctMhq", "stake": "300000000", "burn": "3000000000000" },
+    { "wallet": "EBP8hhiuqqWB4YFKrDAMPMWG27XsrnToJVwtTcxLifYn", "stake": "300000000", "burn": "750000000000" }
+  ]
+}

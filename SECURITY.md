@@ -38,6 +38,13 @@ verification endpoint reports `randomness_source: "emergency"`.
 **The program is upgradeable.** The upgrade authority can replace it. Making it
 immutable is on the roadmap and will be announced when it happens.
 
+**The burn is carried out by the keeper.** The choice is on chain, in the
+commit's memo. Burning is the buyer's job, done from the keeper's token
+account. Each burn is its own transaction, and the verification endpoint lists
+them along with the coin's supply before and after the round. If a mint refuses
+a burn, frozen or paused, the tokens owed to the fire stay on the keeper, the
+round says why, and they are delivered to no one.
+
 **A round can stall if nobody drives it.** Closing deposits and starting the
 buying are admin actions. There is no timeout that returns funds yet.
 

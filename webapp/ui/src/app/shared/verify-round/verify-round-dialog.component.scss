@@ -202,3 +202,206 @@
     border-width: 2px 0 0;
   }
 }
+
+/* ------------------------------------------------------------------ the burn */
+
+.verify-burn__hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  box-shadow: 6px 6px 0 var(--qres-purple);
+}
+
+.verify-burn__numbers {
+  min-width: 0;
+}
+
+.verify-burn__amount {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  margin: 0;
+  font-size: clamp(20px, 6.4vw, 28px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.verify-burn__compact {
+  display: none;
+}
+
+.verify-burn__ticker {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.verify-burn__caption {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+/* The fuse: burned so far against what is owed, the flame on its leading edge.
+   Clamped so it never hangs half off either end. */
+.verify-burn__fuse {
+  position: relative;
+  height: 16px;
+  margin-top: 6px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+}
+
+.verify-burn__fill {
+  display: block;
+  height: 100%;
+  background: var(--qres-purple);
+}
+
+.verify-burn__spark {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -60%);
+}
+
+.verify-burn__legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+
+.verify-burn__supply {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 2px dashed rgba(2, 2, 2, 0.3);
+}
+
+.verify-burn__supply div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.verify-burn__supply-after {
+  text-align: right;
+}
+
+.verify-burn__supply-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.55);
+}
+
+.verify-burn__supply-value {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.verify-burn__who {
+  width: 100%;
+  border: 2px solid rgba(2, 2, 2, 0.15);
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.verify-burn__who th {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-align: right;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.55);
+}
+
+.verify-burn__who td {
+  padding: 8px 12px;
+  border-top: 1px solid rgba(2, 2, 2, 0.1);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.verify-burn__who th:first-child,
+.verify-burn__who td:first-child {
+  text-align: left;
+}
+
+.verify-burn__who app-flame {
+  margin-right: 4px;
+}
+
+.verify-burn__total td {
+  font-weight: 800;
+  background: color-mix(in srgb, var(--qres-purple) 14%, var(--qres-white));
+}
+
+.verify-burn__txs {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.verify-burn__txs li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.verify-burn__tx-amount {
+  justify-self: end;
+  font-weight: 700;
+}
+
+.verify-burn__txs a {
+  font-weight: 700;
+  color: var(--qres-black);
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+/* Below 400px the exact number no longer fits beside its ticker: the compact
+   one takes its place, and the legend and the table keep the exact figures. */
+@media (max-width: 399px) {
+  .verify-burn__exact {
+    display: none;
+  }
+
+  .verify-burn__compact {
+    display: inline;
+  }
+
+  .verify-burn__hero {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .verify-burn__who th,
+  .verify-burn__who td {
+    padding: 6px 8px;
+  }
+}

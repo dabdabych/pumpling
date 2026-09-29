@@ -26,6 +26,7 @@ class AppSettings:
     phase2_skip_log_cooldown_seconds: float
     start_purchases_delay_seconds: int
     execution_countdown_seconds: int
+    fallback_countdown_seconds: int
     close_lottery_buffer_seconds: int
     lottery_admin_signer_keypair_json: str
     lottery_admin_signer_keypair_path: str
@@ -83,6 +84,7 @@ class AppSettings:
     #: Jupiter). They sit on the path of a live human request, and it is better
     #: to show a coin without market numbers than to hold someone for half a minute.
     external_lookup_timeout_seconds: float
+    chart_lookup_timeout_seconds: float
 
     @property
     def jwt_secret_key(self) -> str:
@@ -210,19 +212,43 @@ def _resolve_network() -> str:
 
 
 def _default_execution_countdown_seconds(network: str) -> int:
-    """The buying window: how long a round counts as "buying".
+    """The main buying window: the fifty minutes the buyer spends on its first pass.
 
-    55 minutes, not 65. The buyer spends 50 minutes on the main pass by default
-    (`BUY_WINDOW_MINUTES`), leaving five on top for retries. It used to be 65,
-    and the page promised an hour of buying where the buyer finished in fifty.
+    Exactly `BUY_WINDOW_MINUTES` in the buyer, and the page counts down to the
+    same moment. It was 65 first and then 55, both of them guesses with a
+    margin on top, which meant the page showed buying for minutes after the
+    last purchase had been made.
 
-    After that comes the `lottery_autostart_gap_seconds` pause: the round sits
-    at "done" with a countdown to the next pool. A full cycle on mainnet is 111
-    minutes of commits, a couple of minutes of the draw, 55 of buying and 5 of pause.
+    Whatever the first pass could not buy goes into a second one, and that has
+    its own countdown: `fallback_countdown_seconds`.
+
+    After the buying comes the `lottery_autostart_gap_seconds` pause, measured
+    from the moment the round actually closed. A full cycle on mainnet is 111
+    minutes of commits, a couple of minutes of the draw, 50 of buying, up to 15
+    more if something has to be bought again, and 5 of pause.
     """
     if network == "devnet":
         return 15 * 60
-    return 55 * 60
+    return 50 * 60
+
+
+def _default_fallback_countdown_seconds(network: str) -> int:
+    """The second pass: the most the buyer may spend on what it could not buy.
+
+    Fifteen minutes, which is the cap on the buyer's own retry window
+    (`MAX_RETRY_WINDOW_MINUTES`). It is a ceiling, not a schedule: the buyer
+    sizes the window by how many purchases have to be repeated, from three
+    minutes upwards, and a round where everything went through does not have a
+    second pass at all.
+
+    Why the site has to know about it. A round in its second pass is still
+    buying, and closing it on the main window's clock would tell people the
+    round was over while purchases were still going out — and the purchases are
+    the product.
+    """
+    if network == "devnet":
+        return 5 * 60
+    return 15 * 60
 
 
 def _default_autostart_max_total_sol(network: str) -> str:
@@ -334,6 +360,10 @@ def get_settings() -> AppSettings:
             "EXECUTION_COUNTDOWN_SECONDS",
             _default_execution_countdown_seconds(network),
         ),
+        fallback_countdown_seconds=_env_int_non_negative(
+            "FALLBACK_COUNTDOWN_SECONDS",
+            _default_fallback_countdown_seconds(network),
+        ),
         # A round is closed on chain five minutes before the end of the buying
         # window — exactly when the buyer finishes its main pass.
         close_lottery_buffer_seconds=_env_int_non_negative("CLOSE_LOTTERY_BUFFER_SECONDS", 5 * 60),
@@ -407,4 +437,11 @@ def get_settings() -> AppSettings:
             "RPC_PROXY_PUBLIC_FALLBACK_URL", _default_solana_http_endpoint(network)
         ),
         external_lookup_timeout_seconds=_env_float("EXTERNAL_LOOKUP_TIMEOUT_SECONDS", 6.0),
+        # The price chart has its own, longer one. GeckoTerminal is free and
+        # answers in anything from a fraction of a second to about six, so six
+        # was a coin toss: measured answers of 5.9s against a 6s ceiling, and a
+        # miss left the card blank for three minutes. Nobody is blocked by this
+        # one — the chart is a hover, the page is already drawn, and a chart
+        # already held is served while the new one is fetched.
+        chart_lookup_timeout_seconds=_env_float("CHART_LOOKUP_TIMEOUT_SECONDS", 12.0),
     )

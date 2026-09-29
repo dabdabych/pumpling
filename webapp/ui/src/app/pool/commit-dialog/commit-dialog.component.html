@@ -146,6 +146,37 @@
       </div>
     </div>
 
+    <!-- The burn. Part of what is bought for this wallet can be burned on chain
+         instead of delivered; the choice goes into the commit transaction as a
+         memo the wallet signs, so it is as final as the SOL. Offered only for a
+         coin the buyer can actually burn. -->
+    @if (burnOffered) {
+      <div class="commit__burn" role="group" aria-labelledby="commit-burn-title">
+        <div class="commit__priority-head">
+          <span class="commit__burn-title" id="commit-burn-title"><app-flame [size]="14" />Burn</span>
+          <span class="commit__priority-hint">of the tokens bought for you</span>
+        </div>
+        <div class="commit__burn-row">
+          @for (choice of burnChoices; track choice) {
+            <button type="button"
+                    class="commit__burn-option"
+                    [class.is-active]="burn === choice"
+                    [disabled]="send !== 'idle'"
+                    [attr.aria-pressed]="burn === choice"
+                    (click)="selectBurn(choice)">
+              <span class="commit__burn-value">
+                @if (choice > 0) {
+                  <app-flame class="commit__burn-flame" [size]="12" [inverted]="burn === choice" />
+                }{{ choice }}%
+              </span>
+              <span class="commit__burn-keep">{{ keepLabel(choice) }}</span>
+            </button>
+          }
+        </div>
+        <p class="commit__burn-line" aria-live="polite">{{ burnLine.before }}@if (burnLine.bold) {<b>{{ burnLine.bold }}</b>}{{ burnLine.after }}</p>
+      </div>
+    }
+
     <!-- How fast it lands in a block. The network charges for queue position, and
          during a busy hour a commit without it may never arrive. The price is
          computed from the network itself and the recommended level is preselected. -->
@@ -173,7 +204,7 @@
     <div class="commit__facts">
       @if (readyCoin && amountText) {
         <p class="commit__summary">
-          {{ amountText }} SOL goes behind <b>${{ readyCoin.ticker }}</b>@if (shareText) { · {{ shareText }} of the pool }
+          {{ amountText }} SOL goes behind <b>${{ readyCoin.ticker }}</b>@if (shareText) { · {{ shareText }} of the pool }@if (burnSummaryText) { · {{ burnSummaryText }} }
         </p>
         @if (expectedBuyText) {
           <!-- This number is the whole point: the announced buying visibly grows.

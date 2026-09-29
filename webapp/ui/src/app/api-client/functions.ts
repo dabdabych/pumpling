@@ -5,6 +5,8 @@ export type { RegisterAuthRegisterPost$Params } from './fn/auth/register-auth-re
 export { registerAuthRegisterPost } from './fn/auth/register-auth-register-post';
 export type { ConfirmEmailAuthConfirmEmailPost$Params } from './fn/auth/confirm-email-auth-confirm-email-post';
 export { confirmEmailAuthConfirmEmailPost } from './fn/auth/confirm-email-auth-confirm-email-post';
+export type { ResendConfirmationAuthResendConfirmationPost$Params } from './fn/auth/resend-confirmation-auth-resend-confirmation-post';
+export { resendConfirmationAuthResendConfirmationPost } from './fn/auth/resend-confirmation-auth-resend-confirmation-post';
 export type { RequestPasswordResetAuthRequestPasswordResetPost$Params } from './fn/auth/request-password-reset-auth-request-password-reset-post';
 export { requestPasswordResetAuthRequestPasswordResetPost } from './fn/auth/request-password-reset-auth-request-password-reset-post';
 export type { ResetPasswordAuthResetPasswordPost$Params } from './fn/auth/reset-password-auth-reset-password-post';

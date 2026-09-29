@@ -32,6 +32,60 @@ export interface TokenEntry {
 export interface RecipientEntry {
     publickey: PublicKey;
     amount: number; // SOL bet
+    /** The same commit in lamports, exact, when the backend sends it. */
+    amountLamports?: string;
+    /**
+     * How much of what is bought for this wallet it asked to have burned, in
+     * basis points (10000 = all of it). Absent means none.
+     *
+     * The choice is made in the commit transaction itself, as a memo the wallet
+     * signed, and the backend reads it from there; see `shared/burn_memo.py`.
+     * The buyer takes it as given.
+     */
+    burnBps?: number;
+    /**
+     * The exact form of the same choice: Σ(lamports × bps) over this wallet's
+     * commits to the coin, as a decimal string. A wallet can commit twice with
+     * different choices, and a single averaged `burnBps` would have to be
+     * rounded; this does not. When present it wins over `burnBps`.
+     */
+    burnWeight?: string;
+}
+
+/** Who stood behind a coin, as the round was handed to the buyer. */
+export interface RecipientStake {
+    wallet: string;
+    /** The commit, in lamports, as a decimal string: bigint arithmetic throughout. */
+    stakeLamports: string;
+    /** 0..10000, commit-weighted, for display. The arithmetic uses `burnWeight`. */
+    burnBps: number;
+    /** Σ(lamports × bps), decimal string. Absent in a state written before it existed. */
+    burnWeight?: string;
+}
+
+/**
+ * One burn transaction: a share of what was bought for a coin, destroyed.
+ *
+ * The lifecycle is the delivery's, for the same reason and more so. A delivery
+ * sent twice overpays one person; a burn sent twice destroys tokens that belong
+ * to somebody else. So a burn that went out without a confirmation keeps its
+ * signature, and nothing is burned again until that signature has been looked
+ * up on chain.
+ */
+export interface BurnRecord {
+    id: string;
+    mint: string;
+    /** Raw units, decimal string. */
+    rawAmount: string;
+    status: "in_progress" | "completed" | "failed";
+    signature?: string;
+    pendingSignature?: string;
+    /** The last block height at which `pendingSignature` can still land. */
+    pendingLastValidBlockHeight?: number;
+    attempts: number;
+    errorMessage?: string;
+    createdAt: number;
+    updatedAt: number;
 }
 
 // =============================================================================
@@ -40,6 +94,18 @@ export interface RecipientEntry {
 
 export interface TokenBuyRecord {
     mint: string;
+    /**
+     * The coin's whole share of the pool, as the draw set it, before the
+     * delivery reserve was taken out of it.
+     *
+     * A record rather than a working figure: the refund is worked out from
+     * `adjustedSolAmount` plus a share of what delivery did not spend (see
+     * `refundLedger`). It is here because without it the round's file cannot
+     * answer "what did the draw give this coin", and that is the first
+     * question anybody asks of it afterwards.
+     */
+    targetSolAmount?: number;
+    /** What the buying may spend: the share above, less the delivery reserve. */
     adjustedSolAmount: number; // SOL (not lamports)
     status: "pending" | "in_progress" | "completed" | "failed";
     batchRunId?: string;
@@ -57,6 +123,23 @@ export interface TokenBuyRecord {
     /** How many times this coin was taken on: the first pass plus recoveries. */
     attempts?: number;
     errorMessage?: string;
+    /**
+     * Who committed to this coin and what each asked to have burned.
+     *
+     * Kept apart from the deliveries on purpose. Somebody who burns everything
+     * has no deliveries at all, and anything that looked for them there — the
+     * refund of unspent SOL, the verification page — would not find them.
+     */
+    recipients?: RecipientStake[];
+    /** Raw units burned for this coin so far, confirmed on chain. Decimal string. */
+    burnedRaw?: string;
+    /** Set when the coin cannot be burned any more; its tokens are kept, not delivered. */
+    burnBlocked?: { reason: string; at: number };
+    /** The mint's supply before the first purchase and after the round, raw units. */
+    supplyAtStart?: string;
+    supplyAtEnd?: string;
+    /** The mint's decimals, read with the supply: every raw figure of this coin is in them. */
+    decimals?: number;
     updatedAt: number;
 }
 
@@ -78,7 +161,20 @@ export interface SendRecord {
     sendN: number;    // calculateSendN(recipientBetSol)
     round: number;    // 1-based
     amount?: string;  // raw token units (bigint as string)
+    /**
+     * What left the keeper for this delivery, raw units. The same as `amount`
+     * except on a mint with a transfer fee, where `amount` is what arrived.
+     * A coin with burners is delivered against this figure: a wallet's share
+     * is an allocation of the keeper's tokens, so the fee on its own transfers
+     * comes out of its own share and never out of anybody else's, or the fire's.
+     */
+    grossAmount?: string;
     status: SendStatus;
+    /**
+     * A top-up added after the buying ended, for a recipient whose share grew
+     * after their last delivery. See `settle.ts`.
+     */
+    topUp?: boolean;
     signature?: string;
     /**
      * The signature of a transaction that went out but whose confirmation we
@@ -87,6 +183,14 @@ export interface SendRecord {
      * while the others came up short out of the same remainder.
      */
     pendingSignature?: string;
+    /** The last block height at which `pendingSignature` can still land. */
+    pendingLastValidBlockHeight?: number;
+    /**
+     * Earlier attempts that reached the chain and failed there. Nothing was
+     * delivered by them, but each paid its fee, and the refund accounting reads
+     * what the round was charged from every signature it ever sent.
+     */
+    failedSignatures?: string[];
     attempts: number;
     errorMessage?: string;
     hadAtaAtStart?: boolean;
@@ -153,6 +257,17 @@ export interface LotteryState {
     sends: SendRecord[];
     /** Refunds of unspent SOL; empty until the buying is over. */
     refunds?: RefundRecord[];
+    /** Burn transactions, every coin together. */
+    burns?: BurnRecord[];
+    /**
+     * Tokens each completed purchase brought, raw units as a decimal string,
+     * keyed by the purchase signature. Read from the confirmed transaction
+     * itself rather than from the keeper's balance: a balance read straight
+     * after our own transaction can come back from a node that has not caught
+     * up yet (seen on 2026-09-28), and a burn worked out from a stale balance
+     * destroys tokens that belong to somebody else.
+     */
+    purchaseTokens?: Record<string, string>;
     summary: LotterySummary;
     /** Event metrics (the ones not derivable from statuses) */
     metrics?: LotteryMetrics;

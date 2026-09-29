@@ -2,6 +2,9 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Inject } from '@
 import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
 
 import { RoundVerification, VerifyRoundService } from './verify-round.service';
+import { BurnView, buildBurnView, fuseLeft } from './burn-view';
+import { FlameComponent } from '../flame/flame.component';
+import { environment } from '../../../environments/environment';
 
 export interface VerifyRoundDialogData {
   lotteryId: number;
@@ -23,6 +26,7 @@ export interface VerifyRoundDialogData {
 @Component({
   selector: 'app-verify-round-dialog',
   standalone: true,
+  imports: [FlameComponent],
   templateUrl: './verify-round-dialog.component.html',
   styleUrls: ['./verify-round-dialog.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -32,6 +36,7 @@ export class VerifyRoundDialogComponent {
   loading = true;
   failed = false;
   copied: string | null = null;
+  private burnCache: { data: RoundVerification; views: BurnView[] } | null = null;
 
   constructor(
     @Inject(MAT_DIALOG_DATA) public readonly input: VerifyRoundDialogData,
@@ -55,6 +60,40 @@ export class VerifyRoundDialogComponent {
       restoreFocus: true,
       ariaLabelledBy: 'verify-dialog-title'
     });
+  }
+
+  /** The burn section, one block per coin with a burn. Built once per answer. */
+  get burnViews(): BurnView[] {
+    if (!this.data) {
+      return [];
+    }
+    if (this.burnCache?.data !== this.data) {
+      this.burnCache = { data: this.data, views: (this.data.burns ?? []).map(buildBurnView) };
+    }
+    return this.burnCache.views;
+  }
+
+  /** A wallet in the burn table: four and four, so the table fits a 320px phone. */
+  wallet(value: string): string {
+    const text = (value || '').trim();
+    return text.length > 10 ? `${text.slice(0, 4)}…${text.slice(-4)}` : text;
+  }
+
+  fuseLeft(progress: number | null): string {
+    return fuseLeft(progress);
+  }
+
+  /** "16:31 UTC": the burns happen within one hour, the date adds nothing. */
+  utcTime(atMs: number): string {
+    if (!atMs) {
+      return '';
+    }
+    const at = new Date(atMs);
+    return `${String(at.getUTCHours()).padStart(2, '0')}:${String(at.getUTCMinutes()).padStart(2, '0')} UTC`;
+  }
+
+  txUrl(signature: string): string {
+    return `https://solscan.io/tx/${signature}${environment.solanaExplorerQuery || ''}`;
   }
 
   get jsonUrl(): string {

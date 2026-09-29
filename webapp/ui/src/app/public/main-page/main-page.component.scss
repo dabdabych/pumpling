@@ -760,3 +760,14 @@
   user-select: text;
 }
 
+
+
+/* Covers the story while it is being put on the asked-for section. Plain
+   background, no animation: it is there to hide a correction that lasts a
+   fifth of a second, not to be noticed itself. */
+.qres-jump-cover {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--qres-white);
+}

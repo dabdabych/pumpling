@@ -15,6 +15,36 @@ class OffchainApiClient:
     Client for offchain API execute endpoint.
     """
 
+    #: `/health` sits in front of the API key check and answers in milliseconds
+    #: from the neighbouring container. Asking once per round is free.
+    KEEPER_TIMEOUT_SECONDS = 4.0
+
+    def keeper_pubkey(self) -> str | None:
+        """Which wallet the buyer actually spends from, or None if it did not say.
+
+        The round records a keeper on chain and the pool is paid out to it when
+        the buying starts. If that is not the wallet the buyer holds a key for,
+        the money lands somewhere the buyer cannot reach: nothing gets bought
+        and nothing gets refunded. It happened on the stand on 2026-09-24 and
+        nothing noticed, because the two are configured in different places and
+        nothing ever compared them.
+
+        None means the buyer did not answer. That is not evidence of a mismatch
+        and must not be treated as one.
+        """
+        settings = get_settings()
+        url = f"{settings.offchain_api_base_url.rstrip('/')}/health"
+        try:
+            with request.urlopen(url, timeout=self.KEEPER_TIMEOUT_SECONDS) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:  # noqa: BLE001 - any failure means "cannot say"
+            logger.warning("Offchain health check unavailable (url=%s, error=%s)", url, exc)
+            return None
+
+        keeper = (body or {}).get("keeper") or {}
+        pubkey = keeper.get("publicKey")
+        return str(pubkey) if pubkey else None
+
     def execute_lottery(self, payload: dict[str, object]) -> dict[str, object]:
         settings = get_settings()
         url = f"{settings.offchain_api_base_url.rstrip('/')}/execute"

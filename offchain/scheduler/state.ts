@@ -233,6 +233,18 @@ export class BatchStateManager {
     }
 
     /**
+     * Records the second pass: it started now and runs out at `endsAt`.
+     *
+     * Written before the first retry rather than after the last, because the
+     * point of it is to be read while it is running.
+     */
+    markRetryWindow(startedAt: number, endsAt: number): void {
+        this.state.summary.retryStartedAt = startedAt;
+        this.state.summary.retryEndsAt = endsAt;
+        this.save();
+    }
+
+    /**
      * Increments a metric by dot-path.
      * Example: incrementMetric("venueRouting.fallbackToDex")
      */
@@ -305,6 +317,7 @@ export function createEmptyBatchMetrics(): BatchMetrics {
             slippageInstantRetrySuccess: 0,
             slippageInstantRetryFail: 0,
             pendingTxConfirmed: 0,
+            inFlightStopped: 0,
             nonRetryableAbandon: 0,
             retryableDeferred: 0,
             unknownDeferred: 0,

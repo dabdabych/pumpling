@@ -44,6 +44,14 @@ GECKOTERMINAL_BASE = "https://api.geckoterminal.com/api/v2"
 CACHE_TTL_SECONDS = 45.0
 #: How long not to go back if the source stayed silent.
 FAILURE_TTL_SECONDS = 180.0
+#: How long a chart is still worth showing while a fresh one is fetched.
+#:
+#: GeckoTerminal is free and sometimes slow: measured answers of 5.9 seconds
+#: against a timeout that was six. A miss meant the tooltip had nothing at all
+#: for three minutes, and the person hovering saw an empty card with no reason
+#: given. Three minutes of staleness on a minute-candle chart is a few candles
+#: behind; nothing is a blank.
+STALE_TTL_SECONDS = 180.0
 #: Our own ceiling on requests per minute, below the free access limit.
 MAX_CALLS_PER_MINUTE = 20
 #: How many minute candles to ask for.
@@ -65,6 +73,9 @@ class CoinChart:
 
 _lock = threading.Lock()
 _cache: dict[str, tuple[float, CoinChart]] = {}
+#: The last chart that actually had points, kept past its freshness so a slow
+#: source shows an old chart rather than none. Failures never land here.
+_stale: dict[str, tuple[float, CoinChart]] = {}
 _calls: list[float] = []
 _inflight: dict[str, threading.Event] = {}
 
@@ -96,8 +107,24 @@ def coin_chart(
             owner = False
 
     if not owner:
+        # Somebody is already fetching. An old chart beats waiting for it.
+        stale = _stale_chart(mint)
+        if stale is not None:
+            return stale
         pending.wait(timeout=timeout_seconds + 1)
-        return _cached(mint) or CoinChart(available=False)
+        return _cached(mint) or _stale_chart(mint) or CoinChart(available=False)
+
+    # We have a chart, it has simply gone stale: hand it over now and fetch the
+    # new one behind the request. Nobody waits for a source we do not control.
+    stale = _stale_chart(mint)
+    if stale is not None:
+        threading.Thread(
+            target=_refresh,
+            args=(mint, pool_address, venue, timeout_seconds, fetcher, pending),
+            name=f"coin-chart-{mint[:8]}",
+            daemon=True,
+        ).start()
+        return stale
 
     try:
         if not _allow_call():
@@ -130,6 +157,41 @@ def coin_chart(
         pending.set()
 
 
+def _refresh(
+    mint: str,
+    pool_address: str,
+    venue: Optional[str],
+    timeout_seconds: float,
+    fetcher: Optional[Callable[[str, float], list[list[float]]]],
+    pending: threading.Event,
+) -> None:
+    """Fetch behind the request that was answered from the stale chart."""
+    try:
+        if not _allow_call():
+            return
+        raw = (fetcher or _fetch_ohlcv)(pool_address, timeout_seconds)
+        points = _to_points(raw)
+        if len(points) >= 2:
+            _remember(
+                mint,
+                CoinChart(
+                    available=True,
+                    points=points,
+                    minutes=max(0, round((points[-1][0] - points[0][0]) / 60)),
+                    pool=pool_address,
+                    venue=venue,
+                ),
+                CACHE_TTL_SECONDS,
+            )
+    except Exception:
+        # Nothing to report: the request it was refreshing already has a chart.
+        logger.info("coin chart refresh failed (mint=%s)", mint, exc_info=True)
+    finally:
+        with _lock:
+            _inflight.pop(mint, None)
+        pending.set()
+
+
 def _cached(mint: str) -> Optional[CoinChart]:
     with _lock:
         entry = _cache.get(mint)
@@ -138,12 +200,25 @@ def _cached(mint: str) -> Optional[CoinChart]:
     return None
 
 
+def _stale_chart(mint: str) -> Optional[CoinChart]:
+    with _lock:
+        entry = _stale.get(mint)
+        if entry and time.monotonic() < entry[0]:
+            return entry[1]
+    return None
+
+
 def _remember(mint: str, chart: CoinChart, ttl: float) -> None:
     with _lock:
         _cache[mint] = (time.monotonic() + ttl, chart)
+        # Only a chart with points is worth showing later. A failure must never
+        # push one out: that is the whole point of keeping them apart.
+        if chart.available:
+            _stale[mint] = (time.monotonic() + STALE_TTL_SECONDS, chart)
         if len(_cache) > 256:
             for key, _ in sorted(_cache.items(), key=lambda item: item[1][0])[:64]:
                 _cache.pop(key, None)
+                _stale.pop(key, None)
 
 
 def _allow_call() -> bool:

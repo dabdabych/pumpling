@@ -31,6 +31,21 @@ export interface CoinChart {
 const EMPTY: CoinChart = { available: false, points: [], minutes: 0, venue: null, priceUsd: null, changePct: null };
 /** The same as the server holds: beyond that it is worth asking again. */
 const FRESH_MS = 45_000;
+/**
+ * How long to remember that there was no chart, when there might be one.
+ *
+ * Much shorter than a real answer, because a blank is usually a slow source
+ * rather than a coin without a market: GeckoTerminal is free and occasionally
+ * takes seconds. The server keeps the last chart it had and refreshes behind
+ * the request, so the hover after this one normally has something to draw.
+ *
+ * Only for coins that have a market. A coin with no pool at all has no chart
+ * and never will, and asking again every eight seconds while somebody runs
+ * their mouse down a table of them would be our own rate limit spent on a
+ * known answer: `/lottery/coin/` allows 120 requests a minute, and thirty
+ * coins swept every eight seconds is 225.
+ */
+const EMPTY_FRESH_MS = 8_000;
 
 @Injectable({ providedIn: 'root' })
 export class CoinChartService {
@@ -42,7 +57,14 @@ export class CoinChartService {
   /** The ready chart, if it is already loaded: the tooltip draws at once. */
   cached(mint: string): CoinChart | null {
     const entry = this.cache.get(mint);
-    return entry && Date.now() - entry.at < FRESH_MS ? entry.chart : null;
+    if (!entry) {
+      return null;
+    }
+    // No venue means the server found no pool for this coin: that answer does
+    // not change in the next minute. Anything else is worth asking again soon.
+    const transient = !entry.chart.available && entry.chart.venue !== null;
+    const fresh = transient ? EMPTY_FRESH_MS : FRESH_MS;
+    return Date.now() - entry.at < fresh ? entry.chart : null;
   }
 
   async load(mint: string): Promise<CoinChart> {

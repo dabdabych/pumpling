@@ -12,6 +12,8 @@ import { LegalDialogComponent } from '../../shared/legal/legal-dialog.component'
 import { authSelector } from '../../store/selectors/auth';
 import { IAppState } from '../../store/state/app.state';
 import { CheckedCoin, CommitError, CommitService, SentCommit } from '../commit.service';
+import { BURN_CHOICES, BurnPercent, burnKeepLabel, burnSentence, burnSummary } from '../burn';
+import { FlameComponent } from '../../shared/flame/flame.component';
 import { PRIORITY_LEVELS, PriorityLevel, RECOMMENDED_LEVEL, feeLabel, isPriorityLevel, priceFor } from '../priority-fee';
 import { WalletService, isWalletFlowInterruption } from '../../shared/wallet.service';
 import { linkedWalletAddress } from '../../shared/wallet-link';
@@ -56,7 +58,7 @@ const PICK_LIMIT = 5;
 @Component({
   selector: 'app-commit-dialog',
   standalone: true,
-  imports: [DecimalPipe, FormsModule],
+  imports: [DecimalPipe, FormsModule, FlameComponent],
   templateUrl: './commit-dialog.component.html',
   styleUrls: ['./commit-dialog.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -69,6 +71,9 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
   priority: PriorityLevel = RECOMMENDED_LEVEL;
   /** What the network is paying right now; empty means no answer yet or the node stayed silent. */
   priorityEstimate: number | null = null;
+  /** The burn choices and the chosen one. Always 0% when the dialog opens. */
+  readonly burnChoices = BURN_CHOICES;
+  burn: BurnPercent = 0;
   /** What will sign the commit: the wallet name and address. */
   walletName: string | null = null;
   walletAddress: string | null = null;
@@ -449,6 +454,36 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
+  /** The burn is offered only for a coin the buyer can burn; see `can_burn` on the backend. */
+  get burnOffered(): boolean {
+    return this.readyCoin?.canBurn === true && this.poolOpen;
+  }
+
+  /** What is sent: nothing unless the choice is on screen. */
+  get burnToSend(): BurnPercent {
+    return this.burnOffered ? this.burn : 0;
+  }
+
+  get burnLine(): { before: string; bold: string; after: string } {
+    return burnSentence(this.burn);
+  }
+
+  get burnSummaryText(): string {
+    return burnSummary(this.burnToSend);
+  }
+
+  keepLabel(choice: BurnPercent): string {
+    return burnKeepLabel(choice);
+  }
+
+  selectBurn(choice: BurnPercent): void {
+    if (this.send !== 'idle') {
+      return;
+    }
+    this.burn = choice;
+    this.cdr.markForCheck();
+  }
+
   /** The level caption: what it costs on top of the network fee. */
   priorityCost(level: PriorityLevel): string {
     return feeLabel(priceFor(level, this.priorityEstimate));
@@ -510,7 +545,8 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
         accounts: snapshot.accounts,
         mint: coin.mint,
         lamports,
-        priority: this.priority
+        priority: this.priority,
+        burn: this.burnToSend
       });
       this.zone.run(() => {
         this.send = 'idle';
@@ -539,6 +575,12 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
         return;
       }
       this.coin = { kind: 'ready', coin };
+      // A coin that cannot be burned takes the choice with it: coming back to
+      // one that can, a person starts from none again rather than from a
+      // choice they made for something else.
+      if (!coin.canBurn) {
+        this.burn = 0;
+      }
       // The coin is found — the amount is next.
       if (!this.amountInput) {
         setTimeout(() => this.amountField?.nativeElement.focus());

@@ -34,6 +34,7 @@ from database.models.bet_participation_model import BetParticipationModel
 from sqlalchemy.exc import IntegrityError
 from database.models.lottery_model import LotteryModel, LotteryStatus
 from shared.bet_confirmation import BET_STATUS_CONFIRMED
+from shared.burn_memo import burn_bps_from_logs
 from shared.deposit_event_decoder import DEPOSIT_EVENT_DISCRIMINATOR, decode_deposit_event
 from shared.solana_rpc import SolanaJsonRpc, signature_failed
 from shared.wallet_owner import resolve_wallet_owner_id
@@ -464,7 +465,7 @@ def _persist_event(event_name: str, signature: Optional[str], event_data: Any, r
         _handle_vrf_fulfilled(session, event_name, event_data)
         _handle_purchases_phase_started(session, event_name, event_data)
         _handle_phase_changed(session, event_name, event_data)
-        _handle_deposit(session, event_name, event_data, signature)
+        _handle_deposit(session, event_name, event_data, signature, raw_logs)
     except IntegrityError as exc:
         session.rollback()
         # Duplicate (signature, event_name) can happen when polling and websocket overlap.
@@ -484,7 +485,7 @@ def _persist_event(event_name: str, signature: Optional[str], event_data: Any, r
                 _handle_vrf_fulfilled(session, event_name, event_data)
                 _handle_purchases_phase_started(session, event_name, event_data)
                 _handle_phase_changed(session, event_name, event_data)
-                _handle_deposit(session, event_name, event_data, signature)
+                _handle_deposit(session, event_name, event_data, signature, raw_logs)
             except Exception:
                 logging.exception("Failed to handle duplicate event %s (%s)", event_name, signature)
             return
@@ -612,7 +613,13 @@ def _handle_lottery_initialized(session, event_name: str, event_data: Any) -> No
     _LOTTERY_PUBKEY_CACHE[str(lottery_pubkey)] = lottery_id
 
 
-def _handle_deposit(session, event_name: str, event_data: Any, signature: Optional[str]) -> None:
+def _handle_deposit(
+    session,
+    event_name: str,
+    event_data: Any,
+    signature: Optional[str],
+    raw_logs: Optional[List[str]] = None,
+) -> None:
     if event_name != "Deposit":
         return
 
@@ -680,6 +687,11 @@ def _handle_deposit(session, event_name: str, event_data: Any, signature: Option
         except Exception:
             bet_time = None
 
+    # The burn choice rides in the same transaction as a memo. The log is what
+    # both paths have, the websocket one included, and the backend reads the
+    # same log when the browser reports the commit, so either records the same.
+    burn_bps = burn_bps_from_logs(raw_logs)
+
     bet = BetParticipationModel(
         user_id=owner_id,
         lottery_id=lottery_id,
@@ -690,10 +702,11 @@ def _handle_deposit(session, event_name: str, event_data: Any, signature: Option
         confirmation_status=BET_STATUS_CONFIRMED,
         confirmed_at=datetime.now(timezone.utc),
         created_at=bet_time,
+        burn_bps=burn_bps,
     )
     session.add(bet)
     session.commit()
-    logging.info("Inserted bet for lottery %s from wallet %s.", lottery_id, user_pubkey)
+    logging.info("Inserted bet for lottery %s from wallet %s (burn %s bps).", lottery_id, user_pubkey, burn_bps)
 
 
 def _handle_phase2_started(session, event_name: str, event_data: Any) -> None:
@@ -1114,7 +1127,7 @@ async def _poll_events(stop_event: asyncio.Event, program_id: Pubkey, parser: Ev
                     tx = await rpc.get_transaction(
                         sig,
                         encoding="jsonParsed",
-                        max_supported_transaction_version=0,
+                        max_supported_transaction_version=1,
                     )
                     if tx is None or _extract_transaction_error(tx) is not None:
                         seen_signatures.add(sig)

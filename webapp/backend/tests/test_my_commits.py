@@ -26,7 +26,8 @@ MINT_B = "MintB11111111111111111111111111111111111111"
 
 
 class FakeBet:
-    def __init__(self, user_id, lottery_id, mint, sol, wallet="Wal1et1111111111111111111111111111111111111", signature=None):
+    def __init__(self, user_id, lottery_id, mint, sol, wallet="Wal1et1111111111111111111111111111111111111", signature=None, burn_bps=0):
+        self.burn_bps = burn_bps
         self.user_id = user_id
         self.lottery_id = lottery_id
         self.meme_coin_address = mint
@@ -173,3 +174,23 @@ def test_a_person_without_commits_gets_an_empty_answer():
 
     assert result.total_sol == 0
     assert result.rounds == []
+
+
+def test_my_burn_is_shown_weighted_by_what_i_put_in():
+    bets = [
+        FakeBet(1, 7, MINT_A, 1.0, burn_bps=0),
+        FakeBet(1, 7, MINT_A, 3.0, burn_bps=10_000),
+        FakeBet(1, 7, MINT_B, 2.0),
+        FakeBet(2, 7, MINT_A, 5.0, burn_bps=5000),  # someone else's: not mine
+    ]
+    coins = {coin.mint: coin for coin in _commits(FakeSession(bets, 1)).rounds[0].coins}
+    assert coins[MINT_A].burn_bps == 7500.0
+    assert coins[MINT_B].burn_bps == 0.0
+
+
+def test_the_average_burn_helper():
+    assert router._average_burn_bps(30_000.0, 4.0) == 7500.0
+    assert router._average_burn_bps(None, 4.0) == 0.0
+    assert router._average_burn_bps(10.0, 0) == 0.0
+    assert router._average_burn_bps(10.0**9, 1.0) == 10_000.0
+    assert router._average_burn_bps("junk", 1.0) == 0.0

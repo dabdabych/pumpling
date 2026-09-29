@@ -33,6 +33,12 @@ class ResendConfirmationResponse(BaseModel):
 class EmailConfirmationResponse(BaseModel):
     email: str
     message: str
+    #: A session for the account that was just confirmed. Opening the link is
+    #: proof of holding the address, which is the same thing a password proves,
+    #: so asking the person to sign in straight afterwards is a step for its own
+    #: sake. None when a session could not be issued; the page then falls back
+    #: to the sign-in screen.
+    access_token: Optional[str] = None
 
 
 class PasswordResetRequest(BaseModel):

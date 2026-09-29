@@ -23,9 +23,21 @@ logger = logging.getLogger(__name__)
 # How long to leave a mint alone after a failed attempt.
 RETRY_AFTER_SECONDS = 30 * 60
 
+#: How many times to come back for a mint that keeps coming back incomplete.
+#:
+#: A coin can reach a round with a name and no picture: the metadata was read
+#: at a moment when the image had not been uploaded, or the source had it and
+#: did not say. The card then stayed without a picture for ever, because the
+#: row existed and nothing asked again. Now it is asked again — about once
+#: every half hour while the coin is on screen, and not for ever, because a
+#: coin that genuinely has no image would otherwise cost a lookup every half
+#: hour until the end of time.
+MAX_ATTEMPTS = 6
+
 _lock = threading.Lock()
 _queued: set[str] = set()
 _attempted: dict[str, datetime] = {}
+_attempts: dict[str, int] = {}
 _worker: Optional[threading.Thread] = None
 _queue: list[str] = []
 _wakeup = threading.Condition(_lock)
@@ -51,6 +63,8 @@ def request_fill(mint: str) -> None:
             return
         attempted_at = _attempted.get(mint)
         if attempted_at and now - attempted_at < timedelta(seconds=RETRY_AFTER_SECONDS):
+            return
+        if _attempts.get(mint, 0) >= MAX_ATTEMPTS:
             return
         _queued.add(mint)
         _queue.append(mint)
@@ -86,14 +100,17 @@ def _run() -> None:
             _queued.discard(mint)
             if not filled:
                 _attempted[mint] = datetime.now(timezone.utc)
+                _attempts[mint] = _attempts.get(mint, 0) + 1
             else:
                 _attempted.pop(mint, None)
+                _attempts.pop(mint, None)
 
 
 def forget(mint: str) -> None:
     """Forget a failure: the mint was learned another way, so it can be tried again."""
     with _wakeup:
         _attempted.pop(mint, None)
+        _attempts.pop(mint, None)
 
 
 def pending_count() -> int:

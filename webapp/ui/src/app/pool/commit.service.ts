@@ -1,7 +1,8 @@
 import { HttpContext, HttpErrorResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { AnchorProvider, BN, Program } from '@coral-xyz/anchor';
-import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
+import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { Buffer } from 'buffer';
 import { firstValueFrom } from 'rxjs';
 
 import { environment } from '../../environments/environment';
@@ -14,6 +15,7 @@ import { isBlockedBetMint } from '../shared/blocked-bet-mints';
 import { SUPPRESS_GLOBAL_ERROR_DIALOG } from '../shared/http-context-tokens';
 import { buildPendingTransactionMessage, waitForConfirmedTransactionSignature } from '../shared/solana-transaction-confirmation';
 import { isWalletFlowInterruption, WalletService } from '../shared/wallet.service';
+import { BurnPercent, MEMO_PROGRAM_ID, burnMemoText } from './burn';
 import { lamportsToSol } from './lamports';
 import { DEPOSIT_COMPUTE_UNITS, PriorityLevel, RECOMMENDED_LEVEL, estimateFromSamples, priceFor } from './priority-fee';
 import { PoolAccounts, PoolMarket } from './pool-state';
@@ -27,6 +29,8 @@ export interface CheckedCoin {
   venue: string | null;
   /** The coin's market: price, market cap, liquidity. Empty if the source stayed silent. */
   market: CoinMarket | null;
+  /** Whether the buyer can burn this coin: the burn choice is offered only then. */
+  canBurn: boolean;
 }
 
 export interface CoinMarket {
@@ -47,6 +51,8 @@ export interface CommitRequest {
   lamports: bigint;
   /** How much of a hurry we are in to land in a block. Empty means the recommended level. */
   priority?: PriorityLevel;
+  /** The share of the tokens bought for this wallet to burn. Empty or 0 means none, and no memo. */
+  burn?: BurnPercent;
 }
 
 export type CommitOutcome =
@@ -128,7 +134,8 @@ export class CommitService {
       ticker,
       logoUrl: /^https?:\/\//i.test(response.token_image_url || '') ? response.token_image_url!.trim() : null,
       venue: market === 'dex' ? coinVenue(response) : null,
-      market: coinMarket(response)
+      market: coinMarket(response),
+      canBurn: response.can_burn === true
     };
     this.checkedCoins.set(cacheKey, coin);
     this.checkedCoins.set(`${market}:${canonical}`, coin);
@@ -173,6 +180,13 @@ export class CommitService {
       ComputeBudgetProgram.setComputeUnitPrice({ microLamports }),
       ...deposit.instructions
     );
+    // The burn choice rides in the same transaction, signed with the deposit:
+    // that is what makes it final and public. The backend reads it back from
+    // here and nowhere else. None chosen, no memo.
+    const memo = burnMemoInstruction(payer, request.burn ?? 0);
+    if (memo) {
+      transaction.add(memo);
+    }
 
     let signature: string;
     try {
@@ -312,6 +326,23 @@ export class CommitService {
   }
 }
 
+/**
+ * The memo carrying the burn choice. The payer is listed as a signer so the
+ * memo program logs who signed it; it adds no signature, the payer signs the
+ * transaction anyway.
+ */
+export function burnMemoInstruction(payer: PublicKey, percent: BurnPercent): TransactionInstruction | null {
+  const text = burnMemoText(percent);
+  if (!text) {
+    return null;
+  }
+  return new TransactionInstruction({
+    programId: new PublicKey(MEMO_PROGRAM_ID),
+    keys: [{ pubkey: payer, isSigner: true, isWritable: false }],
+    data: Buffer.from(text, 'utf-8')
+  });
+}
+
 /** Anchor needs a wallet, but the real provider signs separately. */
 function readOnlyWallet(publicKey: PublicKey) {
   return {
@@ -410,6 +441,12 @@ function mintCheckError(error: unknown): string {
   const detail = httpDetail(error);
   if (/invalid mint/i.test(detail)) {
     return 'That is not a Solana token address.';
+  }
+  // The address parses as a public key but no token lives at it. Saying so
+  // beats "try again in a moment", which reads as our problem rather than a
+  // typo in the address.
+  if (/not a coin on Solana/i.test(detail)) {
+    return 'No coin exists at that address. Check you pasted the mint address.';
   }
   if (/USDC|wSOL|SOL\/wSOL/i.test(detail)) {
     return 'SOL, wSOL and USDC are not memecoins. Paste the address of the coin you want bought.';

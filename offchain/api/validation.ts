@@ -25,7 +25,20 @@ export class ValidationError extends Error {
 export interface RawRecipient {
     publickey: string;
     amount: number;    // SOL bet (not lamports)
+    /** The same commit in lamports, decimal string. Optional. */
+    amountLamports?: string;
+    /** Share of this wallet's tokens to burn, 0..10000, commit-weighted. Optional. */
+    burnBps?: number;
+    /** Σ(lamports × bps) over the wallet's commits, decimal string. Optional. */
+    burnWeight?: string;
 }
+
+/**
+ * How far `amountLamports` may sit from `amount`. The backend sends `amount`
+ * rounded to eight decimals, which alone is up to 5 lamports; anything past
+ * this is two different numbers, not rounding.
+ */
+const AMOUNT_TOLERANCE_LAMPORTS = 1_000n;
 
 export interface RawToken {
     mint: string;
@@ -143,10 +156,13 @@ export function validateAndConvert(
                 errors.push(`${rPrefix}.amount: must be a positive number`);
             }
 
-            if (recipientKey && typeof rRaw.amount === "number" && rRaw.amount > 0) {
+            const burn = validateBurnFields(rRaw, rPrefix, errors);
+
+            if (recipientKey && typeof rRaw.amount === "number" && rRaw.amount > 0 && burn) {
                 recipients.push({
                     publickey: recipientKey,
                     amount: rRaw.amount,
+                    ...burn,
                 });
             }
         }
@@ -169,4 +185,71 @@ export function validateAndConvert(
         tokens,
         keeper,
     };
+}
+
+/**
+ * The burn fields of one recipient, checked.
+ *
+ * They are optional, and a payload without them is a round nobody burns in —
+ * that is every round before the burn existed. When they are there they have to
+ * make sense together: a burn weight is a claim on other people's tokens being
+ * destroyed, so a malformed one stops the round rather than being guessed at.
+ *
+ * @returns the fields to keep, or null when one of them is wrong.
+ */
+function validateBurnFields(
+    raw: Record<string, unknown>,
+    prefix: string,
+    errors: string[]
+): Pick<RecipientEntry, "amountLamports" | "burnBps" | "burnWeight"> | null {
+    const before = errors.length;
+    const out: Pick<RecipientEntry, "amountLamports" | "burnBps" | "burnWeight"> = {};
+
+    let stake: bigint | null = null;
+    if (raw.amountLamports !== undefined) {
+        if (typeof raw.amountLamports !== "string" || !/^[1-9]\d*$/.test(raw.amountLamports)) {
+            errors.push(`${prefix}.amountLamports: must be a positive integer as a decimal string`);
+        } else {
+            stake = BigInt(raw.amountLamports);
+            if (typeof raw.amount === "number" && Number.isFinite(raw.amount)) {
+                const fromAmount = BigInt(Math.round(raw.amount * 1e9));
+                const gap = stake > fromAmount ? stake - fromAmount : fromAmount - stake;
+                if (gap > AMOUNT_TOLERANCE_LAMPORTS) {
+                    errors.push(`${prefix}.amountLamports: ${raw.amountLamports} does not match amount ${raw.amount}`);
+                }
+            }
+            out.amountLamports = raw.amountLamports;
+        }
+    }
+    if (stake === null && typeof raw.amount === "number" && Number.isFinite(raw.amount)) {
+        stake = BigInt(Math.round(raw.amount * 1e9));
+    }
+
+    if (raw.burnBps !== undefined) {
+        if (typeof raw.burnBps !== "number" || !Number.isFinite(raw.burnBps) || raw.burnBps < 0 || raw.burnBps > 10_000) {
+            errors.push(`${prefix}.burnBps: must be a number from 0 to 10000`);
+        } else {
+            out.burnBps = raw.burnBps;
+        }
+    }
+
+    if (raw.burnWeight !== undefined) {
+        if (typeof raw.burnWeight !== "string" || !/^\d+$/.test(raw.burnWeight)) {
+            errors.push(`${prefix}.burnWeight: must be a non-negative integer as a decimal string`);
+        } else if (stake !== null && BigInt(raw.burnWeight) > stake * 10_000n) {
+            errors.push(`${prefix}.burnWeight: more than the whole commit`);
+        } else {
+            out.burnWeight = raw.burnWeight;
+            // Both forms given: they must say the same thing, to within the
+            // rounding of the display figure.
+            if (out.burnBps !== undefined && stake !== null && stake > 0n) {
+                const exact = Number((BigInt(raw.burnWeight) * 100n) / stake) / 100;
+                if (Math.abs(exact - out.burnBps) > 1) {
+                    errors.push(`${prefix}.burnWeight: says ${exact} bps, burnBps says ${out.burnBps}`);
+                }
+            }
+        }
+    }
+
+    return errors.length === before ? out : null;
 }

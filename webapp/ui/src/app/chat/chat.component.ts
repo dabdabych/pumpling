@@ -73,6 +73,12 @@ const ACK_TIMEOUT_MS = 5000;
 const MAX_SEND_ATTEMPTS = 3;
 const EMOJIS = ['😀', '😂', '😍', '🤝', '🔥', '🚀', '🎉', '💎', '👍', '👀', '❤️', '🙌'];
 
+/** How long the newest message is held in view after the chat opens: long
+  * enough for the images in the last few messages to land, short enough
+  * that it is over before anybody reaches for the wheel. Any gesture ends
+  * it sooner. */
+const CHAT_OPEN_HOLD_MS = 2500;
+
 @Component({
   selector: 'app-chat',
   templateUrl: './chat.component.html',
@@ -113,6 +119,30 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   private reconnectAttempt = 0;
   private destroyed = false;
   private pendingScrollToBottom = false;
+  /**
+   * Keep the view pinned to the newest message while the feed is still growing.
+   *
+   * The first scroll to the bottom runs as soon as the messages render, and at
+   * that moment the images and GIFs in them have no height yet. They load a
+   * moment later, the feed grows under the viewport, and what was the bottom
+   * ends up near the top — which is how the chat greeted everyone who opened
+   * the site. So the bottom is held until the person scrolls away themselves.
+   */
+  private stickToBottom = true;
+  private imageLoadWatcher?: (event: Event) => void;
+  /** The feed height at the last render, to tell growth from a person reading. */
+  private lastFeedHeight = 0;
+  /**
+   * Until when the view is held at the newest message after opening.
+   *
+   * The images in the messages land over the couple of seconds after the feed
+   * renders, each one pushing the bottom further down, and waiting for a
+   * particular render to catch the last of them is guesswork. So the bottom is
+   * simply held for a moment. Any gesture ends it at once, which is what makes
+   * this safe: the hold can never fight somebody who is reading.
+   */
+  private holdBottomUntil = 0;
+  private gestureWatchers: Array<() => void> = [];
   private authSubscription?: Subscription;
 
   constructor(
@@ -151,6 +181,84 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
       this.pendingScrollToBottom = false;
       this.scrollToBottom();
     }
+    this.watchImageLoads();
+    this.followGrowth();
+  }
+
+  /**
+   * Follow the bottom when the feed gets taller, and only then.
+   *
+   * The distinction matters more than it looks. Re-asserting the bottom on
+   * every render made the chat impossible to scroll with a wheel: one notch
+   * moves about a hundred pixels, that is still inside the "near the bottom"
+   * band, so the pin was still on and the next change detection put the view
+   * straight back. Dragging the scrollbar worked only because it jumps far
+   * enough in one go to leave the band.
+   *
+   * Comparing the height means nothing happens while the person reads. The pin
+   * acts when a message arrives or an image finishes loading, which is the
+   * whole of what it is for.
+   */
+  private followGrowth(): void {
+    const container = this.scrollContainer?.nativeElement;
+    if (!container) {
+      return;
+    }
+    const height = container.scrollHeight;
+    const grew = height > this.lastFeedHeight;
+    this.lastFeedHeight = height;
+    if (grew && this.stickToBottom) {
+      this.scrollToBottom();
+    }
+  }
+
+  /**
+   * Follow the bottom as images finish loading.
+   *
+   * The renders above cover everything Angular knows about. An image does not
+   * tell it anything: the message is laid out at zero height, the GIF arrives a
+   * moment later and the feed grows under the viewport, which is how the chat
+   * greeted people at the oldest message. `load` does not bubble, so the
+   * listener is a capturing one on the scroll box.
+   */
+  private watchImageLoads(): void {
+    const container = this.scrollContainer?.nativeElement;
+    if (!container || this.imageLoadWatcher) {
+      return;
+    }
+    this.imageLoadWatcher = () => this.followGrowth();
+    container.addEventListener('load', this.imageLoadWatcher, true);
+
+    // A gesture is the one unambiguous sign that the person wants to be
+    // somewhere else. A plain scroll event is not: the browser fires one when
+    // the feed is rebuilt too, and reading that as "they scrolled up" is what
+    // left the chat stuck at the oldest message.
+    const release = () => {
+      this.holdBottomUntil = 0;
+      this.stickToBottom = false;
+    };
+    for (const kind of ['wheel', 'touchmove', 'keydown'] as const) {
+      container.addEventListener(kind, release, { passive: true });
+      this.gestureWatchers.push(() => container.removeEventListener(kind, release));
+    }
+  }
+
+  /**
+   * Hold the newest message in view for a moment after the feed is first drawn.
+   *
+   * Nothing here is a guess about when the images finish: it re-pins on a frame
+   * until the window is up, and the first gesture ends it.
+   */
+  private holdAtBottom(): void {
+    this.holdBottomUntil = Date.now() + CHAT_OPEN_HOLD_MS;
+    const step = () => {
+      if (Date.now() >= this.holdBottomUntil || this.destroyed) {
+        return;
+      }
+      this.scrollToBottom();
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
   /**
@@ -225,6 +333,14 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    const container = this.scrollContainer?.nativeElement;
+    if (container && this.imageLoadWatcher) {
+      container.removeEventListener('load', this.imageLoadWatcher, true);
+    }
+    this.imageLoadWatcher = undefined;
+    this.gestureWatchers.forEach((off) => off());
+    this.gestureWatchers = [];
+    this.holdBottomUntil = 0;
     this.authSubscription?.unsubscribe();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -236,7 +352,13 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
 
   async onScroll(): Promise<void> {
     const container = this.scrollContainer?.nativeElement;
-    if (!container || container.scrollTop > 96 || !this.hasMore || this.isLoadingOlder || !this.messages.length) {
+    if (!container) {
+      return;
+    }
+    // Reading older messages stops the pinning; coming back to the bottom
+    // resumes it, the way every chat behaves.
+    this.stickToBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+    if (container.scrollTop > 96 || !this.hasMore || this.isLoadingOlder || !this.messages.length) {
       return;
     }
     await this.loadMessages(this.messages[0].id);
@@ -440,11 +562,14 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
         this.hasMore = page.has_more;
 
         if (loadingOlder && container) {
+          this.stickToBottom = false;
           setTimeout(() => {
             container.scrollTop = previousTop + (container.scrollHeight - previousHeight);
           });
         } else {
+          this.stickToBottom = true;
           this.pendingScrollToBottom = true;
+          this.holdAtBottom();
         }
       });
     } finally {
@@ -548,6 +673,9 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   }
 
   private scrollToMessage(messageId: number): void {
+    // Otherwise the pinning would drag the view straight back down and the
+    // message being pointed at would never be seen.
+    this.stickToBottom = false;
     this.updateView(() => {
       this.highlightedMessageId = messageId;
     });

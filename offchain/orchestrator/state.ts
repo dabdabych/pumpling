@@ -4,6 +4,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import {
+    BurnRecord,
     LotteryState,
     LotteryMetrics,
     LotterySummary,
@@ -148,6 +149,69 @@ export class OrchestratorStateManager {
         if (!record) throw new Error(`Refund not found: ${id}`);
 
         Object.assign(record, update, { updatedAt: Date.now() });
+        this.save();
+    }
+
+    // =========================================================================
+    // WHAT PURCHASES BROUGHT, AND WHAT WAS BURNED
+    // =========================================================================
+
+    /** Records the tokens confirmed purchases brought. Never overwrites a known one. */
+    recordPurchaseTokens(tokens: Map<string, bigint>): void {
+        if (tokens.size === 0) {
+            return;
+        }
+        const known = (this.state.purchaseTokens ??= {});
+        let changed = false;
+        for (const [signature, raw] of tokens) {
+            if (known[signature] === undefined) {
+                known[signature] = raw.toString();
+                changed = true;
+            }
+        }
+        if (changed) {
+            this.save();
+        }
+    }
+
+    getBurns(): BurnRecord[] {
+        return this.state.burns ?? [];
+    }
+
+    addBurn(burn: BurnRecord): void {
+        (this.state.burns ??= []).push(burn);
+        this.save();
+    }
+
+    updateBurn(id: string, update: Partial<Omit<BurnRecord, "id" | "mint" | "rawAmount" | "createdAt">>): void {
+        const record = (this.state.burns ?? []).find((burn) => burn.id === id);
+        if (!record) throw new Error(`Burn not found: ${id}`);
+        Object.assign(record, update, { updatedAt: Date.now() });
+        this.save();
+    }
+
+    /**
+     * Adds a confirmed burn to the coin's total.
+     *
+     * Called only once a burn is known to have landed, never on sending: the
+     * total is what the next burn is worked out from, and counting an
+     * unconfirmed one would under-burn, while forgetting a landed one would
+     * burn it twice.
+     */
+    addBurned(mint: string, raw: bigint): void {
+        const record = this.state.tokenBuys.find((t) => t.mint === mint);
+        if (!record) throw new Error(`Token buy not found: ${mint}`);
+        const before = BigInt(record.burnedRaw ?? "0");
+        this.updateTokenBuy(mint, { burnedRaw: (before + raw).toString() });
+    }
+
+    /** Appends deliveries, for the top-ups the settlement adds after the buying. */
+    addSends(sends: SendRecord[]): void {
+        if (sends.length === 0) {
+            return;
+        }
+        this.state.sends.push(...sends);
+        this.updateSummary();
         this.save();
     }
 

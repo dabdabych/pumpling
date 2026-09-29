@@ -227,3 +227,85 @@ def is_spl_mint(mint_str: str, rpc_url: str = "https://api.mainnet-beta.solana.c
     if len(data) < _MINT_ACCOUNT_MIN_SIZE:
         return False
     return bool(data[_MINT_IS_INITIALIZED_OFFSET])
+
+
+# --- Can the buyer burn this coin? --------------------------------------------
+#
+# A participant can ask for part of what is bought for them to be burned. The
+# buyer burns with BurnChecked from its own token account, and the token
+# programs refuse that for a few kinds of mint. The site offers the choice only
+# where it can be kept.
+#
+# From Token-2022's `process_burn` (read line by line, 2026-09-28): a burn is
+# refused for a mint with ConfidentialMintBurn (IllegalMintBurnConversion), with
+# PermissionedBurn unless a second authority signs (the buyer cannot), and for
+# a Pausable mint while it is paused. It does not call a transfer hook, does not
+# check NonTransferable and takes no transfer fee, so none of those matter. The
+# legacy token program has no extensions at all.
+#
+# The numbers are `ExtensionType` in the token-2022 interface, counted from
+# Uninitialized = 0, and `PausableConfig` is the authority (32 bytes) followed by
+# the `paused` flag. A mint with extensions keeps them after the 165 bytes of a
+# token account's base layout and one byte of account type, as TLV entries:
+# type u16, length u16, value.
+
+_BASE_ACCOUNT_LENGTH = 165
+_ACCOUNT_TYPE_MINT = 1
+_EXT_CONFIDENTIAL_MINT_BURN = 24
+_EXT_PAUSABLE = 26
+_EXT_PERMISSIONED_BURN = 28
+_PAUSED_OFFSET = 32
+
+
+def burn_blocker(owner: Pubkey, data: bytes) -> str | None:
+    """Why the buyer could not burn this coin, or None if it can.
+
+    Pure: it reads the mint account's owner and bytes, nothing else.
+    """
+    if owner == TOKEN_PROGRAM_ID:
+        return None
+    if owner != TOKEN_2022_PROGRAM_ID:
+        return "not a token mint"
+    if len(data) < _MINT_ACCOUNT_MIN_SIZE:
+        return "not a token mint"
+    if len(data) <= _BASE_ACCOUNT_LENGTH:
+        return None  # a Token-2022 mint with no extensions
+    if data[_BASE_ACCOUNT_LENGTH] != _ACCOUNT_TYPE_MINT:
+        return "not a token mint"
+    index = _BASE_ACCOUNT_LENGTH + 1
+    while index + 4 <= len(data):
+        ext_type = int.from_bytes(data[index:index + 2], "little")
+        length = int.from_bytes(data[index + 2:index + 4], "little")
+        if ext_type == 0:
+            break  # the rest is padding
+        value = data[index + 4:index + 4 + length]
+        if len(value) < length:
+            return "the mint's extensions are unreadable"
+        if ext_type == _EXT_CONFIDENTIAL_MINT_BURN:
+            return "the mint does not allow burning (ConfidentialMintBurn)"
+        if ext_type == _EXT_PERMISSIONED_BURN:
+            return "the mint only allows permissioned burns (PermissionedBurn)"
+        if ext_type == _EXT_PAUSABLE and len(value) > _PAUSED_OFFSET and value[_PAUSED_OFFSET] != 0:
+            return "the mint is paused"
+        index += 4 + length
+    return None
+
+
+def can_burn(mint_str: str, rpc_url: str = "https://api.mainnet-beta.solana.com") -> bool | None:
+    """Whether the buyer can burn this coin. One RPC call.
+
+    None when it could not be found out — the node did not answer, or has no
+    such account (the stand's devnet node and a mainnet address). The caller
+    decides what an unknown means; on mainnet it means no.
+    """
+    try:
+        mint = Pubkey.from_string((mint_str or "").strip())
+    except Exception:
+        return False
+    try:
+        info = Client(rpc_url).get_account_info(mint).value
+    except Exception:
+        return None
+    if info is None:
+        return None
+    return burn_blocker(info.owner, bytes(info.data or b"")) is None

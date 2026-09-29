@@ -3,6 +3,7 @@ import {HttpClient, HttpErrorResponse, HttpResponse} from '@angular/common/http'
 import {ActivatedRoute, Router} from '@angular/router';
 import {environment} from '../../../environments/environment';
 import {firstValueFrom} from 'rxjs';
+import {AuthFlowService} from '../../auth/auth-flow.service';
 
 type ConfirmationStatus = 'pending' | 'success' | 'error';
 
@@ -20,7 +21,8 @@ export class ConfirmEmailComponent implements OnInit {
     private http: HttpClient,
     private route: ActivatedRoute,
     private router: Router,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private auth: AuthFlowService
   ) {
   }
 
@@ -37,7 +39,7 @@ export class ConfirmEmailComponent implements OnInit {
 
     try {
       const response = await firstValueFrom(
-        this.http.post<{ email: string; message: string }>(
+        this.http.post<{ email: string; message: string; access_token?: string | null }>(
           `${environment.apiUrl}/auth/confirm-email`,
           { token },
           { observe: 'response' }
@@ -53,12 +55,27 @@ export class ConfirmEmailComponent implements OnInit {
     await this.router.navigate(['/']);
   }
 
-  private handleConfirmationResponse(response: HttpResponse<{ email: string; message: string }>): void {
-    if (response.status >= 200 && response.status < 300) {
+  private handleConfirmationResponse(
+    response: HttpResponse<{ email: string; message: string; access_token?: string | null }>
+  ): void {
+    if (response.status < 200 || response.status >= 300) {
+      this.setState('error', 'Confirmation link is invalid or expired.');
+      return;
+    }
+
+    const session = response.body?.access_token;
+    if (!session) {
+      // Confirmed, but no session came back. Rare, and the sign-in screen is
+      // still a way in, so say so rather than leaving the page blank.
       this.setState('success', 'Your email is confirmed. You can sign in now.');
       return;
     }
-    this.setState('error', 'Confirmation link is invalid or expired.');
+
+    // Signed in and straight to the site. Stopping here to say "now go and
+    // sign in" is a step that proves nothing: opening this link already did.
+    this.auth.adoptSession(session);
+    this.setState('success', 'Your email is confirmed. Taking you in…');
+    void this.router.navigate(['/']);
   }
 
   private resolveErrorMessage(error: unknown): string {

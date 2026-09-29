@@ -10,7 +10,7 @@ export const environment = {
   solanaWalletAuthChain: 'solana/devnet',
   // Where the "how to check this yourself" link leads: the public repository with
   // the algorithm described. Changed through environment.json, with no rebuild.
-  verifyDocsUrl: 'https://github.com/dabdabych/pumpling',
+  verifyDocsUrl: 'https://github.com/pumplingxyz/public-docs',
   // Before launch the root shows the placeholder instead of the main page:
   // the mascot, the launch date, sign-in and the community chat. Set at runtime
   // from environment.json, so opening the site needs no rebuild.

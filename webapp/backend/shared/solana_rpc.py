@@ -173,9 +173,15 @@ class SolanaJsonRpc:
         *,
         encoding: str = "jsonParsed",
         commitment: Optional[str] = None,
-        max_supported_transaction_version: Optional[int] = 0,
+        max_supported_transaction_version: Optional[int] = 1,
     ) -> Optional[dict]:
         """The transaction, or None when the node does not have it.
+
+        Version 1 by default. Version 1 transactions are live on mainnet, and a
+        node asked with 0 refuses one outright (-32015), exactly as it refuses
+        a v0 transaction when the option is left out. What we read — `meta` and
+        the log — has the same shape in every version (checked on a real v1
+        transaction on 2026-09-28).
 
         The shape is the node's own, which is what `_extract_transaction_error`
         and `_extract_transaction_log_messages` already read: `meta.err` and

@@ -20,7 +20,7 @@ import { bindQuickStartPointer } from './quick-start-pointer';
 import { holdSplash, isSplashActive, onSplashExit, releaseSplash } from '../../shared/splash';
 import { PoolService } from '../../pool/pool.service';
 import { PoolPhase } from '../../pool/pool-state';
-import { poolCardLine } from '../../pool/pool-view';
+import { poolCardLine, poolCardNote } from '../../pool/pool-view';
 import { SignOutConfirm, SystemDialog } from '../../shared/system-dialog';
 import { JwtHelperService } from '@auth0/angular-jwt';
 import { WALLET_LINKED_ADDRESS_STORAGE_KEY } from '../../shared/wallet-link';
@@ -102,6 +102,9 @@ function quickCoinMarkSvg(variant: number): string {
   );
 }
 
+/** The longest the story may stay covered while it finds its section. */
+const JUMP_COVER_MAX_MS = 1500;
+
 @Component({
   selector: 'app-main-page',
   templateUrl: './main-page.component.html',
@@ -149,8 +152,13 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly programId: string = '4mk8SH9un549ETZatKRkths44e2RBRkFGBmTvFie2oeH';
   /** The cluster in a Solscan link: without it a stand opens mainnet. */
   readonly explorerQuery = environment.solanaExplorerQuery;
-  /** The repository for the footer, a full URL. Empty means a dash there. */
-  readonly githubUrl: string = 'https://github.com/pumplingxyz/public-docs';
+  /** The repository for the footer, a full URL. Empty means a dash there.
+   *
+   *  The same value the "How to check this yourself" link uses. They were two
+   *  separate constants and drifted: the footer pointed at the documentation
+   *  repository while the verification dialog sent people to the Colosseum
+   *  export. One source now, so that cannot happen again. */
+  readonly githubUrl: string = environment.verifyDocsUrl;
 
   /** Which story section is on screen — it is highlighted in the menu. */
   activeSection = 'hero';
@@ -245,7 +253,7 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
    * until the first answer. The phase itself travels alongside: the line fades
    * back in when the pool moves to the next phase, and does not blink every second.
    */
-  readonly poolCard$: Observable<{ line: string; phase: PoolPhase }>;
+  readonly poolCard$: Observable<{ line: string; note: string | null; phase: PoolPhase }>;
   quickCoins: Array<{ ngStyle: Record<string, string>; svg: SafeHtml }> = [];
 
   /** The How it works phase currently on screen: the scene comes alive by it. */
@@ -274,6 +282,13 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     vision: false,
     archives: false
   };
+  /** The story section the address asked for, until it has been reached. */
+  private pendingJumpLabel: string | null = null;
+  /** Hides the story while it is being put on that section. */
+  jumpCover = false;
+  private jumpCoverTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Where the last jump put the page, to see when it has stopped moving. */
+  private lastJumpScroll: number | null = null;
   private lockedScrollY = 0;
   private headlinePhraseIndex = 0;
   private headlineStep = 0;
@@ -296,7 +311,11 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     private pool: PoolService
   ) {
     this.poolCard$ = combineLatest([this.pool.snapshot$('dex'), timer(0, 1000)]).pipe(
-      map(([snapshot]) => ({ line: poolCardLine(snapshot, Date.now()), phase: snapshot.phase }))
+      map(([snapshot]) => ({
+        line: poolCardLine(snapshot, Date.now()),
+        note: poolCardNote(snapshot),
+        phase: snapshot.phase
+      }))
     );
     if (isSplashActive()) {
       holdSplash();
@@ -321,6 +340,11 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    // Before the first frame of this page, not after the story is built: the
+    // story is built a frame later and the top of the page would show until
+    // then. Arriving anywhere but a story section raises nothing.
+    this.pendingJumpLabel = typeof window === 'undefined' ? null : this.storyFragmentLabel();
+    this.raiseJumpCover();
     this.headlineText = this.buildHashTransition(HEADLINE_PHRASES[this.headlinePhraseIndex], 0, false);
     this.headlineAnimation = interval(HASH_STEP_DELAY).subscribe(() => this.advanceHeadline());
     this.syncAuthSessionState();
@@ -442,32 +466,124 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     // Let the child token-animation components paint first, then measure.
     requestAnimationFrame(() => {
-      this.buildScrollStory();
-      ScrollTrigger.refresh();
-      void this.settleStory().then(() => this.openSectionFromFragment());
-      void this.releaseSplashWhenHeroReady();
+      void this.buildStoryOnceAlone();
     });
   }
 
   /**
-   * /#what, /#how, /#quick — from the pool page they lead straight to a story
-   * section. A jump, not a scroll: during loading it hides behind the splash.
+   * Builds the story, but not while the page we came from is still there.
+   *
+   * Angular leaves the old route's element in the document for about two
+   * hundred milliseconds after ours appears. Measured on 2026-09-25 coming
+   * from /pool: both pages together made the document 10164px tall, ours alone
+   * 7251. A story measured against the sum puts its sections a screen and a
+   * half too low, so the jump landed at 5582 and corrected itself to 2669 once
+   * the old page came out — a visible jerk two tenths of a second in.
+   *
+   * So we wait for it to go. Nothing to wait for on a fresh load, where ours is
+   * the only page there has ever been, and the frame cap keeps the worst case
+   * at about half a second.
    */
-  private openSectionFromFragment(): void {
+  private async buildStoryOnceAlone(): Promise<void> {
+    const host = this.document.querySelector('app-main-page');
+    const parent = host?.parentElement;
+    const departing = () => (parent
+      ? Array.from(parent.children).filter((node) => node !== host && node.tagName.startsWith('APP-')).length
+      : 0);
+    for (let frame = 0; frame < 40 && departing() > 0; frame++) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    this.buildScrollStory();
+    ScrollTrigger.refresh();
+    // The section is claimed before the story has settled and re-claimed on
+    // every measurement, rather than once at the end. Settling takes half a
+    // second at best — five steady readings a hundred milliseconds apart — and
+    // used to run twice over, so arriving from the pool page meant a second and
+    // a half of the first screen followed by a jump. Now the page is on the
+    // asked-for section from the first paint and only drifts into place as the
+    // measurements converge.
+    this.applyPendingJump();
+    void this.settleStory().then(() => this.applyPendingJump(true));
+    void this.releaseSplashWhenHeroReady();
+  }
+
+  /**
+   * /#what, /#how, /#quick — from the pool page they lead straight to a story
+   * section. The label, or null when the address asks for no section.
+   */
+  private storyFragmentLabel(): string | null {
     const fragment = this.router.parseUrl(this.router.url).fragment;
-    if (fragment && STORY_SECTION_SELECTORS.some(([name]) => name === fragment && name !== 'hero')) {
-      this.jumpToSection(fragment);
+    const known = fragment
+      && STORY_SECTION_SELECTORS.some(([name]) => name === fragment && name !== 'hero');
+    return known ? fragment : null;
+  }
+
+  /**
+   * Put the story on the asked-for section, as well as it can be put right now.
+   *
+   * Called repeatedly: once the moment the story is built, again after every
+   * measurement while it settles, and a last time when it has stopped moving.
+   * Each call is cheap — ScrollTrigger works the position out itself — and the
+   * early ones are what keep the first screen from showing at all.
+   *
+   * `final` clears the label, so the story stops being dragged back and the
+   * person can scroll away.
+   */
+  private applyPendingJump(final = false): void {
+    const label = this.pendingJumpLabel;
+    if (!label) {
+      return;
+    }
+    this.applyJump(label, final);
+    if (final) {
+      this.pendingJumpLabel = null;
+      this.dropJumpCover();
     }
   }
 
   /**
-   * Put the story on the right section at once, without playing what comes
-   * before it. `goToSection` shows the transition, which is right for the menu
-   * but not for someone who arrived through a "How it works" link from the pool
-   * page: they asked for a section, not for a tour past the previous ones.
+   * Hold the page behind its own background until the section is reached.
+   *
+   * The first measurement happens while the page we came from is still in the
+   * document, so it puts the story a screen or two out and corrects itself
+   * about two hundred milliseconds later. That correction was visible as a
+   * jerk. The cover hides it; the whole thing is over in under half a second.
+   *
+   * The timer is the safety: if the settle never finishes, the cover comes off
+   * anyway rather than leaving a blank page.
    */
-  private jumpToSection(label: string): void {
-    void this.settleStory().then(() => this.applyJump(label));
+  /**
+   * A jump landed on `position`. Two landings in the same place mean the
+   * measurements have converged, so the cover can come off then rather than
+   * when the whole settle is over — which is another half a second of blank
+   * page after the story is already in the right place.
+   */
+  private markJumpLanded(position: number): void {
+    if (this.lastJumpScroll !== null && Math.abs(position - this.lastJumpScroll) <= 2) {
+      this.dropJumpCover();
+    }
+    this.lastJumpScroll = position;
+  }
+
+  private raiseJumpCover(): void {
+    if (!this.pendingJumpLabel) {
+      return;
+    }
+    this.jumpCover = true;
+    this.lastJumpScroll = null;
+    this.changeDetectorRef.markForCheck();
+    this.jumpCoverTimer = setTimeout(() => this.dropJumpCover(), JUMP_COVER_MAX_MS);
+  }
+
+  private dropJumpCover(): void {
+    if (this.jumpCoverTimer) {
+      clearTimeout(this.jumpCoverTimer);
+      this.jumpCoverTimer = null;
+    }
+    if (this.jumpCover) {
+      this.jumpCover = false;
+      this.changeDetectorRef.markForCheck();
+    }
   }
 
   /**
@@ -557,6 +673,10 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     let steady = 0;
     for (let attempt = 0; attempt < 40; attempt++) {
       ScrollTrigger.refresh();
+      // Re-claim the asked-for section after every refresh: a refresh moves the
+      // bounds, and without this the view slides back towards the first screen
+      // between measurements. Does nothing when no section was asked for.
+      this.applyPendingJump();
       const shape = pageShape();
       steady = shape === previous ? steady + 1 : 0;
       if (steady >= 5) {
@@ -567,7 +687,7 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  private applyJump(label: string): void {
+  private applyJump(label: string, final = true): void {
     const timeline = this.storyTimeline;
     const trigger = timeline?.scrollTrigger;
     const at = timeline?.labels?.[label];
@@ -580,6 +700,7 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
       const selector = STORY_SECTION_SELECTORS.find(([name]) => name === label)?.[1];
       const node = selector ? this.document.querySelector(selector) : null;
       node?.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'start' });
+      this.markJumpLanded(Math.round(window.scrollY));
       return;
     }
 
@@ -591,10 +712,13 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     this.scrollInstantly(trigger, scroll);
+    this.markJumpLanded(Math.round(scroll));
     this.headerHidden = label !== 'hero';
     this.activeSection = label;
     this.changeDetectorRef.markForCheck();
-    if (at / timeline.duration() >= 0.999) {
+    // Only once the position is the real one: holding at the end while the
+    // bounds are still moving pins the story to a place that is about to change.
+    if (final && at / timeline.duration() >= 0.999) {
       this.storyScrollEngine?.holdAtStoryEnd();
     }
   }
@@ -1481,6 +1605,9 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // Leaving mid-jump: take the cover off and drop its timer, or it fires into
+    // a component that is gone.
+    this.dropJumpCover();
     // We left the main page before it released the splash — release it ourselves.
     this.releaseHeldSplash();
     // The mark lives on <html>, so leaving mid-measurement would hold the

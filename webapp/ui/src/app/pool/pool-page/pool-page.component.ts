@@ -1,6 +1,6 @@
 import { animate, group, query, sequence, stagger, style, transition, trigger } from '@angular/animations';
 import { AsyncPipe, DecimalPipe, PercentPipe } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, HostBinding, NgZone, OnDestroy, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, HostBinding, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -9,6 +9,9 @@ import { distinctUntilChanged, map } from 'rxjs/operators';
 
 import { LegalDialogComponent } from '../../shared/legal/legal-dialog.component';
 import { SiteHeaderComponent } from '../../shared/site-header/site-header.component';
+import { FlameComponent } from '../../shared/flame/flame.component';
+import { burnChipText } from '../burn';
+import { buildFeedRows, FeedRow, recipientsShort, recipientsText } from '../feed-rows';
 import { CommitDialogComponent, CommitDialogData } from '../commit-dialog/commit-dialog.component';
 import { CommitOutcome, CommitService, SentCommit } from '../commit.service';
 import { lamportsToSol } from '../lamports';
@@ -34,6 +37,8 @@ interface PageModel {
   boughtByMint: ReadonlyMap<string, PurchaseCoin>;
   /** My commits in this pool: the rows are highlighted by them. */
   mine: MyRound | null;
+  /** Purchases, deliveries and burns, newest first. */
+  feedRows: FeedRow[];
 }
 
 type ToastState = 'sending' | CommitOutcome;
@@ -61,7 +66,8 @@ function buyWindowMs(snapshot: PoolSnapshot): number {
   if (snapshot.buysStartedAtMs !== null && snapshot.buysEndAtMs !== null) {
     return Math.max(60_000, snapshot.buysEndAtMs - snapshot.buysStartedAtMs);
   }
-  return 65 * 60_000;
+  // The buyer's main pass, the same figure as DEFAULT_BUY_WINDOW_SECONDS.
+  return 50 * 60_000;
 }
 
 const TRACK = [
@@ -81,7 +87,7 @@ const TRACK = [
 @Component({
   selector: 'app-pool-page',
   standalone: true,
-  imports: [AsyncPipe, DecimalPipe, PercentPipe, RouterLink, SiteHeaderComponent],
+  imports: [AsyncPipe, DecimalPipe, PercentPipe, RouterLink, SiteHeaderComponent, FlameComponent],
   templateUrl: './pool-page.component.html',
   styleUrls: ['./pool-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -165,6 +171,42 @@ export class PoolPageComponent implements OnInit, OnDestroy {
   readonly explorerQuery = environment.solanaExplorerQuery;
   readonly brokenLogos = new Set<string>();
 
+  /** The drawn scrollbar of the buys window: how tall the thumb is, and where. */
+  feedThumb: { size: number; at: number } | null = null;
+  private rowsCache: { feed: PurchaseFeed; mine: MyRound | null; rows: FeedRow[] } | null = null;
+  private feedNode: HTMLElement | null = null;
+  private feedFrame = 0;
+  private feedSizes: ResizeObserver | null = null;
+  private thumbDragEnd: (() => void) | null = null;
+
+  /**
+   * The buys window, as it comes and goes with the phase.
+   *
+   * A setter rather than a plain `@ViewChild`, because the window only exists
+   * while there is something to show and has to be measured again each time it
+   * appears — and whenever a buy is added to it, which is what the observer is
+   * for.
+   */
+  @ViewChild('buyFeed')
+  set buyFeed(ref: ElementRef<HTMLElement> | undefined) {
+    this.feedSizes?.disconnect();
+    this.feedSizes = null;
+    this.feedNode = ref?.nativeElement ?? null;
+    if (!this.feedNode) {
+      this.feedThumb = null;
+      return;
+    }
+    if (typeof ResizeObserver === 'function') {
+      this.feedSizes = new ResizeObserver(() => this.scheduleFeedMeasure());
+      this.feedSizes.observe(this.feedNode);
+      const list = this.feedNode.firstElementChild;
+      if (list) {
+        this.feedSizes.observe(list);
+      }
+    }
+    this.scheduleFeedMeasure();
+  }
+
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private copiedTimer: ReturnType<typeof setTimeout> | null = null;
   private hoverTimer: ReturnType<typeof setTimeout> | null = null;
@@ -212,13 +254,15 @@ export class PoolPageComponent implements OnInit, OnDestroy {
         const fresh = new Set(
           [...this.freshUntil.entries()].filter(([, until]) => until > now).map(([mint]) => mint)
         );
+        const mine = this.myCommits.roundFor(snapshot.poolId);
         return {
           snapshot,
           view: buildPoolView(snapshot, now, feed),
           feed,
           fresh,
           boughtByMint: new Map(feed.coins.map((coin) => [coin.mint, coin])),
-          mine: this.myCommits.roundFor(snapshot.poolId)
+          mine,
+          feedRows: this.rowsFor(feed, mine)
         };
       })
     );
@@ -238,6 +282,77 @@ export class PoolPageComponent implements OnInit, OnDestroy {
     }
   }
 
+  onFeedScroll(): void {
+    this.scheduleFeedMeasure();
+  }
+
+  /**
+   * Measuring reads the layout, so it happens once a frame at most and never
+   * inside the change detection that put the window there.
+   */
+  private scheduleFeedMeasure(): void {
+    if (this.feedFrame || typeof requestAnimationFrame !== 'function') {
+      return;
+    }
+    this.feedFrame = requestAnimationFrame(() => {
+      this.feedFrame = 0;
+      this.measureFeedThumb();
+      this.cdr.markForCheck();
+    });
+  }
+
+  private measureFeedThumb(): void {
+    const node = this.feedNode;
+    if (!node) {
+      this.feedThumb = null;
+      return;
+    }
+    const room = node.scrollHeight - node.clientHeight;
+    // Nothing to scroll: no bar either, so a short feed keeps its plain look.
+    if (room < 8) {
+      this.feedThumb = null;
+      return;
+    }
+    const size = Math.max(10, Math.min(100, (node.clientHeight / node.scrollHeight) * 100));
+    this.feedThumb = { size, at: (node.scrollTop / room) * (100 - size) };
+  }
+
+  /** The thumb drags the buys the way a scrollbar is expected to. */
+  startThumbDrag(event: PointerEvent): void {
+    const node = this.feedNode;
+    const thumb = event.currentTarget as HTMLElement;
+    const rail = thumb.parentElement;
+    if (!node || !rail) {
+      return;
+    }
+    event.preventDefault();
+    const railBox = rail.getBoundingClientRect();
+    const thumbBox = thumb.getBoundingClientRect();
+    // Where inside the thumb it was taken hold of, so it does not jump under
+    // the cursor on the first move.
+    const grab = event.clientY - thumbBox.top;
+    const travel = railBox.height - thumbBox.height;
+    const room = node.scrollHeight - node.clientHeight;
+    const move = (moved: PointerEvent) => {
+      const at = Math.min(Math.max(moved.clientY - railBox.top - grab, 0), travel);
+      node.scrollTop = travel > 0 ? (at / travel) * room : 0;
+    };
+    this.endThumbDrag();
+    this.zone.runOutsideAngular(() => {
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', () => this.endThumbDrag());
+      window.addEventListener('pointercancel', () => this.endThumbDrag());
+      this.thumbDragEnd = () => {
+        window.removeEventListener('pointermove', move);
+      };
+    });
+  }
+
+  private endThumbDrag(): void {
+    this.thumbDragEnd?.();
+    this.thumbDragEnd = null;
+  }
+
   private scrollToHighlight(): void {
     const row = document.querySelector<HTMLElement>('.coin-row--highlight');
     if (!row) {
@@ -249,6 +364,11 @@ export class PoolPageComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
+    this.feedSizes?.disconnect();
+    this.endThumbDrag();
+    if (this.feedFrame) {
+      cancelAnimationFrame(this.feedFrame);
+    }
     this.clearToastTimer();
     if (this.copiedTimer) {
       clearTimeout(this.copiedTimer);
@@ -405,6 +525,31 @@ export class PoolPageComponent implements OnInit, OnDestroy {
     return item.signature;
   }
 
+  trackRow(_: number, row: FeedRow): string {
+    return row.key;
+  }
+
+  recipientsText(row: FeedRow): string {
+    return recipientsText(row);
+  }
+
+  recipientsShort(row: FeedRow): string {
+    return recipientsShort(row);
+  }
+
+  /**
+   * The feed rows, rebuilt only when the feed or my commits change. The page
+   * model is rebuilt every second for its clocks; the rows are not.
+   */
+  private rowsFor(feed: PurchaseFeed, mine: MyRound | null): FeedRow[] {
+    if (this.rowsCache && this.rowsCache.feed === feed && this.rowsCache.mine === mine) {
+      return this.rowsCache.rows;
+    }
+    const rows = buildFeedRows(feed, mine?.wallets ?? []);
+    this.rowsCache = { feed, mine, rows };
+    return rows;
+  }
+
   /** How much of a coin has been bought, 0..1; no data means null and no bar. */
   boughtShare(coin: PurchaseCoin | undefined): number | null {
     if (!coin || coin.targetSol <= 0) {
@@ -487,6 +632,11 @@ export class PoolPageComponent implements OnInit, OnDestroy {
   }
 
   /** How much I committed behind this coin in the current pool. */
+  /** "50% BURN" for a coin whose backers asked for a burn; nothing otherwise. */
+  burnChip(coin: PoolCoin): string | null {
+    return burnChipText(coin.burnBps);
+  }
+
   mySol(model: PageModel, mint: string): number {
     return model.mine?.coins.find((coin) => coin.mint === mint)?.mySol ?? 0;
   }

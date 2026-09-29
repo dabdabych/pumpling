@@ -54,6 +54,9 @@ class FakeQuery:
     def group_by(self, *_):
         return self
 
+    def order_by(self, *_):
+        return self
+
     def first(self):
         return self._lottery
 
@@ -67,9 +70,12 @@ class FakeSession:
         self._lottery = lottery
 
     def query(self, *args):
-        # The round is fetched as a whole model, the sums as columns.
+        # The round is fetched as a whole model, the sums as columns, and the
+        # commits that asked for a burn as whole commits.
         if len(args) == 1 and getattr(args[0], "__name__", "") == "LotteryModel":
             return FakeQuery([], self._lottery)
+        if len(args) == 1 and getattr(args[0], "__name__", "") == "BetParticipationModel":
+            return FakeQuery(getattr(self, "burners", []), self._lottery)
         return FakeQuery(self._rows, self._lottery)
 
 
@@ -226,3 +232,52 @@ class TestVerificationAnswers:
             router.get_lottery_verification(LOTTERY_ID, db=session)
 
         assert caught.value.status_code == 404
+
+
+class TestVerificationBurns:
+    """The burn block: who asked, what was owed, what burned, and where to check it."""
+
+    class Bet:
+        def __init__(self, wallet, sol, bps, signature):
+            self.wallet_address, self.sol_amount, self.burn_bps, self.tx_signature = wallet, sol, bps, signature
+            self.meme_coin_address = "MintBurn111111111111111111111111111111111111"
+            self.created_at = NOW
+
+    def _verify(self, monkeypatch, feed):
+        mint = "MintBurn111111111111111111111111111111111111"
+        session = FakeSession([(mint, 4.0)], FakeLottery())
+        session.burners = [self.Bet("W1", 1.0, 10_000, "sig1"), self.Bet("W2", 1.0, 5000, "sig2")]
+        monkeypatch.setattr(router, "_cached_purchase_feed", lambda lottery_id: feed)
+        monkeypatch.setattr(router, "_get_coin_metadata", lambda db, m: ("Burn Coin", "BURN", None))
+        return router.get_lottery_verification(LOTTERY_ID, db=session).burns
+
+    def test_the_commits_and_the_buyers_figures_come_together(self, offline, monkeypatch):
+        feed = {
+            "phase": "finished",
+            "tokens": [{"mint": "MintBurn111111111111111111111111111111111111", "decimals": 6,
+                        "burn": {"boughtRaw": "4000", "owedRaw": "1500", "burnedRaw": "1500",
+                                 "supplyAtStart": "1000000", "supplyAtEnd": "998500"}}],
+            "burns": [
+                {"mint": "MintBurn111111111111111111111111111111111111", "signature": "b2", "rawAmount": "500", "at": 2_000},
+                {"mint": "MintBurn111111111111111111111111111111111111", "signature": "b1", "rawAmount": "1000", "at": 1_000},
+            ],
+        }
+        [coin] = self._verify(monkeypatch, feed)
+        assert coin.symbol == "BURN" and coin.decimals == 6 and coin.final is True
+        # 1 SOL at 100% and 1 at 50% out of 4 SOL behind the coin: 37.5% of it.
+        assert coin.coin_sol == 4.0 and coin.burn_bps == 3750.0
+        assert [(b.wallet, b.burn_bps, b.signature) for b in coin.bets] == [("W1", 10_000, "sig1"), ("W2", 5000, "sig2")]
+        assert (coin.bought_raw, coin.owed_raw, coin.burned_raw) == ("4000", "1500", "1500")
+        assert (coin.supply_at_start, coin.supply_at_end) == ("1000000", "998500")
+        assert [tx.signature for tx in coin.transactions] == ["b1", "b2"]
+
+    def test_without_the_buyer_the_commits_are_still_shown(self, offline, monkeypatch):
+        [coin] = self._verify(monkeypatch, None)
+        assert len(coin.bets) == 2
+        assert coin.owed_raw is None and coin.burned_raw is None and coin.transactions == []
+        assert coin.final is False
+
+    def test_a_round_nobody_burned_in_has_no_block(self, offline, monkeypatch):
+        session = FakeSession([("MintX", 1.0)], FakeLottery())
+        monkeypatch.setattr(router, "_cached_purchase_feed", lambda lottery_id: None)
+        assert router.get_lottery_verification(LOTTERY_ID, db=session).burns == []

@@ -3,5 +3,8 @@
 
 export interface RunPurchasesRecipient {
   amount: number;
+  amountLamports?: (string | null);
+  burnBps?: (number | null);
+  burnWeight?: (string | null);
   publickey: string;
 }

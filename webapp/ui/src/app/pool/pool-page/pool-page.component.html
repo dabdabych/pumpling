@@ -183,9 +183,13 @@
               <p class="pool-empty__title">No SOL in this pool</p>
               <p class="pool-empty__text">Nobody added SOL before it closed, so there is nothing to buy this time.</p>
             }
+            <!-- `done` and `waiting`: no pool is running. The old text here
+                 promised a new one every three hours, which was never the
+                 schedule and is not one at all while the cycle is stopped. -->
             @default {
-              <p class="pool-empty__title">No coins to show</p>
-              <p class="pool-empty__text">Coins show up here while a pool is running. A new one opens every three hours.</p>
+              <p class="pool-empty__title">No pool is running</p>
+              <p class="pool-empty__text">Coins show up here while a pool is open. Past rounds, with what was bought for each coin, are in the archive.</p>
+              <a class="pool-cta pool-cta--small" routerLink="/archive">See past rounds</a>
             }
           }
         </div>
@@ -207,6 +211,7 @@
             <li class="coin-row"
                 [style.--row]="index"
                 [class.coin-row--zero]="coin.drawnSol === 0"
+                [class.coin-row--won]="coin.drawnSol !== null && coin.drawnSol > 0"
                 [class.coin-row--lead]="index === 0 && coin.sol > 0"
                 [class.coin-row--fresh]="model.fresh.has(coin.mint)"
                 [class.coin-row--highlight]="coin.mint === highlightMint"
@@ -223,6 +228,11 @@
                 <span class="coin-row__names">
                   <span class="coin-row__tickerline">
                     <b class="coin-row__ticker">${{ coin.ticker }}</b>
+                    <!-- The coin's burn share so far: while the pool is open it
+                         moves with every commit. Only when there is one. -->
+                    @if (burnChip(coin); as chip) {
+                      <span class="coin-row__burn"><app-flame [size]="12" />{{ chip }}</span>
+                    }
                     <!-- Your own commit is visible right in the row: otherwise a
                          person looks at a shared pool and cannot find themselves. -->
                     @if (mySol(model, coin.mint); as mine) {
@@ -336,10 +346,10 @@
     </section>
 
     <!-- ------------------------------------------------ the purchase feed -->
-    @if (model.view.phase === 'buying' || (model.view.phase === 'done' && model.feed.purchases.length > 0)) {
+    @if (model.view.phase === 'buying' || (model.view.phase === 'done' && model.feedRows.length > 0)) {
       <section class="pool-buys" aria-labelledby="pool-buys-title" @sectionEnter>
         <div class="pool-coins__head">
-          <h2 class="pool-coins__title" id="pool-buys-title">Buys on Solana</h2>
+          <h2 class="pool-coins__title" id="pool-buys-title">On Solana</h2>
           <span class="pool-coins__meta">
             @if (model.feed.available && !model.feed.finished) {
               <span class="pool-live"><i aria-hidden="true"></i>live</span>
@@ -350,26 +360,76 @@
           </span>
         </div>
 
-        @if (model.feed.purchases.length > 0) {
-          <ul class="buy-list">
-            @for (item of model.feed.purchases; track trackPurchase($index, item)) {
-              <li class="buy-row">
-                <span class="buy-row__when">{{ timeAgo(item.atMs) }}</span>
-                <span class="buy-row__coin">
-                  <b>${{ item.symbol }}</b>
-                  <span>{{ item.name }}</span>
-                </span>
-                <span class="buy-row__sol">{{ formatSol(item.sol) }} <small>SOL</small></span>
-                @if (item.venue) {
-                  <span class="buy-row__venue">{{ item.venue }}</span>
+        @if (model.feedRows.length > 0) {
+          <!-- A window with its own scrollbar, not the tail of the page. An
+               hour of buying is a few hundred rows, and everything under them —
+               the program id, the pool account, how to check the round — was a
+               full page of scrolling away.
+
+               Three kinds of row, each a transaction: a purchase, a delivery to
+               up to five wallets, a burn. The counter above counts purchases only. -->
+          <div class="buy-window">
+            <div class="buy-feed" #buyFeed tabindex="0" role="region" aria-labelledby="pool-buys-title" (scroll)="onFeedScroll()">
+              <ul class="buy-list">
+                @for (row of model.feedRows; track trackRow($index, row)) {
+                  <li class="buy-row" [class.buy-row--send]="row.kind === 'send'" [class.buy-row--burn]="row.kind === 'burn'" [class.buy-row--refund]="row.kind === 'refund'">
+                    <span class="buy-row__when">{{ timeAgo(row.atMs) }}</span>
+                    <span class="buy-row__coin">
+                      <b>${{ row.symbol }}</b>
+                      <span>{{ row.name }}</span>
+                    </span>
+                    @switch (row.kind) {
+                      @case ('buy') {
+                        <span class="buy-row__sol">{{ formatSol(row.sol ?? 0) }} <small>SOL</small></span>
+                        @if (row.venue) {
+                          <span class="buy-row__venue">{{ row.venue }}</span>
+                        }
+                      }
+                      @case ('send') {
+                        <span class="buy-row__sol buy-row__tokens">
+                          <svg class="buy-row__send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5h14.5M14 4.5l4 4-4 4M6.5 15.5H21M17.5 11.5l4 4-4 4" /></svg>
+                          @if (row.amount) { {{ row.amount }} }
+                          <small class="buy-row__to">{{ recipientsText(row) }}</small>
+                        </span>
+                        <span class="buy-row__venue buy-row__venue--send">Sent<span class="buy-row__to-phone"> {{ recipientsShort(row) }}</span></span>
+                      }
+                      @case ('burn') {
+                        <span class="buy-row__sol buy-row__tokens">
+                          <app-flame [size]="14" />
+                          {{ row.amount }}
+                        </span>
+                        <span class="buy-row__venue buy-row__venue--burn">Burned</span>
+                      }
+                      @case ('refund') {
+                        <span class="buy-row__sol buy-row__tokens">
+                          <svg class="buy-row__send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>
+                          {{ formatSol(row.sol ?? 0) }} <small>SOL</small>
+                          <small class="buy-row__to">{{ recipientsText(row) }}</small>
+                          <small class="buy-row__to-short">{{ recipientsShort(row) }}</small>
+                        </span>
+                        <span class="buy-row__venue buy-row__venue--refund">Returned</span>
+                      }
+                    }
+                    <a class="buy-row__tx" [href]="explorerUrl(row.signature)" target="_blank" rel="noreferrer">
+                      {{ shortMint(row.signature) }}
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" /></svg>
+                    </a>
+                  </li>
                 }
-                <a class="buy-row__tx" [href]="explorerUrl(item.signature)" target="_blank" rel="noreferrer">
-                  {{ shortMint(item.signature) }}
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" /></svg>
-                </a>
-              </li>
+              </ul>
+            </div>
+            @if (feedThumb; as thumb) {
+              <!-- The scrollbar is drawn here rather than left to the browser: on
+                   a Mac the system one is an overlay that fades out, and nothing
+                   then says the buys go on below. It drags like the real thing. -->
+              <div class="buy-rail">
+                <span class="buy-rail__thumb"
+                      [style.height.%]="thumb.size"
+                      [style.top.%]="thumb.at"
+                      (pointerdown)="startThumbDrag($event)"></span>
+              </div>
             }
-          </ul>
+          </div>
         } @else {
           <div class="pool-empty pool-empty--slim">
             <p class="pool-empty__title">First buys are on the way</p>

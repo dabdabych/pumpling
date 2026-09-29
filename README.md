@@ -94,6 +94,52 @@ and a round with a single coin has nothing to split, leaving only the timing
 uncertain. We would rather write that down than let someone find it and think
 it was hidden.
 
+## Burning your share
+
+When you commit, you can ask for part of the tokens bought for you to be burned
+on chain instead of sent to your wallet: 25, 50 or 100%. A launcher backing
+their own coin is the obvious user. The buying still happens in public, and the
+coin's supply shrinks by what was burned.
+
+Your choice changes your share and nothing else:
+
+```
+delivered to you = B × your SOL × (1 − your burn) / S
+burned           = B × Σ(SOL × burn) / S
+```
+
+B is every token bought for the coin, S is all the SOL behind it, burners
+included. Burn half and you get exactly half of what you would have got,
+whatever anyone else chose.
+
+**The choice lives on chain.** It is a memo, `pumpling burn 50%`, in the same
+transaction as your deposit, signed by your wallet along with it. No request
+field carries it. The backend and the event worker read it back from that
+transaction's log with one function, `webapp/backend/shared/burn_memo.py`. Only
+the non-upgradeable SPL Memo program counts, only at the top level of the
+transaction, and only a single burn memo. Anything doubtful counts as no burn,
+so a mistake leaves you your tokens. The memo costs nothing extra, since the
+priority fee is paid on the compute limit the deposit already asks for.
+
+**The buyer burns what the purchases bought.** At the start of every delivery
+round it works out what is owed to the fire from the purchases' own
+transactions, never from its token balance, and burns that with `BurnChecked`.
+Each burn is written down with its signature before it is sent, and nothing is
+burned again while an earlier burn's fate is unknown. A coin whose mint refuses
+burns is not offered the choice. If a mint starts refusing mid-round, the
+unburned share stays with the keeper, the round reports why, and it is
+delivered to no one.
+
+**You can check it.** The verification endpoint lists who asked for a burn,
+what was owed, what was burned, the coin's supply before and after the round,
+and every burn transaction. The site shows the same under "Verify this pool",
+and each burn appears in the pool's feed next to the purchases.
+
+We tested the rule on 400 random rounds through the real delivery code on a
+simulated chain, late purchases included. Every wallet got its share to the raw
+unit. The same harness run with the formula we had before breaks the promise in
+359 of them, which is how we know the test can fail.
+
 ## The program on mainnet
 
 ```
@@ -123,7 +169,7 @@ Nothing here asks for trust. Every round publishes what it stands on:
 GET https://pumpling.xyz/api/lottery/<round id>/verification
 ```
 
-You get four things and can check each one on your own:
+You get five things and can check each one on your own:
 
 1. **The commitment.** Before the draw, the program stores a hash of who put how
    much behind which coin. The response carries the exact text that was hashed.
@@ -137,7 +183,10 @@ You get four things and can check each one on your own:
    the seed into shares. The code is
    `webapp/backend/application/lottery/vrf_engine.py` and
    `scripts/vrf_algorithm_hash.py` prints its hash.
-4. **The result.** Shares per coin, and every purchase with its signature.
+4. **The result.** Shares per coin, and every purchase, delivery, burn and
+   refund with its signature.
+5. **The burn.** For every coin with a burn: who asked, what was owed, what was
+   burned, the supply before and after, and each burn's signature.
 
 The site has the same thing behind a "Verify this pool" button, on the pool page
 and on every past round in the archive.
@@ -163,7 +212,7 @@ commitment cannot reach mainnet.
 | `webapp/ui/` | Angular | the site: main page, pool page, personal history, archive |
 | `webapp/backend/` | Python, FastAPI | API, accounts, commits, coin checks, round state |
 | `workers/` | Python, asyncio | round lifecycle, on-chain events, backfill |
-| `offchain/` | TypeScript | the buyer: batched purchases, delivery, refunds |
+| `offchain/` | TypeScript | the buyer: batched purchases, delivery, burns, refunds |
 | `infra/` | Loki, Grafana | dashboards and alert rules |
 
 Each folder has its own `CLAUDE.md` with the decisions behind it: what the
@@ -197,7 +246,7 @@ buyer picking itself back up after a crash mid-round.
 
 ```bash
 cd webapp/backend && python3 -m pytest   # API guards, rate limits, round state
-npx jest                                 # buyer: purchases, delivery, refunds, recovery
+npx jest                                 # buyer: purchases, delivery, burns, refunds, recovery
 cd webapp/ui && npm run test:scenes      # the maths behind the landing animations and fees
 cd webapp/ui && npm start                # then, in another shell:
 cd webapp/ui && npm run e2e              # browser suites against a real Chrome

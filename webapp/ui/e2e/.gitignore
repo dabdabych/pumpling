@@ -1,3 +1,8 @@
 scenes/scenes.mjs
 scenes/fee.mjs
 shots/
+scenes/pool-view.mjs
+scenes/burn.mjs
+scenes/token-amount.mjs
+scenes/feed-rows.mjs
+scenes/burn-view.mjs

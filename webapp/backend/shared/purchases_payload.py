@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from application.lottery.vrf_engine import VrfEngine
 from infrastructure.database.models.bet_participation_model import BetParticipationModel
 from shared.bet_confirmation import active_bet_condition
+from shared.weights_commitment import sol_to_lamports
 
 
 def collect_lottery_weights(db: Session, lottery_id: int) -> dict[str, int]:
@@ -23,7 +24,9 @@ def collect_lottery_weights(db: Session, lottery_id: int) -> dict[str, int]:
     for mint, total_sol in rows:
         if total_sol is None:
             continue
-        lamports = int(round(float(total_sol) * 1_000_000_000))
+        # The same conversion the commitment goes through, so the numbers the
+        # draw weighs by are the numbers that were pinned on chain.
+        lamports = sol_to_lamports(total_sol)
         if lamports > 0:
             weights[str(mint)] = lamports
     return weights
@@ -83,23 +86,7 @@ def build_run_purchases_payload(
         if total_sol <= 0:
             continue
 
-        per_wallet: dict[str, float] = {}
-        for bet in bets:
-            if str(bet.meme_coin_address) != mint:
-                continue
-            amount = float(bet.sol_amount)
-            if amount <= 0:
-                continue
-            per_wallet[bet.wallet_address] = per_wallet.get(bet.wallet_address, 0.0) + amount
-
-        recipients = [
-            {
-                "publickey": wallet,
-                "amount": round(amount, 8),
-            }
-            for wallet, amount in sorted(per_wallet.items(), key=lambda item: item[1], reverse=True)
-            if amount > 0
-        ]
+        recipients = recipients_for(mint, bets)
         if not recipients:
             continue
 
@@ -113,3 +100,41 @@ def build_run_purchases_payload(
         "lotteryId": str(lottery_id),
         "tokens": tokens,
     }
+
+
+def recipients_for(mint: str, bets: list[Any]) -> list[dict[str, object]]:
+    """Who stood behind one coin, for the buyer: one entry per wallet, biggest first."""
+    # Per wallet: the SOL as before, the same in exact lamports, and the
+    # burn weight Σ(lamports × bps) over its commits to this coin. A wallet
+    # that committed twice with different choices is served exactly by the
+    # weight; `burnBps` is the same thing rounded, for logs and display.
+    per_wallet: dict[str, float] = {}
+    lamports_per_wallet: dict[str, int] = {}
+    burn_weight_per_wallet: dict[str, int] = {}
+    for bet in bets:
+        if str(bet.meme_coin_address) != mint:
+            continue
+        amount = float(bet.sol_amount)
+        if amount <= 0:
+            continue
+        wallet = bet.wallet_address
+        lamports = sol_to_lamports(bet.sol_amount)
+        bps = min(10_000, max(0, int(getattr(bet, "burn_bps", 0) or 0)))
+        per_wallet[wallet] = per_wallet.get(wallet, 0.0) + amount
+        lamports_per_wallet[wallet] = lamports_per_wallet.get(wallet, 0) + lamports
+        burn_weight_per_wallet[wallet] = burn_weight_per_wallet.get(wallet, 0) + lamports * bps
+
+    recipients = []
+    for wallet, amount in sorted(per_wallet.items(), key=lambda item: item[1], reverse=True):
+        if amount <= 0:
+            continue
+        lamports = lamports_per_wallet[wallet]
+        weight = burn_weight_per_wallet[wallet]
+        recipients.append({
+            "publickey": wallet,
+            "amount": round(amount, 8),
+            "amountLamports": str(lamports),
+            "burnBps": round(weight / lamports, 2) if lamports > 0 else 0,
+            "burnWeight": str(weight),
+        })
+    return recipients

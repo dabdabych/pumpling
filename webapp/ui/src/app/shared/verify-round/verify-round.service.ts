@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import { SUPPRESS_GLOBAL_ERROR_DIALOG } from '../http-context-tokens';
+import { VerificationBurn } from './burn-view';
 
 /**
  * The data for verifying a round.
@@ -32,6 +33,8 @@ export interface RoundVerification {
   vrf_algorithm_hash: string | null;
   algorithm_source: string;
   winner_results: Array<{ mint: string; wins: number; target_sol?: number }>;
+  /** Every coin with a burn. Absent from an answer older than the burn. */
+  burns?: VerificationBurn[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -59,7 +62,11 @@ export class VerifyRoundService {
       this.jsonUrl(lotteryId),
       { context: new HttpContext().set(SUPPRESS_GLOBAL_ERROR_DIALOG, true) }
     ));
-    this.cache.set(lotteryId, data);
+    // A burn still under way changes with every round of delivery: that answer
+    // is asked for again next time rather than frozen at its first look.
+    if (!(data.burns ?? []).some((burn) => !burn.final)) {
+      this.cache.set(lotteryId, data);
+    }
     return data;
   }
 }

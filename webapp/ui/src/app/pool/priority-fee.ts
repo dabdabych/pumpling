@@ -17,8 +17,21 @@
 
 export type PriorityLevel = 'normal' | 'fast' | 'turbo';
 
-/** A deposit fits into roughly thirty thousand units; we ask with headroom. */
+/**
+ * The compute limit a commit asks for. Measured on mainnet: the deposits in the
+ * program's history took 8,311 to 14,406 units for the whole transaction, and
+ * the burn memo takes 21,042 to 21,405 more (simulated against the memo program
+ * itself, 2026-09-29). The worst case with the memo is under 36,000; the rest is
+ * headroom for wallets that add their own instructions, as Phantom does.
+ *
+ * The priority is paid on this limit, not on what is used, so the memo costs
+ * nothing extra as long as it fits here.
+ */
 export const DEPOSIT_COMPUTE_UNITS = 60_000;
+
+/** The worst deposit and the worst memo seen, for the test that pins the limit above. */
+export const MEASURED_DEPOSIT_UNITS = 14_406;
+export const MEASURED_MEMO_UNITS = 21_405;
 
 /** Microlamports per compute unit. */
 export const MIN_MICRO_LAMPORTS = 10_000;

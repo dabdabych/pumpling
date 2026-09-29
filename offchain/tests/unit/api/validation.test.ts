@@ -308,3 +308,85 @@ describe("validateAndConvert", () => {
         }
     });
 });
+
+describe("validateAndConvert: the burn fields", () => {
+    const withRecipient = (recipient: Record<string, unknown>) =>
+        validBody({ tokens: [{ mint: validMint, totalSol: 1.5, recipients: [{ publickey: validRecipient, amount: 10, ...recipient }] }] });
+
+    const details = (body: unknown): string[] => {
+        try {
+            validateAndConvert(body, keeper);
+        } catch (e) {
+            return (e as ValidationError).details;
+        }
+        return [];
+    };
+
+    it("a payload without them is a round nobody burns in, as before", () => {
+        const recipient = validateAndConvert(validBody(), keeper).tokens[0].recipients[0];
+        expect(recipient.burnBps).toBeUndefined();
+        expect(recipient.burnWeight).toBeUndefined();
+        expect(recipient.amountLamports).toBeUndefined();
+    });
+
+    it("keeps them when they agree with each other and with the amount", () => {
+        const recipient = validateAndConvert(
+            withRecipient({ amountLamports: "10000000000", burnBps: 5000, burnWeight: "50000000000000" }),
+            keeper
+        ).tokens[0].recipients[0];
+        expect(recipient).toMatchObject({ amountLamports: "10000000000", burnBps: 5000, burnWeight: "50000000000000" });
+    });
+
+    it("tolerates the rounding of an amount sent to eight decimals, and nothing more", () => {
+        expect(details(withRecipient({ amount: 0.12345679, amountLamports: "123456789" }))).toEqual([]);
+        expect(details(withRecipient({ amount: 10, amountLamports: "10000002000" }))[0]).toMatch(/does not match amount/);
+    });
+
+    it("refuses a burn weight above the whole commit", () => {
+        expect(details(withRecipient({ amountLamports: "10000000000", burnWeight: "100000000000001" }))[0])
+            .toMatch(/more than the whole commit/);
+    });
+
+    it("refuses basis points outside 0..10000 and anything that is not a number", () => {
+        expect(details(withRecipient({ burnBps: 10_001 }))[0]).toMatch(/burnBps/);
+        expect(details(withRecipient({ burnBps: -1 }))[0]).toMatch(/burnBps/);
+        expect(details(withRecipient({ burnBps: "5000" }))[0]).toMatch(/burnBps/);
+    });
+
+    it("refuses malformed integers", () => {
+        expect(details(withRecipient({ amountLamports: "1e10" }))[0]).toMatch(/amountLamports/);
+        expect(details(withRecipient({ amountLamports: 10_000_000_000 }))[0]).toMatch(/amountLamports/);
+        expect(details(withRecipient({ burnWeight: "-5" }))[0]).toMatch(/burnWeight/);
+        expect(details(withRecipient({ burnWeight: 5 }))[0]).toMatch(/burnWeight/);
+    });
+
+    it("refuses a display figure that says something else than the weight", () => {
+        expect(details(withRecipient({ amountLamports: "10000000000", burnBps: 2500, burnWeight: "50000000000000" }))[0])
+            .toMatch(/says 5000 bps, burnBps says 2500/);
+    });
+});
+
+describe("the payload contract with the backend", () => {
+    // The same file the backend's test builds from bets:
+    // webapp/backend/tests/test_purchases_payload_burn.py.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const contract = require("../fixtures/payload-contract.json") as {
+        mint: string;
+        recipients: Array<Record<string, unknown>>;
+        shares: Array<{ wallet: string; stake: string; burn: string }>;
+    };
+
+    it("the buyer accepts what the backend sends and reads the exact shares from it", () => {
+        const { burnWeightOf } = jest.requireActual("../../../orchestrator/shares");
+        const params = validateAndConvert(
+            { lotteryId: "contract", tokens: [{ mint: contract.mint, totalSol: 1, recipients: contract.recipients }] },
+            keeper
+        );
+        const recipients = params.tokens[0].recipients;
+        expect(recipients.map((r) => ({
+            wallet: r.publickey.toBase58(),
+            stake: r.amountLamports,
+            burn: String(burnWeightOf(BigInt(r.amountLamports!), r.burnWeight, r.burnBps)),
+        }))).toEqual(contract.shares);
+    });
+});

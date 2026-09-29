@@ -13,6 +13,7 @@ jest.mock("../../../solana/connection", () => ({
     connection: {
         getAccountInfo: jest.fn(),
         getTokenAccountBalance: jest.fn(),
+        getTokenSupply: jest.fn(),
     },
 }));
 
@@ -324,5 +325,118 @@ describe("sweep: every pass requeues what failed on the previous one", () => {
             (c) => c[0]?.isSweep === true
         );
         expect(sweepCalls).toHaveLength(1);
+    });
+});
+
+
+describe("executeLottery with burners", () => {
+    const mockSupply = connection.getTokenSupply as jest.Mock;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockBatchBuy.mockResolvedValue({
+            runId: "batch_test",
+            stateFilePath: "/tmp/batch.json",
+            summary: { completedPurchases: 1, abandonedPurchases: 0, totalSolSpent: 1, startedAt: Date.now(), finishedAt: Date.now() },
+        });
+        mockGetAccountInfo.mockResolvedValue({
+            owner: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+            data: Buffer.alloc(82),
+        });
+        mockExecuteSendRounds.mockResolvedValue(undefined);
+        mockSupply.mockResolvedValue({ value: { amount: "1000000000000000", decimals: 6, uiAmount: 1e9 } });
+    });
+
+    function burnParams(stateFilePath: string): ExecuteLotteryParams {
+        const all = Keypair.generate().publicKey;
+        const half = Keypair.generate().publicKey;
+        const none = Keypair.generate().publicKey;
+        return makeParams({
+            stateFilePath,
+            sendRounds: 10,
+            tokens: [
+                {
+                    mint: Keypair.generate().publicKey,
+                    totalSol: 5,
+                    recipients: [
+                        { publickey: all, amount: 2, amountLamports: "2000000000", burnBps: 10_000, burnWeight: "20000000000000" },
+                        { publickey: half, amount: 2, amountLamports: "2000000000", burnBps: 5000, burnWeight: "10000000000000" },
+                        { publickey: none, amount: 1, amountLamports: "1000000000", burnBps: 0, burnWeight: "0" },
+                    ],
+                },
+                {
+                    mint: Keypair.generate().publicKey,
+                    totalSol: 5,
+                    recipients: [{ publickey: none, amount: 1 }],
+                },
+            ],
+        });
+    }
+
+    it("somebody burning everything gets no deliveries, but the round keeps who stood behind the coin", async () => {
+        const stateFile = path.join(tmpDir(), "burn.json");
+        const params = burnParams(stateFile);
+        await executeLottery(params);
+        const state: LotteryState = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+
+        const [burning, plain] = state.tokenBuys;
+        const allWallet = params.tokens[0].recipients[0].publickey.toBase58();
+        expect(state.sends.filter((send) => send.mint === burning.mint).map((send) => send.recipient))
+            .not.toContain(allWallet);
+        expect(burning.recipients).toEqual([
+            { wallet: allWallet, stakeLamports: "2000000000", burnBps: 10_000, burnWeight: "20000000000000" },
+            { wallet: params.tokens[0].recipients[1].publickey.toBase58(), stakeLamports: "2000000000", burnBps: 5000, burnWeight: "10000000000000" },
+            { wallet: params.tokens[0].recipients[2].publickey.toBase58(), stakeLamports: "1000000000", burnBps: 0, burnWeight: "0" },
+        ]);
+        // A payload without the fields: lamports from the amount, nothing burned.
+        expect(plain.recipients).toEqual([
+            { wallet: params.tokens[1].recipients[0].publickey.toBase58(), stakeLamports: "1000000000", burnBps: 0, burnWeight: "0" },
+        ]);
+    });
+
+    it("reads every coin's supply and decimals before the buying, once", async () => {
+        const stateFile = path.join(tmpDir(), "supply.json");
+        await executeLottery(burnParams(stateFile));
+        const state: LotteryState = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+        for (const token of state.tokenBuys) {
+            expect(token.supplyAtStart).toBe("1000000000000000");
+            expect(token.decimals).toBe(6);
+        }
+        // Before: one per coin. After: only the coin with burners.
+        expect(mockSupply).toHaveBeenCalledTimes(3);
+        expect(state.tokenBuys[0].supplyAtEnd).toBe("1000000000000000");
+        expect(state.tokenBuys[1].supplyAtEnd).toBeUndefined();
+        expect(mockSupply.mock.invocationCallOrder[0]).toBeLessThan(mockBatchBuy.mock.invocationCallOrder[0]);
+    });
+
+    it("a supply the node will not give is logged and the round goes on", async () => {
+        mockSupply.mockRejectedValue(new Error("429"));
+        const stateFile = path.join(tmpDir(), "no-supply.json");
+        const result = await executeLottery(burnParams(stateFile));
+        expect(result.summary.tokensBought).toBe(2);
+    });
+
+    it("holds back a transaction fee per burn per round for a coin with burners, and nothing for one without", async () => {
+        const withBurn = path.join(tmpDir(), "reserve-burn.json");
+        await executeLottery(burnParams(withBurn));
+        const burnState: LotteryState = JSON.parse(fs.readFileSync(withBurn, "utf-8"));
+
+        const params = burnParams(path.join(tmpDir(), "reserve-plain.json"));
+        for (const recipient of params.tokens[0].recipients) {
+            recipient.burnBps = 0;
+            recipient.burnWeight = "0";
+        }
+        await executeLottery(params);
+        const plainState: LotteryState = JSON.parse(fs.readFileSync(params.stateFilePath!, "utf-8"));
+
+        // One coin burns: ten rounds plus four more passes, at the delivery fee
+        // ceiling. The plain round also delivers to the wallet that burns
+        // everything in the other one. (Every wallet here already has its token
+        // account, so no rent is held in either.)
+        const { TX_FEE_SOL } = jest.requireActual("../../../scheduler/fees");
+        const allWalletSends = plainState.sends.filter((send) => send.recipient === params.tokens[0].recipients[0].publickey.toBase58()).length;
+        expect(allWalletSends).toBe(1);
+        expect(burnState.sendReserve).toBeCloseTo(plainState.sendReserve + 14 * TX_FEE_SOL - allWalletSends * TX_FEE_SOL, 9);
+        expect(burnState.sendReserve).toBeCloseTo(3 * TX_FEE_SOL + 14 * TX_FEE_SOL, 9);
     });
 });

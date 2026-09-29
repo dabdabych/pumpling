@@ -7,6 +7,11 @@ import { classifyError } from "../scheduler/errors";
 import { logger as rootLogger, Logger } from "../logger";
 import { Semaphore } from "./semaphore";
 import { calculateSendReserve, distributeBuyBudget } from "./fees";
+import { TX_FEE_SOL } from "../scheduler/fees";
+import { connection } from "../solana/connection";
+import { finishBurns, settleAfterBuying } from "./settle";
+import { burnWeightOf, hasBurn, sharesOf } from "./shares";
+import { getTokenBalance } from "./sendRounds";
 import {
     calculateSendN,
     generateSendRecords,
@@ -16,11 +21,15 @@ import {
     MAX_SEND_ATTEMPTS,
 } from "./sendRounds";
 import { OrchestratorStateManager, batchStatePath, getDefaultLotteryStatePath } from "./state";
+import { readBatchFile } from "./batchFile";
+import { buildRefundLedger, collectRoundSignatures } from "./refundLedger";
+import { readKeeperDebits } from "../solana/debits";
 import { refundUnspent } from "./refunds";
 import {
     ExecuteLotteryParams,
     LotteryState,
     LotteryResult,
+    RecipientEntry,
     TokenBuyRecord,
 } from "./types";
 
@@ -54,6 +63,28 @@ const DEFAULT_SEND_CONCURRENCY = envNumber("SEND_CONCURRENCY", 20);
 const DEFAULT_BUY_WINDOW_MINUTES = envNumber("BUY_WINDOW_MINUTES", 50);
 const DEFAULT_SEND_ROUNDS = envNumber("SEND_ROUNDS", 10);
 // The send interval is buyWindowMinutes / sendRounds
+
+/** Burn transactions beyond the delivery rounds: three sweep passes and the settlement. */
+const BURN_EXTRA_PASSES = 4;
+
+/** The commit in lamports: the payload's exact figure when it has one. */
+function stakeLamportsOf(recipient: RecipientEntry): bigint {
+    if (typeof recipient.amountLamports === "string" && /^\d+$/.test(recipient.amountLamports)) {
+        return BigInt(recipient.amountLamports);
+    }
+    return BigInt(Math.round(recipient.amount * 1e9));
+}
+
+/** Σ(lamports × bps) for one recipient entry; see `burnWeightOf`. */
+function burnWeightOfEntry(recipient: RecipientEntry): bigint {
+    return burnWeightOf(stakeLamportsOf(recipient), recipient.burnWeight, recipient.burnBps);
+}
+
+/** Whether this entry asked for everything bought for it to be burned. */
+function burnsEverything(recipient: RecipientEntry): boolean {
+    const stake = stakeLamportsOf(recipient);
+    return stake > 0n && burnWeightOfEntry(recipient) === stake * 10_000n;
+}
 
 // =============================================================================
 // EXECUTE LOTTERY
@@ -91,11 +122,20 @@ export async function executeLottery(
     // PHASE 1: PREPARATION
     // =========================================================================
 
+    // Somebody who asked for everything bought for them to be burned gets no
+    // deliveries at all: no records, no token account checked, no rent held
+    // back for one. They are still in the round — `recipients` below — for
+    // the burn, the refund of unspent SOL and the verification page.
+    const deliveryTokens = tokens.map((token) => ({
+        ...token,
+        recipients: token.recipients.filter((recipient) => !burnsEverything(recipient)),
+    }));
+
     // Snapshot ATAs for recipients with <1 SOL bets (fraud guard)
-    const ataSnapshot = await snapshotRecipientAtas(tokens, sendConcurrency);
+    const ataSnapshot = await snapshotRecipientAtas(deliveryTokens, sendConcurrency);
 
     // Generate send records
-    const sends = generateSendRecords(tokens, sendRounds, ataSnapshot);
+    const sends = generateSendRecords(deliveryTokens, sendRounds, ataSnapshot);
 
     // Calculate send reserve (per unique mint:recipient pair, conservative)
 
@@ -113,7 +153,13 @@ export async function executeLottery(
         }
     }
     const uniqueRecipientValues = Array.from(uniqueRecipients.values());
-    const sendReserve = calculateSendReserve(uniqueRecipientValues);
+    // Burns are paid for out of the same reserve as deliveries: one transaction
+    // per coin per delivery round, the sweep passes and the settlement.
+    const burningCoins = tokens.filter((token) =>
+        token.recipients.some((recipient) => burnWeightOfEntry(recipient) > 0n)
+    ).length;
+    const burnReserve = burningCoins * (sendRounds + BURN_EXTRA_PASSES) * TX_FEE_SOL;
+    const sendReserve = calculateSendReserve(uniqueRecipientValues) + burnReserve;
     const ataReserveCount = uniqueRecipientValues.filter((r) => !r.hasAta).length;
 
     const totalSol = tokens.reduce((s, t) => s + t.totalSol, 0);
@@ -135,7 +181,21 @@ export async function executeLottery(
     // Create token buy records
     const tokenBuys: TokenBuyRecord[] = tokens.map((t, i) => ({
         mint: t.mint.toBase58(),
+        // What the draw gave the coin, and what the buying may spend of it:
+        // the difference is this coin's share of the delivery reserve.
+        targetSolAmount: t.totalSol,
         adjustedSolAmount: adjustedAmounts[i],
+        recipients: t.recipients.map((recipient) => {
+            const stake = stakeLamportsOf(recipient);
+            const weight = burnWeightOfEntry(recipient);
+            return {
+                wallet: recipient.publickey.toBase58(),
+                stakeLamports: stake.toString(),
+                // For display only, to two decimals of a basis point.
+                burnBps: stake > 0n ? Number((weight * 100n) / stake) / 100 : 0,
+                burnWeight: weight.toString(),
+            };
+        }),
         status: "pending" as const,
         updatedAt: Date.now(),
     }));
@@ -165,6 +225,26 @@ export async function executeLottery(
         initialState,
         stateFilePath
     );
+
+    // Every coin's supply and decimals, before a single purchase. The decimals
+    // are what turns the round's raw figures into amounts on the site. The
+    // supply is what the verification page sets against the supply afterwards
+    // for a coin with burners, and anyone can check both in an explorer. Read
+    // here and only here: after a crash some burns may already be done, and a
+    // supply read then would hide them.
+    const supplySemaphore = new Semaphore(Math.max(1, Math.min(10, sendConcurrency)));
+    await Promise.all(initialState.tokenBuys.map((token) => supplySemaphore.use(async () => {
+        try {
+            const supply = await connection.getTokenSupply(new PublicKey(token.mint));
+            stateManager.updateTokenBuy(token.mint, {
+                supplyAtStart: supply.value.amount,
+                decimals: supply.value.decimals,
+            });
+        } catch (error) {
+            log.warn({ event: "lottery.supply_unreadable", mint: token.mint.slice(0, 8), error: String(error) },
+                "Supply before the round could not be read");
+        }
+    })));
 
     return runBuyAndSend({
         stateManager,
@@ -262,6 +342,23 @@ export async function runBuyAndSend(params: RunBuyAndSendParams): Promise<Lotter
         ]);
 
         // =========================================================================
+        // PHASE 2.4: SETTLEMENT — what the second pass bought after the last round
+        //
+        // Burns what is still owed and queues a top-up for every wallet short of
+        // its share. The sweep below sends the top-ups. See `settle.ts` for the
+        // round that needed this.
+
+        const settled = await settleAfterBuying({
+            stateManager,
+            keeper,
+            sendRounds,
+            loadBatch: readBatchFile,
+            tokenBalance: (mint) => getTokenBalance(mint, keeper.publicKey),
+            sleepFn,
+            logger: log,
+        });
+
+        // =========================================================================
         // PHASE 2.5: SWEEP — delivering everything that did not reach recipients
         //
         // 1. Tokens bought during the retry phase (sends stayed pending, balance was 0)
@@ -349,6 +446,27 @@ export async function runBuyAndSend(params: RunBuyAndSendParams): Promise<Lotter
                 });
             }
         }
+        // A burn the settlement could not finish, because its last transaction
+        // might still have been landing, gets its last attempts here.
+        await finishBurns({
+            stateManager,
+            keeper,
+            mints: settled.burnsWaiting,
+            loadBatch: readBatchFile,
+            sleepFn,
+            logger: log,
+        });
+        for (const token of stateManager.getState().tokenBuys) {
+            if (!hasBurn(sharesOf(stateManager.getState(), token.mint))) {
+                continue;
+            }
+            try {
+                const supply = await connection.getTokenSupply(new PublicKey(token.mint));
+                stateManager.updateTokenBuy(token.mint, { supplyAtEnd: supply.value.amount });
+            } catch {
+                // Shown as unknown on the verification page.
+            }
+        }
     } catch (error) {
         phaseError = error;
         log.error({
@@ -366,11 +484,24 @@ export async function runBuyAndSend(params: RunBuyAndSendParams): Promise<Lotter
     // keeper wallet.
 
     try {
-        const spentByMint = new Map<string, number>();
-        for (const token of stateManager.getState().tokenBuys ?? []) {
-            spentByMint.set(token.mint, token.spentSol ?? 0);
+        // What the round really cost, read off the chain. The plan knows the
+        // amounts it meant to swap; only the chain knows the fees, the priority
+        // and the rent of the accounts that had to be created — and every one
+        // of those was reserved for out of the same money, so counting the
+        // spend from the plan refunded the reserve whether it had been used or
+        // not.
+        const state = stateManager.getState();
+        const signatures = collectRoundSignatures(state, readBatchFile);
+        const debits = await readKeeperDebits(signatures, keeper.publicKey, { logger: log });
+        const ledger = buildRefundLedger(state, readBatchFile, debits);
+        const unknown = [...ledger.values()].filter((basis) => !basis.exact).length;
+        if (unknown > 0) {
+            log.warn(
+                { event: "lottery.refund_ledger_estimated", coins: unknown, signatures: signatures.length },
+                `Refund basis estimated for ${unknown} coin(s): the chain could not be read in full`
+            );
         }
-        const refunded = await refundUnspent(stateManager, spentByMint, { keeper, logger: log });
+        const refunded = await refundUnspent(stateManager, ledger, { keeper, logger: log });
         if (refunded.sent > 0 || refunded.failed > 0) {
             log.warn({ event: "lottery.refunds", ...refunded }, `Refunds: ${refunded.sent} sent, ${refunded.failed} failed, ${refunded.solReturned} SOL returned`);
         }

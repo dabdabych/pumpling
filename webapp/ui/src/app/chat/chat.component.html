@@ -11,7 +11,11 @@
       </span>
     </header>
 
-    <div #scrollContainer class="messages" (scroll)="onScroll()">
+    <!-- tabindex so the feed can be reached and scrolled with a keyboard: a
+         scrollable region that only a mouse can move is unusable without one.
+         role="log" tells a screen reader that messages append here. -->
+    <div #scrollContainer class="messages" (scroll)="onScroll()"
+         tabindex="0" role="log" aria-label="Chat messages">
       <div *ngIf="isLoading" class="messages-state">Loading messages…</div>
       <button *ngIf="isLoadingOlder" class="load-status" type="button" disabled>Loading older messages…</button>
       <!-- We show the loading error here rather than only in the composer: the

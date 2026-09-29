@@ -9,7 +9,8 @@ tokens reach the wallets that backed those coins.
 1. Commit   — a wallet sends SOL to the vault behind a chosen mint (on-chain)
 2. Draw     — VRF sets each coin's share of the pool
 3. Buy      — the off-chain buyer purchases those coins (pump.fun / PumpSwap / Jupiter)
-4. Deliver  — tokens go out to the wallets that backed each coin
+4. Deliver  — tokens go out to the wallets that backed each coin, less the
+              share each wallet asked to have burned, which is burned on chain
 ```
 
 What matters about the mechanic: the value is not the payout. A participant

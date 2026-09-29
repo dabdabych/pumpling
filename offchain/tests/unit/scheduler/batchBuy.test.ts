@@ -18,6 +18,7 @@ const mockBuy = jest.fn();
 const mockGetAccountInfo = jest.fn();
 const mockGetBalance = jest.fn();
 const mockGetSignatureStatus = jest.fn();
+const mockGetBlockHeight = jest.fn();
 
 jest.mock("../../../buy", () => ({
     buy: (...args: unknown[]) => mockBuy(...args),
@@ -33,6 +34,7 @@ jest.mock("../../../solana/connection", () => ({
         getAccountInfo: (...args: unknown[]) => mockGetAccountInfo(...args),
         getBalance: (...args: unknown[]) => mockGetBalance(...args),
         getSignatureStatus: (...args: unknown[]) => mockGetSignatureStatus(...args),
+        getBlockHeight: (...args: unknown[]) => mockGetBlockHeight(...args),
     },
 }));
 
@@ -1034,5 +1036,81 @@ describe("the venue when confirming by signature", () => {
         const state = readState(sf);
         expect(state.purchases[0].venue).toBe("dex");
         expect(state.metrics?.venueRouting.dexDirect ?? 0).toBeGreaterThan(0);
+    });
+});
+
+describe("the retry ladder never signs again while its last attempt may still land", () => {
+    // The ladder in the retry phase used to sign its next attempt straight
+    // after a PostSendError. When the error was a lost answer rather than an
+    // expired blockhash, the first transaction could still land, and then both
+    // did: the coin bought twice. Now a signature the node does not know yet is
+    // waited out until the chain is past its blockhash.
+    function inFlight(signature: string, lastValidBlockHeight: number): Error {
+        const { PostSendError } = jest.requireActual("../../../solana/transaction");
+        return new PostSendError("Transaction send/confirm failed: fetch failed", signature, undefined, lastValidBlockHeight);
+    }
+
+    /** Main loop: a plain timeout, so the purchase goes to the retry phase. Retry phase: in flight. */
+    function timeoutThenInFlight(signature: string): void {
+        let call = 0;
+        mockBuy.mockImplementation(() => {
+            call++;
+            if (call === 1) return Promise.reject(new Error("Request timeout"));
+            return Promise.reject(inFlight(signature, 1_000));
+        });
+    }
+
+    it("waits, finds it landed, and closes the purchase with it", async () => {
+        timeoutThenInFlight("SIG-LATE");
+        mockGetBlockHeight.mockResolvedValue(900);
+        let polls = 0;
+        mockGetSignatureStatus.mockImplementation(async () => {
+            polls++;
+            // Not seen for the first few polls, then there.
+            return polls < 4 ? { value: null } : { value: { confirmationStatus: "confirmed", err: null } };
+        });
+
+        const sf = stateFilePath("ladder-waits-landed");
+        const result = await batchBuy({ mint: TEST_MINT, totalSolAmount: 0.05, keeper: TEST_KEEPER, windowMinutes: 0, stateFilePath: sf });
+
+        expect(mockBuy).toHaveBeenCalledTimes(2);
+        expect(result.summary.completedPurchases).toBe(1);
+        expect(readState(sf).purchases[0].signature).toBe("SIG-LATE");
+    });
+
+    it("waits, finds it never landed once the blockhash is gone, and only then tries again", async () => {
+        let call = 0;
+        mockBuy.mockImplementation(() => {
+            call++;
+            if (call === 1) return Promise.reject(new Error("Request timeout"));
+            if (call === 2) return Promise.reject(inFlight("SIG-DROPPED", 1_000));
+            return Promise.resolve({ signature: "SIG-OK", venue: "pumpfun" });
+        });
+        const heights = [900, 950, 1_100];
+        mockGetBlockHeight.mockImplementation(async () => heights.shift() ?? 1_100);
+        mockGetSignatureStatus.mockResolvedValue({ value: null });
+
+        const sf = stateFilePath("ladder-waits-dropped");
+        await batchBuy({ mint: TEST_MINT, totalSolAmount: 0.05, keeper: TEST_KEEPER, windowMinutes: 0, stateFilePath: sf });
+
+        expect(mockBuy).toHaveBeenCalledTimes(3);
+        // Asked three times: twice inside the blockhash's life, once after.
+        expect(mockGetBlockHeight).toHaveBeenCalledTimes(3);
+        expect(readState(sf).purchases[0].signature).toBe("SIG-OK");
+    });
+
+    it("stops the ladder when the fate stays unknown, rather than sign a second one", async () => {
+        timeoutThenInFlight("SIG-LIMBO");
+        mockGetBlockHeight.mockResolvedValue(900);
+        mockGetSignatureStatus.mockResolvedValue({ value: null });
+
+        const sf = stateFilePath("ladder-stops");
+        await batchBuy({ mint: TEST_MINT, totalSolAmount: 0.05, keeper: TEST_KEEPER, windowMinutes: 0, stateFilePath: sf });
+
+        expect(mockBuy).toHaveBeenCalledTimes(2);
+        const purchase = readState(sf).purchases[0];
+        expect(purchase.status).toBe("abandoned");
+        // Kept, so the refund charges it if it landed and B counts its tokens.
+        expect(purchase.pendingSignature).toBe("SIG-LIMBO");
     });
 });

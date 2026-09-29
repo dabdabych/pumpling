@@ -31,6 +31,7 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 
 import { logger as rootLogger, Logger } from "../logger";
 import { BatchState } from "../scheduler/types";
+import { readBatchFile } from "./batchFile";
 import { BuyPlanItem, runBuyAndSend } from "./orchestrator";
 import { OrchestratorStateManager } from "./state";
 import { LotteryResult, LotteryState } from "./types";
@@ -95,11 +96,7 @@ export function findUnfinishedStates(dir: string = STATE_DIR): string[] {
 // =============================================================================
 
 export function defaultReadBatch(filePath: string): BatchState | null {
-    try {
-        return JSON.parse(fs.readFileSync(filePath, "utf-8")) as BatchState;
-    } catch {
-        return null;
-    }
+    return readBatchFile(filePath);
 }
 
 /** How much SOL actually went out on this batch: counted from completed purchases. */

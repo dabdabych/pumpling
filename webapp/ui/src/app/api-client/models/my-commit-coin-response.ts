@@ -6,6 +6,7 @@
  * One coin in my round: how much I put in and what became of it.
  */
 export interface MyCommitCoinResponse {
+  burn_bps?: number;
   drawn_sol?: (number | null);
   logo_url?: (string | null);
   mint: string;

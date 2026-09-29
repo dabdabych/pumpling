@@ -11,14 +11,32 @@ the phase worker that puts the hash into the program, and the round verification
 page that hands out the preimage. They cannot drift apart by construction — and
 if they lived separately they would have drifted on the first day.
 
-The rule:
+There are two rules, because there have been two.
 
-1. Take the round's active commits and sum them per coin.
-2. Round the sum to eight decimals (half up) and drop the zeros.
+**Rule 2, used by every round from 2026-09-24 on.** Amounts are whole lamports,
+which is what the chain counts and what the draw actually weighs by.
+
+1. Take the round's active commits and sum them per coin, in lamports.
+2. Drop anything that sums to zero.
 3. Sort by descending amount, and by coin address when equal.
-4. Write it as a JSON array of pairs `[["<mint>",<amount>],…]`, with the amount
-   written the way JavaScript writes it: no trailing zeros and no exponent.
+4. Write it as a JSON array of pairs `[["<mint>",<lamports>],…]`.
 5. sha256 of that string in UTF-8.
+
+**Rule 1, used by every round before that**, and kept so those rounds still
+verify. Identical except that amounts were in SOL, rounded to eight decimals.
+
+Eight decimals of SOL is ten lamports, and that is the whole reason rule 2
+exists: the draw weighs by raw lamports while the commitment pinned a rounded
+figure, so the numbers we published were not quite the numbers the draw used.
+The gap is reachable on purpose — a commit is checked against the chain in
+lamports, so anyone can deposit 50_000_001 and make the two disagree. Measured
+over four thousand values, the rounding disagreed with the draw on 3604 of
+them; going through lamports disagreed on none.
+
+It never changed an outcome that anyone could notice — a few lamports move the
+sampler's boundaries by a few parts in ten billion — but "verify it yourself"
+has to mean the published numbers are the numbers, so it is fixed rather than
+explained away.
 """
 from __future__ import annotations
 
@@ -90,3 +108,61 @@ def build_weights_commitment(pairs: list[tuple[str, Decimal]]) -> tuple[str, str
     if payload is None:
         return None
     return payload, weights_hash_hex(payload)
+
+
+# =============================================================================
+# Rule 2: whole lamports
+# =============================================================================
+
+
+def build_lamports_payload(pairs: list[tuple[str, int]]) -> str | None:
+    """The commitment preimage in whole lamports.
+
+    No rounding and no number formatting to get wrong: an integer has one
+    spelling. `build_number_string` exists for rule 1 and is not used here.
+    """
+    cleaned: list[tuple[str, int]] = []
+    for mint, lamports in pairs:
+        value = int(lamports)
+        if value <= 0:
+            continue
+        cleaned.append((str(mint), value))
+
+    if not cleaned:
+        return None
+
+    cleaned.sort(key=lambda item: (-item[1], item[0]))
+    parts = [
+        f"[{json.dumps(mint, ensure_ascii=False)},{lamports}]"
+        for mint, lamports in cleaned
+    ]
+    return "[" + ",".join(parts) + "]"
+
+
+def build_lamports_commitment(pairs: list[tuple[str, int]]) -> tuple[str, str] | None:
+    """The preimage and its hash under rule 2. `None` means nothing to pin."""
+    payload = build_lamports_payload(pairs)
+    if payload is None:
+        return None
+    return payload, weights_hash_hex(payload)
+
+
+def sol_to_lamports(value: object) -> int:
+    """The one conversion the draw and the commitment both go through.
+
+    `bet_participations.sol_amount` is a double, so the exact decimal is gone
+    before we see it. `Decimal(str(x))` takes the shortest string that round
+    trips that double, which is the figure a person would read off it, and
+    turns it into lamports. Checked against the conversion the draw has always
+    used, `int(round(float(x) * 1e9))`, over four thousand values: they agree
+    on every one.
+
+    It lives here so the two cannot drift. That is the same reason the payload
+    rule lives here.
+    """
+    if value is None:
+        return 0
+    lamports = (Decimal(str(value)) * Decimal(1_000_000_000)).quantize(
+        Decimal(1), rounding=ROUND_HALF_UP
+    )
+    return int(lamports)

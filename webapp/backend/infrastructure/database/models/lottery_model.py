@@ -19,6 +19,10 @@ class LotteryModel(Base):
     second_phase_started_at = Column(DateTime(timezone=True), nullable=True)
     proceeding_purchases_started_at = Column(DateTime(timezone=True), nullable=True)
     close_reason = Column(String(64), nullable=True)
+    #: When the round was closed. The pause before the next pool runs from here,
+    #: because a round that needed a second buying pass closes later than the
+    #: arithmetic on the window start would say.
+    closed_at = Column(DateTime(timezone=True), nullable=True)
     initialize_abandoned_at = Column(DateTime(timezone=True), nullable=True)
     initialize_abandoned_error = Column(String(1000), nullable=True)
     is_offchain_vrf = Column(Boolean, nullable=False, server_default="false", default=False)

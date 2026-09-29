@@ -5,6 +5,8 @@ import { RouterLink } from '@angular/router';
 import { environment } from '../../environments/environment';
 import { AuthDialogService } from '../auth/auth-dialog.service';
 import { SiteHeaderComponent } from '../shared/site-header/site-header.component';
+import { FlameComponent } from '../shared/flame/flame.component';
+import { burnChipText } from '../pool/burn';
 import { MyCommits, MyCommitsService, MyRound } from './my-commits.service';
 
 /**
@@ -22,7 +24,7 @@ import { MyCommits, MyCommitsService, MyRound } from './my-commits.service';
 @Component({
   selector: 'app-my-page',
   standalone: true,
-  imports: [DecimalPipe, RouterLink, SiteHeaderComponent],
+  imports: [DecimalPipe, RouterLink, SiteHeaderComponent, FlameComponent],
   templateUrl: './my-page.component.html',
   styleUrls: ['./my-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -74,6 +76,11 @@ export class MyPageComponent implements OnInit {
   }
 
   /** My share in the coin: without it the amount says nothing. */
+  /** "50% BURN" when I asked for one; nothing otherwise. */
+  burnChip(bps: number): string | null {
+    return burnChipText(bps);
+  }
+
   sharePct(mySol: number, poolSol: number): number {
     return poolSol > 0 ? (mySol / poolSol) * 100 : 0;
   }

@@ -5,13 +5,18 @@ import { Keypair, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { connection } from "../solana/connection";
 import { PostSendError } from "../solana/transaction";
+import { signatureOutcome } from "../solana/signatureOutcome";
 import { sendTransaction } from "../solana/transaction";
 import { classifyError } from "../scheduler/errors";
 import { logger as rootLogger, Logger } from "../logger";
 import { Semaphore } from "./semaphore";
 import { buildBatchSendTransaction, detectTokenProgram } from "./batchTransfer";
+import { deliveryOwed, hasBurn, Share, sharesOf } from "./shares";
+import { burnDueFor } from "./burns";
+import { readBatchFile } from "./batchFile";
+import { refreshPurchaseTokens, tokensBought } from "./purchaseTokens";
 import { OrchestratorStateManager } from "./state";
-import { SendRecord } from "./types";
+import { LotteryState, SendRecord } from "./types";
 
 // =============================================================================
 // CALCULATE SEND N
@@ -204,10 +209,26 @@ export async function snapshotRecipientAtas(
  *
  * If sum(deficits) > balance, scale down proportionally.
  */
+/**
+ * The exact basis for a coin some of whose backers burn.
+ *
+ * Without it the pot is inferred from the balance, which after a burn no longer
+ * says anything about proportions: the burned share would silently go to the
+ * people who did not burn (simulated: 363 broken promises in 400 rounds). With
+ * it, a wallet's target is its own share of everything bought, less its own
+ * burn — see `shares.ts`.
+ */
+export interface DeliveryBasis {
+    /** Every token bought for the coin, from the purchases' own transactions. */
+    bought: bigint;
+    shares: Share[];
+}
+
 export function calculateDeficitAmounts(
     activeSends: SendRecord[],
     allMintSends: SendRecord[],
-    balance: bigint
+    balance: bigint,
+    basis?: DeliveryBasis
 ): Map<string, bigint> {
     const result = new Map<string, bigint>();
     if (activeSends.length === 0 || balance <= 0n) return result;
@@ -220,13 +241,17 @@ export function calculateDeficitAmounts(
         }
     }
     const totalTokens = balance + alreadySentTotal;
+    const exactTarget = (recipient: string): bigint | null =>
+        basis ? deliveryOwed(basis.bought, recipient, basis.shares) : null;
 
-    // Already sent per recipient
+    // Already sent per recipient. Against the exact basis that is what left
+    // the keeper (see `SendRecord.grossAmount`); the inferred basis has always
+    // counted what arrived, and keeps doing so.
     const recipientSent = new Map<string, bigint>();
     for (const s of allMintSends) {
         if (s.status === "completed" && s.amount) {
-            const prev = recipientSent.get(s.recipient) || 0n;
-            recipientSent.set(s.recipient, prev + BigInt(s.amount));
+            const counted = basis ? sentFromKeeper(s) : BigInt(s.amount);
+            recipientSent.set(s.recipient, (recipientSent.get(s.recipient) || 0n) + counted);
         }
     }
 
@@ -248,7 +273,7 @@ export function calculateDeficitAmounts(
     for (const s of activeSends) {
         if (!recipientActiveSends.has(s.recipient)) {
             const betLamports = recipientBetLamports.get(s.recipient) || 0n;
-            const target = (totalTokens * betLamports) / totalBetLamports;
+            const target = exactTarget(s.recipient) ?? (totalTokens * betLamports) / totalBetLamports;
             const sent = recipientSent.get(s.recipient) || 0n;
             recipientDeficit.set(s.recipient, target > sent ? target - sent : 0n);
             recipientActiveSends.set(s.recipient, []);
@@ -299,6 +324,26 @@ export function calculateDeficitAmounts(
     }
 
     return result;
+}
+
+/** What a completed delivery took from the keeper. */
+export function sentFromKeeper(send: SendRecord): bigint {
+    const raw = send.grossAmount ?? send.amount;
+    return raw && /^\d+$/.test(raw) ? BigInt(raw) : 0n;
+}
+
+/**
+ * The coins some of whose backers asked for a burn.
+ *
+ * Their deliveries are always worked out from the exact basis, even once the
+ * burn itself is blocked: the old formula would hand the unburned share to the
+ * people who did not burn, and those tokens were promised to the fire, not to
+ * them. They stay on the keeper instead.
+ */
+export function mintsWithBurners(state: LotteryState): string[] {
+    return (state.tokenBuys ?? [])
+        .filter((token) => hasBurn(sharesOf(state, token.mint)))
+        .map((token) => token.mint);
 }
 
 // =============================================================================
@@ -392,31 +437,36 @@ async function checkPendingSend(
         return "send";
     }
 
-    let landed: boolean;
-    try {
-        const status = await connection.getSignatureStatus(send.pendingSignature);
-        landed =
-            (status.value?.confirmationStatus === "confirmed" ||
-                status.value?.confirmationStatus === "finalized") &&
-            // err matters: a transaction that failed on chain is also
-            // "confirmed", and that one DOES need repeating.
-            !status.value?.err;
-    } catch (error) {
-        // The status could not be read: we do not know whether it arrived.
-        // Skipping a delivery is recoverable, the signature stays and the next
-        // pass checks again. Sending blind is not: an overpayment cannot be
-        // recalled, and the others come up short out of the same remainder.
+    // Landed: closed below. Absent or failed on chain: nothing arrived, send.
+    // Anything else — the status could not be read, the transaction is only
+    // processed, or it is not found while its blockhash can still carry it —
+    // means we do not know. Skipping a delivery is recoverable: the signature
+    // stays and the next pass asks again. Sending blind is not: an overpayment
+    // cannot be recalled, and the others come up short out of the same
+    // remainder.
+    const outcome = await signatureOutcome(send.pendingSignature, send.pendingLastValidBlockHeight);
+    if (outcome === "unknown") {
         log.warn({
             event: "send.pending_check_failed",
             sendId: send.id,
             signature: send.pendingSignature.slice(0, 16),
-            error: error instanceof Error ? error.message : String(error),
         }, "Cannot tell whether the send landed, skipping this round");
         stateManager.incrementMetric("send.pendingCheckFailed");
         return "unknown";
     }
-
-    if (!landed) {
+    if (outcome === "failed") {
+        // It ran and failed: nothing arrived, the fee was paid. The signature
+        // moves to the record's history so the accounting still sees it.
+        stateManager.updateSend(send.id, {
+            failedSignatures: [...(send.failedSignatures ?? []), send.pendingSignature],
+            pendingSignature: undefined,
+            pendingLastValidBlockHeight: undefined,
+        });
+        return "send";
+    }
+    if (outcome === "absent") {
+        // Never landed and never will: it cost nothing and there is nothing to track.
+        stateManager.updateSend(send.id, { pendingSignature: undefined, pendingLastValidBlockHeight: undefined });
         return "send";
     }
 
@@ -427,6 +477,10 @@ async function checkPendingSend(
         status: "completed",
         signature,
         pendingSignature: undefined,
+        pendingLastValidBlockHeight: undefined,
+        // `amount` is still what was put into that transaction, so it is the
+        // gross figure; on a transfer-fee mint the recipient got less.
+        grossAmount: send.amount,
     });
     stateManager.incrementMetric("send.pendingTxConfirmed");
     log.info({
@@ -477,7 +531,17 @@ export async function executeSendRounds(
             (s) => s.status === "pending" && (isSweep || s.round <= round)
         );
 
-        if (pendingSends.length === 0) {
+        // Coins some of whose backers burn. They are visited every round,
+        // deliveries or not: a coin where everybody asked for 100% has no
+        // deliveries at all, and a loop over deliveries alone would never burn
+        // it. Their purchases are read first, since the burn and the deliveries
+        // are both worked out from what those purchases really brought.
+        const exact = mintsWithBurners(state);
+        if (exact.length > 0) {
+            await refreshPurchaseTokens(stateManager, keeper.publicKey, exact, readBatchFile, { logger: log });
+        }
+
+        if (pendingSends.length === 0 && exact.length === 0) {
             log.debug({ event: "send.round_empty", round }, "No pending sends this round");
             continue;
         }
@@ -491,8 +555,20 @@ export async function executeSendRounds(
         }
 
         const sendPromises: Promise<void>[] = [];
+        const visit = [...new Set([...exact, ...byMint.keys()])];
 
-        for (const [mintStr, sends] of byMint) {
+        for (const mintStr of visit) {
+            const sends = byMint.get(mintStr) ?? [];
+            const burns = exact.includes(mintStr);
+            // The burn goes first and is awaited: the deliveries below are
+            // worked out from the same total, and must not race it for the
+            // tokens. A blocked coin skips the burn and keeps the exact basis.
+            if (burns && !stateManager.getTokenBuy(mintStr)?.burnBlocked) {
+                await burnDueFor(stateManager, keeper, mintStr, { logger: log, loadBatch: readBatchFile });
+            }
+            if (sends.length === 0) {
+                continue;
+            }
             const mint = new PublicKey(mintStr);
 
             // The coin may not be on the network at all: the mint is closed,
@@ -525,6 +601,12 @@ export async function executeSendRounds(
                     skipUnknown.add(s.id);
                 }
             }
+            // A wallet with a transfer whose fate is unknown gets nothing this
+            // round, from any of its records. The deficit counts only what is
+            // confirmed, so while that transfer may have landed, its tokens
+            // look undelivered, and another record would send them again —
+            // out of the others' share.
+            const unsure = new Set(sends.filter((s) => skipUnknown.has(s.id)).map((s) => s.recipient));
 
             // ATA rules per recipient
             const byRecipient = new Map<string, SendRecord[]>();
@@ -537,6 +619,9 @@ export async function executeSendRounds(
             const allowedSendIds = new Set<string>();
 
             for (const [recipient, recSends] of byRecipient) {
+                if (unsure.has(recipient)) {
+                    continue;
+                }
                 const sample = recSends[0];
                 const hadAtaAtStart = sample.hadAtaAtStart === true;
 
@@ -609,7 +694,13 @@ export async function executeSendRounds(
             const allowedSends = sends.filter(
                 (s) => s.status === "pending" && allowedSendIds.has(s.id)
             );
-            const amounts = calculateDeficitAmounts(allowedSends, allMintSends, balance);
+            const basis = burns
+                ? {
+                    bought: tokensBought(stateManager.getState(), mintStr, readBatchFile).known,
+                    shares: sharesOf(stateManager.getState(), mintStr),
+                }
+                : undefined;
+            const amounts = calculateDeficitAmounts(allowedSends, allMintSends, balance, basis);
 
             // Mark allowed sends with deficit=0 as "satisfied" — recipient
             // already received their target via earlier completed sends, so
@@ -662,7 +753,18 @@ export async function executeSendRounds(
                                     batchRecipients,
                                     keeper
                                 );
-                                const signature = await sendTransaction(tx, keeper);
+                                // The signature is written down before the
+                                // transaction leaves: if the process dies while it
+                                // is being confirmed, recovery finds it and asks
+                                // the chain instead of sending again.
+                                const signature = await sendTransaction(tx, keeper, (signed) => {
+                                    for (const s of entries) {
+                                        stateManager.updateSend(s.id, {
+                                            pendingSignature: signed.signature,
+                                            pendingLastValidBlockHeight: signed.lastValidBlockHeight,
+                                        });
+                                    }
+                                });
 
                                 for (const [i, s] of entries.entries()) {
                                     // We record what ARRIVED, not what was
@@ -675,7 +777,10 @@ export async function executeSendRounds(
                                     stateManager.updateSend(s.id, {
                                         status: "completed",
                                         signature,
+                                        pendingSignature: undefined,
+                                        pendingLastValidBlockHeight: undefined,
                                         amount: deliveredAmounts[i].toString(),
+                                        grossAmount: amounts.get(s.id)!.toString(),
                                         attempts: s.attempts + 1,
                                     });
                                 }
@@ -694,6 +799,19 @@ export async function executeSendRounds(
                                 }, `Sent ${entries.length} recipients for ${mintStr.slice(0, 8)}`);
                             } catch (error) {
                                 if (isBatchTooLargeError(error) && entries.length > 1) {
+                                    // Too big to serialize never left; too big to
+                                    // run landed and failed, paying its fee. Either
+                                    // way nothing arrived, so the halves may go now.
+                                    const tried = error instanceof PostSendError ? error.signature : undefined;
+                                    for (const s of entries) {
+                                        stateManager.updateSend(s.id, {
+                                            failedSignatures: tried
+                                                ? [...(s.failedSignatures ?? []), tried]
+                                                : s.failedSignatures,
+                                            pendingSignature: undefined,
+                                            pendingLastValidBlockHeight: undefined,
+                                        });
+                                    }
                                     stateManager.incrementMetric("send.computeLimitSplit");
                                     log.warn({
                                         event: "send.compute_limit_split",
@@ -730,78 +848,59 @@ export async function executeSendRounds(
                                 // but cap at MAX_SEND_ATTEMPTS to avoid infinite retry loops
                                 // (e.g. persistent 429 from overloaded RPC).
                                 if (errorClass !== "non-retryable") {
-                                    if (round < totalRounds) {
-                                        // Remember the signature of the tx that
-                                        // flew: it gets checked before a retry,
-                                        // so a delivery that arrived does not
-                                        // reach the recipient twice.
-                                        const pendingSignature =
-                                            error instanceof PostSendError
-                                                ? error.signature
-                                                : undefined;
-                                        for (const s of entries) {
-                                            if (s.attempts + 1 >= MAX_SEND_ATTEMPTS) {
-                                                stateManager.updateSend(s.id, {
-                                                    status: "abandoned",
-                                                    errorMessage: msg,
-                                                    attempts: s.attempts + 1,
-                                                    pendingSignature,
-                                                });
-                                                stateManager.incrementMetric("send.maxAttemptsAbandon");
-                                            } else {
-                                                stateManager.updateSend(s.id, {
-                                                    status: "pending",
-                                                    errorMessage: msg,
-                                                    attempts: s.attempts + 1,
-                                                    pendingSignature,
-                                                });
-                                                stateManager.incrementMetric("send.retryableToPending");
-                                            }
+                                    // Every round alike, the last one included:
+                                    // remember the signature of a transaction
+                                    // that may have flown, and leave the
+                                    // delivery in the queue. The sweep after the
+                                    // buying looks the signature up before it
+                                    // sends anything.
+                                    //
+                                    // The last round used to retry on the spot
+                                    // instead, rebuilding the transaction without
+                                    // asking whether the first one had landed —
+                                    // `block height exceeded` says only that the
+                                    // wait ran out, not that nothing arrived.
+                                    // That was a double delivery waiting to
+                                    // happen, and the settlement that now runs
+                                    // after the buying makes the shortcut
+                                    // unnecessary.
+                                    // Whatever the error, a transaction that was
+                                    // signed may have gone out: a dropped
+                                    // connection on the send call is not a
+                                    // PostSendError, and it may still have landed.
+                                    // So the signature recorded at signing stays
+                                    // unless the error names one itself.
+                                    const pendingSignature =
+                                        error instanceof PostSendError && error.signature
+                                            ? error.signature
+                                            : entries[0]?.pendingSignature;
+                                    const pendingLastValidBlockHeight =
+                                        error instanceof PostSendError && error.signature
+                                            ? error.lastValidBlockHeight
+                                            : entries[0]?.pendingLastValidBlockHeight;
+                                    for (const s of entries) {
+                                        if (s.attempts + 1 >= MAX_SEND_ATTEMPTS) {
+                                            stateManager.updateSend(s.id, {
+                                                status: "abandoned",
+                                                errorMessage: msg,
+                                                attempts: s.attempts + 1,
+                                                pendingSignature,
+                                                pendingLastValidBlockHeight,
+                                            });
+                                            stateManager.incrementMetric("send.maxAttemptsAbandon");
+                                        } else {
+                                            stateManager.updateSend(s.id, {
+                                                status: "pending",
+                                                errorMessage: msg,
+                                                attempts: s.attempts + 1,
+                                                pendingSignature,
+                                                pendingLastValidBlockHeight,
+                                            });
+                                            stateManager.incrementMetric("send.retryableToPending");
                                         }
-                                    } else {
-                                        // Last round: try one immediate retry
-                                        stateManager.incrementMetric("send.lastRoundRetry");
-                                        try {
-                                            const { tx, deliveredAmounts } = await buildBatchSendTransaction(
-                                                mint,
-                                                batchRecipients,
-                                                keeper
-                                            );
-                                            const retrySig = await sendTransaction(tx, keeper);
-                                            for (const [i, s] of entries.entries()) {
-                                                // As above: the report gets what arrived
-                                                stateManager.updateSend(s.id, {
-                                                    status: "completed",
-                                                    signature: retrySig,
-                                                    amount: deliveredAmounts[i].toString(),
-                                                    attempts: s.attempts + 2,
-                                                });
-                                            }
-                                            stateManager.incrementMetric("send.lastRoundRetrySuccess");
-                                            log.info({
-                                                event: "send.last_round_retry_success",
-                                                mint: mintStr.slice(0, 8),
-                                                recipients: entries.length,
-                                                signature: retrySig.slice(0, 16),
-                                            }, `Last round retry succeeded for ${mintStr.slice(0, 8)}`);
-                                            return;
-                                        } catch (retryError) {
-                                            const retryMsg =
-                                                retryError instanceof Error
-                                                    ? retryError.message
-                                                    : String(retryError);
-                                            for (const s of entries) {
-                                                stateManager.updateSend(s.id, {
-                                                    status: "abandoned",
-                                                    errorMessage: retryMsg,
-                                                    attempts: s.attempts + 2,
-                                                });
-                                            }
-                                            stateManager.incrementMetric("send.lastRoundRetryFail");
-                                            if (isSweep) {
-                                                stateManager.incrementMetric("sweep.sendFailed", entries.length);
-                                            }
-                                        }
+                                    }
+                                    if (isSweep) {
+                                        stateManager.incrementMetric("sweep.sendFailed", entries.length);
                                     }
                                 }
 

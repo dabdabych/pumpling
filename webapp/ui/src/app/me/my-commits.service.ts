@@ -27,6 +27,8 @@ export interface MyCoin {
   /** How much went into the buying after the draw; null means there was no draw. */
   drawnSol: number | null;
   signatures: string[];
+  /** The share of what is bought for me that I asked to be burned, in basis points. */
+  burnBps: number;
 }
 
 export interface MyRound {
@@ -134,7 +136,8 @@ export class MyCommitsService {
             myCommits: Number(coin.my_commits) || 0,
             poolSol: num(coin.pool_sol),
             drawnSol: coin.drawn_sol === null || coin.drawn_sol === undefined ? null : num(coin.drawn_sol),
-            signatures: (coin.signatures ?? []).map((signature) => String(signature))
+            signatures: (coin.signatures ?? []).map((signature) => String(signature)),
+            burnBps: Math.min(10_000, Math.max(0, num(coin.burn_bps)))
           }))
         }))
       };

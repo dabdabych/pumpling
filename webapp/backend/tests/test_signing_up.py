@@ -300,3 +300,48 @@ class TestTheConfirmationEmailCanBeAskedForAgain:
         run(auth.resend_confirmation("PERSON@Example.COM"))
 
         assert len(mailbox.confirmations) == 2
+
+
+class TestConfirmingTheEmailSignsYouIn:
+    """Opening the link proves the address, which is what a password proves.
+
+    Asking somebody to type their password straight after they proved they hold
+    the address is a step for its own sake, and it is the step people bounce
+    off. The session comes back from `confirm_email` in the response body, the
+    same shape the sign-in endpoint returns.
+    """
+
+    def test_the_confirmed_user_comes_back(self, service):
+        auth, _repo, mailbox = service
+        sign_up(service)
+        token = mailbox.confirmations[0][1].split("token=")[1]
+
+        user = run(auth.confirm_email(token))
+
+        assert user.is_email_verified is True
+        assert user.is_active is True
+        assert user.id is not None
+
+    def test_a_session_can_be_signed_for_that_user(self, service):
+        # What the router does with the user it gets back.
+        from shared.jwt_handler import JWTHandler
+
+        auth, _repo, mailbox = service
+        sign_up(service)
+        token = mailbox.confirmations[0][1].split("token=")[1]
+        user = run(auth.confirm_email(token))
+
+        handler = JWTHandler("k" * 40)
+        session = handler.create_access_token(user.id, user.role.value)
+
+        assert handler.verify_token(session) == user.id
+
+    def test_the_link_cannot_be_used_twice(self, service):
+        # It is a session now, so single use matters more than it did.
+        auth, _repo, mailbox = service
+        sign_up(service)
+        token = mailbox.confirmations[0][1].split("token=")[1]
+        run(auth.confirm_email(token))
+
+        with pytest.raises(ValueError):
+            run(auth.confirm_email(token))

@@ -59,5 +59,29 @@ add another.
 Rule for this folder: a new suite has to fail on the code as it was before the
 fix. A test that passes either way proves nothing.
 
+## The burn
+
+A participant can have part of what is bought for them burned instead of
+delivered. In the commit dialog it is a row of four cards (0 / 25 / 50 / 100%)
+under the amount, offered only when `/check-mint` says `can_burn`. The choice
+goes into the commit transaction as a memo the wallet signs
+(`burnMemoInstruction` in `pool/commit.service.ts`, text from `pool/burn.ts`);
+0% sends no memo. The backend reads it back from the chain, never from a
+request. The words around the choice, the coin chip, token amounts, the feed's
+rows and the verification window's burn section are all pure modules
+(`pool/burn.ts`, `pool/token-amount.ts`, `pool/feed-rows.ts`,
+`shared/verify-round/burn-view.ts`) checked by `e2e/scenes/burn.test.mjs`,
+which also checks that the memo the site signs is exactly the text the backend
+parses (`webapp/backend/tests/fixtures/burn_memo_logs.json`). The flame is one
+component, `shared/flame`. The browser suites are `burn-dialog` (including the
+memo in the signed transaction), `burn-feed` and `burn-verify`.
+
+Hover styles go under `@media (hover: hover)` and skip the chosen option: on a
+phone a tap leaves `:hover` on, and the old priority rule outranked `.is-active`
+and left the chosen level pale with white text on it.
+
+`api-client/` is generated: `npm run gen:api` against a running backend, or
+point `openapi-gen.json`'s `input` at `app.openapi()` dumped to a file.
+
 NB: `idl/` must match the on-chain program and the backend. When the IDL
 changes, update `workers/idl/` in the same commit.

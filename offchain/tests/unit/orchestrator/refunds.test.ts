@@ -51,6 +51,11 @@ function makeState(overrides?: Partial<LotteryState>): LotteryState {
     } as LotteryState;
 }
 
+/** What the coin was given and what it cost, the shape `planRefunds` now takes. */
+function ledger(spentSol: number, allocatedSol = 10, deliveryLeftoverSol = 0) {
+    return new Map([[MINT, { allocatedSol, spentSol, deliveryLeftoverSol, exact: true }]]);
+}
+
 function managerFor(state: LotteryState): OrchestratorStateManager {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "refund-test-"));
     return OrchestratorStateManager.create(state, path.join(dir, "lottery_128.json"));
@@ -73,7 +78,7 @@ describe("who stands behind which coin", () => {
 
 describe("the refund plan", () => {
     it("splits the remainder by commit size and subtracts the fee", () => {
-        const plan = planRefunds(makeState(), new Map([[MINT, 6]]));
+        const plan = planRefunds(makeState(), ledger(6));
 
         const alice = plan.find((item) => item.recipient === ALICE)!;
         const bob = plan.find((item) => item.recipient === BOB)!;
@@ -90,14 +95,14 @@ describe("the refund plan", () => {
     });
 
     it("nothing to return when it was all spent", () => {
-        const plan = planRefunds(makeState(), new Map([[MINT, 10]]));
+        const plan = planRefunds(makeState(), ledger(10));
         expect(plan).toEqual([]);
     });
 
     it("pennies are not sent: the fee would eat them whole", () => {
-        const state = makeState();
-        state.tokenBuys[0].adjustedSolAmount = 6.004; // four thousandths unspent
-        const plan = planRefunds(state, new Map([[MINT, 6]]));
+        // Four thousandths unspent: a quarter of that is Bob's, and a
+        // thousandth is not worth a transaction.
+        const plan = planRefunds(makeState(), ledger(6, 6.004));
 
         const bob = plan.find((item) => item.recipient === BOB)!;
         expect(bob.status).toBe("skipped");
@@ -111,11 +116,11 @@ describe("the refund plan", () => {
 
     it("a coin with no participants does not break the calculation", () => {
         const state = makeState({ sends: [] });
-        expect(planRefunds(state, new Map([[MINT, 1]]))).toEqual([]);
+        expect(planRefunds(state, ledger(1))).toEqual([]);
     });
 
     it("the refunds never exceed the remainder", () => {
-        const plan = planRefunds(makeState(), new Map([[MINT, 6]]));
+        const plan = planRefunds(makeState(), ledger(6));
         const total = plan.reduce((sum, item) => sum + item.amountSol, 0);
         expect(total).toBeLessThanOrEqual(4);
     });
@@ -126,7 +131,7 @@ describe("sending the refunds", () => {
         const manager = managerFor(makeState());
         const sent: Transaction[] = [];
 
-        const result = await refundUnspent(manager, new Map([[MINT, 6]]), {
+        const result = await refundUnspent(manager, ledger(6), {
             keeper,
             send: async (tx) => {
                 sent.push(tx);
@@ -153,8 +158,8 @@ describe("sending the refunds", () => {
             return "sig-refund";
         };
 
-        await refundUnspent(manager, new Map([[MINT, 6]]), { keeper, send });
-        await refundUnspent(manager, new Map([[MINT, 6]]), { keeper, send });
+        await refundUnspent(manager, ledger(6), { keeper, send });
+        await refundUnspent(manager, ledger(6), { keeper, send });
 
         expect(calls).toBe(1);
     });
@@ -163,7 +168,7 @@ describe("sending the refunds", () => {
         const manager = managerFor(makeState());
         const failure = Object.assign(new Error("confirmation timeout"), { signature: "sig-maybe" });
 
-        await refundUnspent(manager, new Map([[MINT, 6]]), {
+        await refundUnspent(manager, ledger(6), {
             keeper,
             send: async () => {
                 throw failure;
@@ -175,7 +180,7 @@ describe("sending the refunds", () => {
         expect(refunds.every((refund) => refund.pendingSignature === "sig-maybe")).toBe(true);
 
         // The next pass sees the transaction arrived and closes the refund.
-        await refundUnspent(manager, new Map([[MINT, 6]]), {
+        await refundUnspent(manager, ledger(6), {
             keeper,
             signatureLanded: async () => true,
             send: async () => {
@@ -188,7 +193,7 @@ describe("sending the refunds", () => {
 
     it("an unknown signature status leaves the refund hanging but never pays twice", async () => {
         const manager = managerFor(makeState());
-        await refundUnspent(manager, new Map([[MINT, 6]]), {
+        await refundUnspent(manager, ledger(6), {
             keeper,
             send: async () => {
                 throw Object.assign(new Error("timeout"), { signature: "sig-unknown" });
@@ -196,7 +201,7 @@ describe("sending the refunds", () => {
         });
 
         let attempted = false;
-        await refundUnspent(manager, new Map([[MINT, 6]]), {
+        await refundUnspent(manager, ledger(6), {
             keeper,
             signatureLanded: async () => null,
             send: async () => {
@@ -212,7 +217,7 @@ describe("sending the refunds", () => {
     it("an error with no signature leaves the refund failed", async () => {
         const manager = managerFor(makeState());
 
-        const result = await refundUnspent(manager, new Map([[MINT, 6]]), {
+        const result = await refundUnspent(manager, ledger(6), {
             keeper,
             send: async () => {
                 throw new Error("node is down");
@@ -241,7 +246,7 @@ describe("sending the refunds", () => {
         const manager = managerFor(state);
 
         let batches = 0;
-        await refundUnspent(manager, new Map([[MINT, 6]]), {
+        await refundUnspent(manager, ledger(6), {
             keeper,
             send: async () => {
                 batches++;
@@ -257,7 +262,7 @@ describe("sending the refunds", () => {
         const manager = managerFor(makeState());
         let calls = 0;
 
-        const result = await refundUnspent(manager, new Map([[MINT, 10]]), {
+        const result = await refundUnspent(manager, ledger(10), {
             keeper,
             send: async () => {
                 calls++;
@@ -267,5 +272,33 @@ describe("sending the refunds", () => {
 
         expect(calls).toBe(0);
         expect(result).toEqual({ sent: 0, skipped: 0, failed: 0, solReturned: 0 });
+    });
+});
+
+describe("who stands behind which coin, with burners", () => {
+    it("someone who burns everything has no deliveries and still gets their share of the unspent SOL", () => {
+        const CAROL = Keypair.generate().publicKey.toBase58();
+        const state = makeState({
+            tokenBuys: [{
+                mint: MINT, adjustedSolAmount: 10, status: "completed", spentSol: 6, updatedAt: 1,
+                recipients: [
+                    { wallet: ALICE, stakeLamports: "3000000000", burnBps: 0, burnWeight: "0" },
+                    { wallet: BOB, stakeLamports: "1000000000", burnBps: 0, burnWeight: "0" },
+                    { wallet: CAROL, stakeLamports: "4000000000", burnBps: 10_000, burnWeight: "40000000000000" },
+                ],
+            }],
+        });
+        expect(stakesByMint(state).get(MINT)).toEqual(new Map([[ALICE, 3], [BOB, 1], [CAROL, 4]]));
+
+        const plan = planRefunds(state, ledger(6));
+        const carol = plan.find((refund) => refund.recipient === CAROL)!;
+        // Half of the 4 SOL left over, less a third of one transaction's fee.
+        expect(carol.grossSol).toBeCloseTo(2, 9);
+        expect(carol.status).toBe("pending");
+        expect(plan.reduce((sum, refund) => sum + refund.grossSol, 0)).toBeCloseTo(4, 9);
+    });
+
+    it("an older state without the record still reads its deliveries", () => {
+        expect(stakesByMint(makeState()).get(MINT)).toEqual(new Map([[ALICE, 3], [BOB, 1]]));
     });
 });

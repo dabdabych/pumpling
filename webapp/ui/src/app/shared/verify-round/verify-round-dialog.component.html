@@ -104,6 +104,86 @@
       </dl>
     </div>
 
+    <!-- 4. The burn: what was asked for, what burned, and where to check it -->
+    @for (burn of burnViews; track burn.mint) {
+      <div class="verify__row verify-burn">
+        <p class="verify__label">Burned</p>
+        <div class="verify-burn__hero">
+          <app-flame class="verify-burn__flame" [size]="52" />
+          <div class="verify-burn__numbers">
+            <p class="verify-burn__amount">
+              <span class="verify-burn__exact">{{ burn.burned }}</span>
+              <span class="verify-burn__compact">{{ burn.burnedCompact }}</span>
+              <span class="verify-burn__ticker">${{ burn.symbol }}</span>
+            </p>
+            <p class="verify-burn__caption">{{ burn.caption }}</p>
+          </div>
+        </div>
+
+        @if (burn.progress !== null) {
+          <div class="verify-burn__fuse" role="img"
+               [attr.aria-label]="burn.burned + ' of ' + burn.owed + ' burned'">
+            <span class="verify-burn__fill" [style.width.%]="burn.progress"></span>
+            <app-flame class="verify-burn__spark" [size]="20" [style.left]="fuseLeft(burn.progress)" />
+          </div>
+          <div class="verify-burn__legend">
+            <span>{{ burn.burned }} burned</span>
+            <span>{{ burn.owed }} promised</span>
+          </div>
+        }
+
+        <p class="verify__verdict"
+           [class.verify__verdict--ok]="burn.verdict === 'ok'"
+           [class.verify__verdict--bad]="burn.verdict === 'bad'">{{ burn.verdictText }}</p>
+
+        <div class="verify-burn__supply">
+          <div>
+            <span class="verify-burn__supply-label">Supply before</span>
+            <span class="verify-burn__supply-value">{{ burn.supplyBefore }}</span>
+          </div>
+          <span class="verify-burn__arrow" aria-hidden="true">→</span>
+          <div class="verify-burn__supply-after">
+            <span class="verify-burn__supply-label">Supply after</span>
+            <span class="verify-burn__supply-value">{{ burn.supplyAfter }}</span>
+          </div>
+        </div>
+
+        <p class="verify__label">Who asked for it</p>
+        <table class="verify-burn__who">
+          <thead>
+            <tr><th scope="col">Wallet</th><th scope="col">Committed</th><th scope="col">Burn</th></tr>
+          </thead>
+          <tbody>
+            @for (bet of burn.bets; track $index) {
+              <tr>
+                <td>{{ wallet(bet.wallet) }}</td>
+                <td>{{ bet.sol }} SOL</td>
+                <td><app-flame [size]="12" />{{ bet.percent }}</td>
+              </tr>
+            }
+            <tr class="verify-burn__total">
+              <td>Behind ${{ burn.symbol }}</td>
+              <td>{{ burn.coinSol }} SOL</td>
+              <td><app-flame [size]="12" />{{ burn.coinPercent }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        @if (burn.transactions.length) {
+          <p class="verify__label">Burn transactions</p>
+          <ul class="verify-burn__txs">
+            @for (tx of burn.transactions; track tx.signature) {
+              <li>
+                <span>{{ utcTime(tx.atMs) }}</span>
+                <span class="verify-burn__tx-amount">{{ tx.amount }}</span>
+                <a [href]="txUrl(tx.signature)" target="_blank" rel="noreferrer">{{ short(tx.signature) }} ↗</a>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    }
+
     <footer class="verify__foot">
       <a class="verify__link" [href]="docsUrl" target="_blank" rel="noreferrer">How to check this yourself</a>
       <a class="verify__link" [href]="jsonUrl" target="_blank" rel="noreferrer">Raw data</a>

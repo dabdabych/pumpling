@@ -15,6 +15,7 @@ import os
 import sys
 
 import pytest
+from fastapi import HTTPException
 from solders.pubkey import Pubkey
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -56,7 +57,6 @@ def _curve(monkeypatch, is_pumpfun: bool, graduated: bool, quote=NATIVE_SOL):
     [
         (True, False, NATIVE_SOL, True),      # a live curve in SOL — there is somewhere to buy
         (True, True, NATIVE_SOL, False),      # the curve is complete and there is no pool — as before
-        (True, False, USDC, False),           # a curve not in SOL: it cannot be bought for SOL
         (False, False, NATIVE_SOL, False),    # not a pump.fun coin at all
     ],
 )
@@ -74,6 +74,54 @@ def test_curve_decides_whether_a_poolless_coin_is_buyable(
     assert has_dex is False
     assert pool_count == 0
     assert unverified is False
+
+
+class TestACurveNotInSol:
+    """pump.fun opened Custom Pairs on 2026-09-09: a curve can be denominated in
+    USDC, a wrapped coin or a tokenised stock.
+
+    Such a coin cannot be bought at all while it is on the curve. The program
+    answers `UnsupportedQuoteMint`; the aggregator has a route but the
+    transaction does not fit, 1246 to 1402 bytes against a 1232 limit; and the
+    PumpSwap fallback derives its pool with quote = WSOL and looks at the wrong
+    address. So the round would take money it has no way to spend, and every
+    purchase would end `abandoned` with the SOL on the keeper.
+
+    It used to be turned down, the check went with the pump.fun round type, and
+    for a while the coin was simply allowed through at the person's own risk.
+    """
+
+    def test_it_is_turned_down(self, monkeypatch):
+        _no_dex_pools(monkeypatch)
+        _curve(monkeypatch, is_pumpfun=True, graduated=False, quote=USDC)
+
+        with pytest.raises(HTTPException) as caught:
+            router._validate_mint(MINT)
+
+        assert caught.value.status_code == 400
+        assert "other than SOL" in caught.value.detail
+
+    def test_the_same_coin_is_fine_once_it_graduates(self, monkeypatch):
+        # Off the curve it trades in an ordinary pool and buys normally.
+        _no_dex_pools(monkeypatch)
+        _curve(monkeypatch, is_pumpfun=True, graduated=True, quote=USDC)
+
+        _mint, _network, is_pumpfun_mint, _has_dex, _count, _unverified = (
+            router._validate_mint(MINT)
+        )
+
+        assert is_pumpfun_mint is False
+
+    def test_a_coin_with_no_curve_at_all_is_still_allowed(self, monkeypatch):
+        # Not knowing is not the same as knowing it cannot be bought.
+        _no_dex_pools(monkeypatch)
+        _curve(monkeypatch, is_pumpfun=False, graduated=False, quote=NATIVE_SOL)
+
+        _mint, _network, is_pumpfun_mint, _has_dex, _count, _unverified = (
+            router._validate_mint(MINT)
+        )
+
+        assert is_pumpfun_mint is False
 
 
 def test_broken_curve_probe_does_not_block_the_commit(monkeypatch):

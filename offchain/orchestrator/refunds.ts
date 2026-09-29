@@ -13,7 +13,11 @@
  *
  * How it is worked out.
  *
- * 1. Per coin: what was allocated to it minus what was actually spent.
+ * 1. Per coin: what the buying of it was given, minus every lamport the keeper
+ *    paid buying it, plus its share of whatever the delivery reserve did not
+ *    use. All three come from `refundLedger`, which reads the spend off the
+ *    chain rather than from the plan — the plan does not know about fees,
+ *    priority or the rent of an account a transaction had to create.
  * 2. The remainder is split between the people behind that coin, by the size of
  *    their commit.
  * 3. The network fee comes out of the refund: the keeper pays it, and we never
@@ -29,11 +33,13 @@
 
 import { Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 
-import { connection } from "../solana/connection";
 import { sendTransaction } from "../solana/transaction";
 import { Logger, logger as rootLogger } from "../logger";
 import { TX_FEE_SOL } from "../scheduler/fees";
 import { budgetInstructions, refundComputeUnits } from "../solana/priorityFee";
+import { RefundBasis } from "./refundLedger";
+import { signatureOutcome } from "../solana/signatureOutcome";
+import { sharesOf } from "./shares";
 import { OrchestratorStateManager } from "./state";
 import { LotteryState, RefundRecord } from "./types";
 
@@ -64,16 +70,26 @@ export interface RefundDeps {
 // THE REFUND PLAN
 // =============================================================================
 
-/** Who stood behind a coin and with how much. */
+/**
+ * Who stood behind a coin and with how much, in SOL.
+ *
+ * From the round's record of its backers (`sharesOf`), which includes the ones
+ * who asked for everything to be burned and so have no deliveries at all: the
+ * unspent SOL was theirs too. A coin that only appears in the deliveries — a
+ * state written before that record existed — is read from those.
+ */
 export function stakesByMint(state: LotteryState): Map<string, Map<string, number>> {
     const byMint = new Map<string, Map<string, number>>();
-    for (const send of state.sends ?? []) {
-        const recipients = byMint.get(send.mint) ?? new Map<string, number>();
-        // One commit produces several deliveries across rounds, so we take the
-        // maximum rather than the sum: this is the size of the commit, not how
-        // many there were.
-        recipients.set(send.recipient, Math.max(recipients.get(send.recipient) ?? 0, send.recipientBetSol));
-        byMint.set(send.mint, recipients);
+    const mints = new Set<string>([
+        ...(state.tokenBuys ?? []).map((token) => token.mint),
+        ...(state.sends ?? []).map((send) => send.mint),
+    ]);
+    for (const mint of mints) {
+        const shares = sharesOf(state, mint);
+        if (shares.length === 0) {
+            continue;
+        }
+        byMint.set(mint, new Map(shares.map((share) => [share.wallet, Number(share.stake) / LAMPORTS_PER_SOL])));
     }
     return byMint;
 }
@@ -81,17 +97,24 @@ export function stakesByMint(state: LotteryState): Map<string, Map<string, numbe
 /**
  * What to return for each coin.
  *
- * `spentByMint` is computed from the batch files: in the round state that field
- * only appears after buying, and we need to work with older files too.
+ * `ledger` says what each coin was given and what it cost; see `refundLedger`.
+ * A coin missing from it falls back to the figures in the round state, which
+ * is what an older file has and all a round whose batch files have gone can
+ * offer.
  */
-export function planRefunds(state: LotteryState, spentByMint: Map<string, number>): RefundRecord[] {
+export function planRefunds(state: LotteryState, ledger: Map<string, RefundBasis>): RefundRecord[] {
     const stakes = stakesByMint(state);
     const now = Date.now();
     const plan: RefundRecord[] = [];
 
     for (const token of state.tokenBuys ?? []) {
-        const spent = spentByMint.get(token.mint) ?? token.spentSol ?? 0;
-        const unspent = round9(token.adjustedSolAmount - spent);
+        const basis = ledger.get(token.mint) ?? {
+            allocatedSol: token.adjustedSolAmount,
+            spentSol: token.spentSol ?? 0,
+            deliveryLeftoverSol: 0,
+            exact: false,
+        };
+        const unspent = round9(basis.allocatedSol - basis.spentSol + basis.deliveryLeftoverSol);
         if (unspent < MIN_UNSPENT_SOL) {
             continue;
         }
@@ -109,8 +132,13 @@ export function planRefunds(state: LotteryState, spentByMint: Map<string, number
             continue;
         }
 
-        // The fee per person: one transaction per batch of recipients.
-        const perRecipientFee = round9(TX_FEE_SOL / Math.min(REFUND_BATCH_SIZE, recipients.size));
+        // The fee per person: a coin's recipients are paid in batches, so the
+        // fee of each transaction is shared by the people in it. Rounded up to
+        // whole transactions — with twenty recipients that is three
+        // transactions, not two and a half, and the half nobody was charged for
+        // used to come off the keeper.
+        const transactions = Math.ceil(recipients.size / REFUND_BATCH_SIZE);
+        const perRecipientFee = round9((TX_FEE_SOL * transactions) / recipients.size);
 
         for (const [recipient, stake] of recipients) {
             const gross = round9((unspent * stake) / totalStake);
@@ -162,7 +190,7 @@ export function planRefunds(state: LotteryState, spentByMint: Map<string, number
  */
 export async function refundUnspent(
     stateManager: OrchestratorStateManager,
-    spentByMint: Map<string, number>,
+    ledger: Map<string, RefundBasis>,
     deps: RefundDeps
 ): Promise<{ sent: number; skipped: number; failed: number; solReturned: number }> {
     const log = deps.logger ?? rootLogger;
@@ -170,7 +198,7 @@ export async function refundUnspent(
     const state = stateManager.getState();
 
     if (!state.refunds || state.refunds.length === 0) {
-        const plan = planRefunds(state, spentByMint);
+        const plan = planRefunds(state, ledger);
         if (plan.length === 0) {
             return { sent: 0, skipped: 0, failed: 0, solReturned: 0 };
         }
@@ -295,19 +323,14 @@ async function checkSignature(signature: string, deps: RefundDeps): Promise<bool
     if (deps.signatureLanded) {
         return deps.signatureLanded(signature);
     }
-    try {
-        const status = await connection.getSignatureStatus(signature);
-        const landed =
-            (status.value?.confirmationStatus === "confirmed" || status.value?.confirmationStatus === "finalized") &&
-            !status.value?.err;
-        if (landed) {
-            return true;
-        }
-        // No transaction at all, so it never arrived and can be sent again.
-        return status.value === null ? false : !!status.value?.err;
-    } catch {
-        return null;
+    // Landed: done. Not on chain, or failed there: nothing arrived, send again.
+    // Only processed, or no answer: we do not know, and a refund sent blind can
+    // be a second payout out of the same remainder.
+    const outcome = await signatureOutcome(signature);
+    if (outcome === "landed") {
+        return true;
     }
+    return outcome === "unknown" ? null : false;
 }
 
 function extractSignature(error: unknown): string | null {

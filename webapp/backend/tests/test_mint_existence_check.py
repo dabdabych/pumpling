@@ -10,9 +10,17 @@ touching the network.
 Now the first question is whether the address is an initialised SPL mint, which
 is one RPC call, and nothing else runs when the answer is no.
 
-The other half of this is what happens when the node cannot be reached. That is
-not an answer, and `_validate_mint` also guards `place_bet`, so it must not turn
-into a rejected commit.
+Two ways this must not fire.
+
+When the node cannot be reached: that is not an answer, and `_validate_mint`
+also guards `place_bet`, so it must not turn into a rejected commit.
+
+And on devnet at all. The stand runs against a devnet node while coin data
+still comes from DexScreener and pump.fun, which only know mainnet, so testing
+there means typing a mainnet address at a devnet node. `getAccountInfo` rightly
+says no such account exists, and on 2026-09-24 that turned every coin on the
+stand into "Could not check this coin". The check is worth nothing there
+anyway: the stand has no Helius key, so there are no credits to save.
 """
 from __future__ import annotations
 
@@ -28,6 +36,26 @@ from mint_validator import MintCheckUnavailable  # noqa: E402
 from presentation.lottery import lottery_router as router  # noqa: E402
 
 MINT = "47MnKCEMVquA4TBppHacYBk9EhHMpjVeWhixYMRDpump"
+
+
+class Settings:
+    def __init__(self, endpoint):
+        self.solana_http_endpoint = endpoint
+
+
+@pytest.fixture
+def on_mainnet(monkeypatch):
+    """The check only runs on mainnet, so these cases have to say so."""
+    monkeypatch.setattr(
+        router, "get_settings", lambda: Settings("https://api.mainnet-beta.solana.com/")
+    )
+
+
+@pytest.fixture
+def on_devnet(monkeypatch):
+    monkeypatch.setattr(
+        router, "get_settings", lambda: Settings("https://api.devnet.solana.com/")
+    )
 
 
 @pytest.fixture
@@ -50,7 +78,7 @@ def watch_the_expensive_calls(monkeypatch):
 
 
 class TestAnAddressThatIsNotACoin:
-    def test_it_is_turned_down(self, monkeypatch, watch_the_expensive_calls):
+    def test_it_is_turned_down(self, on_mainnet, monkeypatch, watch_the_expensive_calls):
         monkeypatch.setattr(router, "is_spl_mint", lambda mint, rpc_url=None: False)
 
         with pytest.raises(HTTPException) as caught:
@@ -59,7 +87,7 @@ class TestAnAddressThatIsNotACoin:
         assert caught.value.status_code == 400
         assert "not a coin" in caught.value.detail
 
-    def test_nothing_expensive_is_reached(self, monkeypatch, watch_the_expensive_calls):
+    def test_nothing_expensive_is_reached(self, on_mainnet, monkeypatch, watch_the_expensive_calls):
         # The whole point. One RPC call, then stop.
         monkeypatch.setattr(router, "is_spl_mint", lambda mint, rpc_url=None: False)
 
@@ -68,7 +96,7 @@ class TestAnAddressThatIsNotACoin:
 
         assert watch_the_expensive_calls == []
 
-    def test_a_malformed_address_never_reaches_the_network(self, watch_the_expensive_calls):
+    def test_a_malformed_address_never_reaches_the_network(self, on_mainnet, watch_the_expensive_calls):
         # Rejected on parsing, before even the one cheap call.
         with pytest.raises(HTTPException) as caught:
             router._validate_mint("not-a-pubkey")
@@ -78,7 +106,7 @@ class TestAnAddressThatIsNotACoin:
 
 
 class TestACoinThatExists:
-    def test_the_usual_checks_still_run(self, monkeypatch, watch_the_expensive_calls):
+    def test_the_usual_checks_still_run(self, on_mainnet, monkeypatch, watch_the_expensive_calls):
         monkeypatch.setattr(router, "is_spl_mint", lambda mint, rpc_url=None: True)
 
         canonical, _network, _is_pumpfun, _has_dex, _count, _unverified = router._validate_mint(MINT)
@@ -86,7 +114,7 @@ class TestACoinThatExists:
         assert canonical == MINT
         assert "dexscreener" in watch_the_expensive_calls
 
-    def test_the_cheap_check_comes_first(self, monkeypatch, watch_the_expensive_calls):
+    def test_the_cheap_check_comes_first(self, on_mainnet, monkeypatch, watch_the_expensive_calls):
         order: list[str] = []
 
         def cheap(mint, rpc_url=None):
@@ -107,7 +135,7 @@ class TestACoinThatExists:
 class TestWhenTheNodeCannotBeReached:
     """Not an answer. A commit must not fail because a node had a bad minute."""
 
-    def test_the_slower_checks_still_decide(self, monkeypatch, watch_the_expensive_calls):
+    def test_the_slower_checks_still_decide(self, on_mainnet, monkeypatch, watch_the_expensive_calls):
         def unreachable(mint, rpc_url=None):
             raise MintCheckUnavailable("connection refused")
 
@@ -118,7 +146,7 @@ class TestWhenTheNodeCannotBeReached:
         assert canonical == MINT
         assert "dexscreener" in watch_the_expensive_calls
 
-    def test_it_is_not_read_as_a_rejection(self, monkeypatch, watch_the_expensive_calls):
+    def test_it_is_not_read_as_a_rejection(self, on_mainnet, monkeypatch, watch_the_expensive_calls):
         def unreachable(mint, rpc_url=None):
             raise MintCheckUnavailable("timeout")
 
@@ -128,3 +156,42 @@ class TestWhenTheNodeCannotBeReached:
         # that can answer, which is exactly the behaviour before this check
         # existed.
         router._validate_mint(MINT)
+
+
+class TestOnDevnetItDoesNotRunAtAll:
+    """The regression of 2026-09-24, reported from the stand as
+    "Could not check this coin. Try again in a moment."
+    """
+
+    def test_a_coin_the_devnet_node_has_never_heard_of_still_goes_through(
+        self, on_devnet, monkeypatch, watch_the_expensive_calls
+    ):
+        # A mainnet address at a devnet node: no such account, which is the
+        # normal case when testing on the stand.
+        monkeypatch.setattr(router, "is_spl_mint", lambda mint, rpc_url=None: False)
+
+        canonical, network, _is_pumpfun, _has_dex, _count, _unverified = router._validate_mint(MINT)
+
+        assert canonical == MINT
+        assert network.value == "devnet"
+
+    def test_the_node_is_not_even_asked(self, on_devnet, monkeypatch, watch_the_expensive_calls):
+        asked = []
+        monkeypatch.setattr(
+            router, "is_spl_mint",
+            lambda mint, rpc_url=None: asked.append(mint) or False,
+        )
+
+        router._validate_mint(MINT)
+
+        assert asked == []
+
+    def test_the_slower_checks_decide_as_they_did_before(
+        self, on_devnet, monkeypatch, watch_the_expensive_calls
+    ):
+        monkeypatch.setattr(router, "is_spl_mint", lambda mint, rpc_url=None: False)
+
+        router._validate_mint(MINT)
+
+        # Exactly the behaviour the stand had before the check existed.
+        assert "dexscreener" in watch_the_expensive_calls

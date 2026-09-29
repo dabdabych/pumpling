@@ -107,7 +107,7 @@ async def _process_signature(
     tx = await rpc.get_transaction(
         signature,
         encoding="jsonParsed",
-        max_supported_transaction_version=0,
+        max_supported_transaction_version=1,
     )
     if tx is None:
         logging.debug("No transaction for signature %s during backfill", signature)

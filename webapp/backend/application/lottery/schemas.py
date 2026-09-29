@@ -27,6 +27,9 @@ class LotteryEntryResponse(BaseModel):
     coin: CoinResponse
     total_solana_bet: Decimal
     bet_count: int
+    #: The coin's burn share so far, SOL-weighted over its commits, in basis
+    #: points. While the pool is open it moves with every commit.
+    burn_bps_avg: float = 0.0
 
 
 class LotteryWinnerResultResponse(BaseModel):
@@ -60,6 +63,47 @@ class LotteryArchiveItemResponse(BaseModel):
     entries: List[LotteryArchiveEntryResponse] = Field(default_factory=list)
 
 
+class VerificationBurnBetResponse(BaseModel):
+    """One commit that asked for a burn, as the chain has it."""
+    wallet: str
+    sol: float
+    burn_bps: int
+    #: The commit transaction: its memo is where the choice was made.
+    signature: Optional[str] = None
+
+
+class VerificationBurnTxResponse(BaseModel):
+    signature: str
+    raw_amount: str
+    at: datetime
+
+
+class VerificationBurnResponse(BaseModel):
+    """A coin some of whose backers asked for a burn, and how the burn went.
+
+    Raw token units are decimal strings. `owed_raw` is floor(bought × the
+    coin's burn share); until the buying is over (`final`) it is owed for what
+    has been bought so far, because the promise is a share, not a number.
+    """
+    mint: str
+    name: str
+    symbol: str
+    decimals: Optional[int] = None
+    #: SOL behind the coin, burners included, and the share of its tokens owed
+    #: to the fire, SOL-weighted, in basis points.
+    coin_sol: float
+    burn_bps: float
+    bets: List[VerificationBurnBetResponse] = Field(default_factory=list)
+    bought_raw: Optional[str] = None
+    owed_raw: Optional[str] = None
+    burned_raw: Optional[str] = None
+    supply_at_start: Optional[str] = None
+    supply_at_end: Optional[str] = None
+    blocked_reason: Optional[str] = None
+    transactions: List[VerificationBurnTxResponse] = Field(default_factory=list)
+    final: bool = False
+
+
 class LotteryVerificationResponse(BaseModel):
     """Everything an outsider can check a round's draw with.
 
@@ -88,6 +132,8 @@ class LotteryVerificationResponse(BaseModel):
     vrf_algorithm_hash: Optional[str] = None
     algorithm_source: str = "webapp/backend/application/lottery/vrf_engine.py"
     winner_results: List[LotteryWinnerResultResponse] = Field(default_factory=list)
+    #: Every coin with a burn, with what anyone needs to check it on chain.
+    burns: List[VerificationBurnResponse] = Field(default_factory=list)
 
 
 class LotteryArchiveListResponse(BaseModel):
@@ -112,6 +158,9 @@ class MyCommitCoinResponse(BaseModel):
     drawn_sol: Optional[float] = None
     #: The signatures of my commits: they open on Solscan.
     signatures: List[str] = Field(default_factory=list)
+    #: The share of what is bought for me that I asked to be burned, SOL-weighted
+    #: over my commits to this coin, in basis points.
+    burn_bps: float = 0.0
 
 
 class MyCommitRoundResponse(BaseModel):
@@ -144,7 +193,9 @@ class ActiveLotterySummaryResponse(BaseModel):
     end_date: Optional[datetime] = None
     second_phase_started_at: Optional[datetime] = None
     proceeding_purchases_started_at: Optional[datetime] = None
-    execution_countdown_seconds: int = 65 * 60
+    #: The main buying pass. A round that could not buy everything in it gets a
+    #: second pass on top, and the purchase feed carries that deadline.
+    execution_countdown_seconds: int = 50 * 60
     #: Roughly how long the draw takes: the page runs its countdown from it.
     draw_seconds: int = 12
     #: When the next pool opens. Known once the buying starts: the window plus the pause.
@@ -184,6 +235,19 @@ class PurchaseFeedItemResponse(BaseModel):
     at: datetime
 
 
+class PurchaseFeedCoinBurnResponse(BaseModel):
+    """Where a coin's burn stands. Raw token units as strings: they do not fit a double."""
+    #: Every token the purchases brought, read from their own transactions.
+    bought_raw: str
+    #: What is owed to the fire for what has been bought so far.
+    owed_raw: str
+    burned_raw: str
+    #: Why burning stopped, when it did. The unburned share stays on the keeper.
+    blocked_reason: Optional[str] = None
+    supply_at_start: Optional[str] = None
+    supply_at_end: Optional[str] = None
+
+
 class PurchaseFeedCoinResponse(BaseModel):
     mint: str
     name: str
@@ -194,6 +258,50 @@ class PurchaseFeedCoinResponse(BaseModel):
     completed_purchases: int
     planned_purchases: int
     status: str
+    #: The mint's decimals: every raw figure of this coin is in them. None for
+    #: a round the buyer ran before it recorded them.
+    decimals: Optional[int] = None
+    #: The coin's burn share, commit-weighted, in basis points.
+    burn_bps: float = 0.0
+    burn: Optional[PurchaseFeedCoinBurnResponse] = None
+
+
+class PurchaseFeedDeliveryResponse(BaseModel):
+    """One delivery transaction: up to five wallets, one signature."""
+    mint: str
+    name: str
+    symbol: str
+    logo_url: Optional[str] = None
+    signature: str
+    #: What arrived, summed over the wallets in the transaction, raw units.
+    raw_amount: str
+    decimals: Optional[int] = None
+    recipients: List[str] = Field(default_factory=list)
+    at: datetime
+
+
+class PurchaseFeedRefundResponse(BaseModel):
+    """Unspent SOL going back to the people behind a coin: one transaction, one coin."""
+    mint: str
+    name: str
+    symbol: str
+    logo_url: Optional[str] = None
+    signature: str
+    #: What arrived, summed over the wallets in this transaction for this coin.
+    sol_amount: float
+    recipients: List[str] = Field(default_factory=list)
+    at: datetime
+
+
+class PurchaseFeedBurnResponse(BaseModel):
+    mint: str
+    name: str
+    symbol: str
+    logo_url: Optional[str] = None
+    signature: str
+    raw_amount: str
+    decimals: Optional[int] = None
+    at: datetime
 
 
 class PurchaseFeedResponse(BaseModel):
@@ -205,8 +313,19 @@ class PurchaseFeedResponse(BaseModel):
     completed_purchases: int = 0
     planned_purchases: int = 0
     finished: bool = False
+    #: What the buyer is doing: "buying" (the main window), "fallback" (buying
+    #: again what the main window could not) or "finished". The page shows a
+    #: different countdown for the second pass, and says why.
+    phase: str = "buying"
+    #: When the second pass runs out. Only while `phase` is "fallback".
+    fallback_ends_at: datetime | None = None
     coins: List[PurchaseFeedCoinResponse] = Field(default_factory=list)
     purchases: List[PurchaseFeedItemResponse] = Field(default_factory=list)
+    #: Newest first. Deliveries and burns are on chain as much as purchases are.
+    deliveries: List[PurchaseFeedDeliveryResponse] = Field(default_factory=list)
+    burns: List[PurchaseFeedBurnResponse] = Field(default_factory=list)
+    #: Unspent SOL returned at the end of the round, newest first.
+    refunds: List[PurchaseFeedRefundResponse] = Field(default_factory=list)
 
 
 class HypeCountdownResponse(BaseModel):
@@ -312,6 +431,9 @@ class MintAllowTokenRequest(BaseModel):
 
 class MintAllowTokenResponse(BaseModel):
     is_pumpfun_mint: bool
+    #: Whether the buyer can burn this coin, so whether the site offers the
+    #: burn choice for it. False when it cannot be found out; see `can_burn`.
+    can_burn: bool = False
     has_dex_liquidity: bool = False
     dex_liquidity_pool_count: int = 0
     dex_liquidity_check_unverified: bool = False
@@ -359,6 +481,10 @@ class OffchainVrfRequest(BaseModel):
 class RunPurchasesRecipient(BaseModel):
     publickey: str
     amount: float
+    #: The same commit in exact lamports, and its burn: see `recipients_for`.
+    amountLamports: Optional[str] = None
+    burnBps: Optional[float] = None
+    burnWeight: Optional[str] = None
 
 
 class RunPurchasesToken(BaseModel):
