@@ -41,6 +41,7 @@ Variables: `BASE` is the frontend address (default `http://localhost:3200`),
 | `wallet-switch` | signing out of one wallet and into another |
 | `header-mark` | the mascot in the header survives dialogs and navigation |
 | `mobile-fit` | nothing spills off the screen on a phone, buttons stay thumb sized |
+| `quick-touch` | Quick start under a finger, moved by real touch flings and drags: nothing while the list flies past, then 01 to 05 one at a time once it is at rest, on a phone and in the pinned story; the Solana mark sits after the words at every width |
 | `coin-table-fit` | from 900 to 1920px every coin row stays inside the list, with the widest content a row can hold |
 
 A suite exits non-zero when it fails, so it works in CI.

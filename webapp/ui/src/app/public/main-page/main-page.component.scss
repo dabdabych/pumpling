@@ -397,11 +397,19 @@
   transition: color 0.3s ease;
 }
 
-/* On the last step the row goes black on hover — the text lightens with it. */
+/* Add SOL and the last step go black on hover — their lines lighten with them.
+   Add SOL's used to stay dark and vanish into the black. Under a finger the rows
+   show the same look in turn (quick-start-pointer.ts). */
 @media (hover: hover) {
-  .group\/qres-execution:hover .qres-quick-desc--last {
+  .group\/qres-execution:hover .qres-quick-desc--last,
+  .qres-commit-sol-row:hover .qres-quick-desc {
     color: rgba(252, 252, 252, 0.75);
   }
+}
+
+.group\/qres-execution.qres-quick-play .qres-quick-desc--last,
+.qres-commit-sol-row.qres-quick-play .qres-quick-desc {
+  color: rgba(252, 252, 252, 0.75);
 }
 
 /* A plate instead of a cursor. It appears and fades by opacity only: the script

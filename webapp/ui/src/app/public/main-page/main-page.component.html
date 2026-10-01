@@ -300,7 +300,9 @@
         <article data-qres-quick-item
                  data-qres-cursor="any"
                  class="qres-coin-hover group/qres-memecoin pointer-events-auto relative grid gap-[20px] overflow-hidden qres-quick-row sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-baseline">
-          <span *ngFor="let coin of quickCoins" class="qres-falling-coin" [ngStyle]="coin.ngStyle" aria-hidden="true" [innerHTML]="coin.svg"></span>
+          <span class="qres-falling-coins" aria-hidden="true">
+            <span *ngFor="let coin of quickCoins" class="qres-falling-coin" [ngStyle]="coin.ngStyle" [innerHTML]="coin.svg"></span>
+          </span>
           <div class="qres-quick-num relative z-10 font-semibold leading-none text-[var(--qres-purple)]">01</div>
           <h3 class="qres-quick-title relative z-10 font-semibold uppercase leading-none">
             <span class="relative block overflow-hidden py-1">
@@ -316,8 +318,8 @@
           <div class="qres-quick-num relative z-10 font-semibold leading-none text-[var(--qres-purple)]">02</div>
           <h3 class="qres-quick-title relative z-10 font-semibold uppercase leading-none">
             <span class="relative block overflow-hidden py-2">
-              <span class="block transition-transform duration-300 ease-out group-hover/qres-prediction:-translate-y-[120%]">Add SOL</span>
-              <span class="absolute inset-0 z-10 flex translate-y-[120%] items-center gap-4 text-[var(--qres-white)] transition-transform duration-300 ease-out group-hover/qres-prediction:translate-y-0" aria-hidden="true">
+              <span class="block transition-transform duration-300 ease-out group-hover/qres-prediction:-translate-y-[120%] group-[.qres-quick-play]/qres-prediction:-translate-y-[120%]">Add SOL</span>
+              <span data-qres-sol-commit-words class="absolute inset-0 z-10 flex translate-y-[120%] items-center gap-4 text-[var(--qres-white)] transition-transform duration-300 ease-out group-hover/qres-prediction:translate-y-0 group-[.qres-quick-play]/qres-prediction:translate-y-0" aria-hidden="true">
                 <span>COMMIT</span><span class="text-[var(--qres-green)]">SOL</span>
               </span>
               <span class="qres-commit-sol-fill" aria-hidden="true"></span>
@@ -341,8 +343,8 @@
           <div class="qres-quick-num relative z-10 font-semibold leading-none text-[var(--qres-purple)]">03</div>
           <h3 class="qres-quick-title relative z-10 font-semibold uppercase leading-none">
             <span class="relative block overflow-hidden py-1">
-              <span class="block transition-transform duration-300 ease-out group-hover/qres-share:-translate-y-[115%]">Share the <span class="text-[var(--qres-purple)]">pool</span></span>
-              <span class="absolute inset-0 flex translate-y-[115%] items-center gap-[0.3em] transition-transform duration-300 ease-out group-hover/qres-share:translate-y-0" aria-hidden="true">
+              <span class="block transition-transform duration-300 ease-out group-hover/qres-share:-translate-y-[115%] group-[.qres-quick-play]/qres-share:-translate-y-[115%]">Share the <span class="text-[var(--qres-purple)]">pool</span></span>
+              <span class="absolute inset-0 flex translate-y-[115%] items-center gap-[0.3em] transition-transform duration-300 ease-out group-hover/qres-share:translate-y-0 group-[.qres-quick-play]/qres-share:translate-y-0" aria-hidden="true">
                 Post it on
                 <svg class="qres-quick-x" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M18.9 2h3.68l-8.04 9.19L24 22h-7.41l-5.8-7.59L4.15 22H.47l8.6-9.84L0 2h7.59l5.24 6.93L18.9 2Zm-1.29 18.1h2.04L6.48 3.8H4.29l13.32 16.3Z"/></svg>
               </span>
@@ -355,7 +357,7 @@
         <article data-qres-quick-item class="qres-draw-hover-row group/qres-winner pointer-events-auto relative grid gap-[20px] overflow-hidden qres-quick-row sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-baseline">
           <div class="qres-quick-num relative z-10 font-semibold leading-none text-[var(--qres-purple)]">04</div>
           <h3 class="qres-quick-title relative z-10 font-semibold uppercase leading-none">
-            <span class="inline-flex items-center transition-transform duration-300 ease-out group-hover/qres-winner:translate-x-3">
+            <span class="inline-flex items-center transition-transform duration-300 ease-out group-hover/qres-winner:translate-x-3 group-[.qres-quick-play]/qres-winner:translate-x-3">
               <span class="qres-draw-timer-slot relative inline-flex items-center">
                 <span class="qres-draw-timer-word">Watch the <span class="text-[var(--qres-purple)]">buys</span></span>
                 <span class="qres-draw-timer-icon" aria-hidden="true">
@@ -374,19 +376,19 @@
 
         <!-- 05 get tokens (the Let's go cursor): a click leads to the first screen -->
         <article data-qres-quick-item
-                 class="group/qres-execution pointer-events-auto relative grid gap-[20px] overflow-hidden qres-quick-row transition-[background-color,box-shadow,transform] duration-300 hover:bg-[var(--qres-black)] hover:shadow-[6px_7px_0_var(--qres-purple)] sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-baseline"
+                 class="group/qres-execution pointer-events-auto relative grid gap-[20px] overflow-hidden qres-quick-row transition-[background-color,box-shadow,transform] duration-300 hover:bg-[var(--qres-black)] hover:shadow-[6px_7px_0_var(--qres-purple)] [&.qres-quick-play]:bg-[var(--qres-black)] [&.qres-quick-play]:shadow-[6px_7px_0_var(--qres-purple)] sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-baseline"
                  role="button" tabindex="0"
                  data-qres-cursor="go"
                  (click)="goToSection('hero')"
                  (keydown.enter)="goToSection('hero')"
                  (keydown.space)="$event.preventDefault(); goToSection('hero')">
-          <div class="qres-quick-num relative z-10 font-semibold leading-none text-[var(--qres-purple)] transition-colors duration-300 group-hover/qres-execution:text-[var(--qres-green)]">05</div>
+          <div class="qres-quick-num relative z-10 font-semibold leading-none text-[var(--qres-purple)] transition-colors duration-300 group-hover/qres-execution:text-[var(--qres-green)] group-[.qres-quick-play]/qres-execution:text-[var(--qres-green)]">05</div>
           <h3 class="qres-quick-title relative z-10 font-semibold uppercase leading-none">
             <span class="relative block overflow-hidden py-1">
-              <span class="relative z-10 block transition-colors duration-300 ease-out group-hover/qres-execution:text-[var(--qres-white)]">
-                Get your <span class="text-[var(--qres-purple)] transition-colors duration-300 ease-out group-hover/qres-execution:text-[var(--qres-green)]">tokens</span>
+              <span class="relative z-10 block transition-colors duration-300 ease-out group-hover/qres-execution:text-[var(--qres-white)] group-[.qres-quick-play]/qres-execution:text-[var(--qres-white)]">
+                Get your <span class="text-[var(--qres-purple)] transition-colors duration-300 ease-out group-hover/qres-execution:text-[var(--qres-green)] group-[.qres-quick-play]/qres-execution:text-[var(--qres-green)]">tokens</span>
               </span>
-              <span class="absolute inset-y-1 left-0 w-full -translate-x-full bg-[var(--qres-black)] transition-transform duration-300 ease-out group-hover/qres-execution:translate-x-0" aria-hidden="true"></span>
+              <span class="absolute inset-y-1 left-0 w-full -translate-x-full bg-[var(--qres-black)] transition-transform duration-300 ease-out group-hover/qres-execution:translate-x-0 group-[.qres-quick-play]/qres-execution:translate-x-0" aria-hidden="true"></span>
             </span>
           </h3>
           <p class="qres-quick-desc qres-quick-desc--last relative z-10">Tokens bought for your coin land in your wallet.</p>

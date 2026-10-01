@@ -16,7 +16,7 @@ import { Router } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { AuthDialogService } from '../../auth/auth-dialog.service';
 import { StoryScrollEngine } from './story-scroll-engine';
-import { bindQuickStartPointer } from './quick-start-pointer';
+import { bindQuickStartPointer, QuickStartPointer } from './quick-start-pointer';
 import { holdSplash, isSplashActive, onSplashExit, releaseSplash } from '../../shared/splash';
 import { PoolService } from '../../pool/pool.service';
 import { PoolPhase } from '../../pool/pool-state';
@@ -242,6 +242,8 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     { label: 'quick', title: 'Quick start', enterAt: 9.46 }
   ];
   private solCommitCleanups: Array<() => void> = [];
+  /** The Quick start rows under a mouse and a finger (quick-start-pointer.ts). */
+  private quickStart?: QuickStartPointer;
   /** The main page holds the splash until the story is built and the first screen's images are ready. */
   private holdingSplash = false;
   private splashExitCleanup?: () => void;
@@ -824,6 +826,11 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     // their own sections: in the menu they fold into the section.
     const section = current.startsWith('step') ? 'how' : current.startsWith('what') ? 'what' : current;
 
+    // Under a finger the Quick start rows play once they are the step on show.
+    // Not only on a change of activeSection: a menu jump sets that itself
+    // before the page arrives.
+    this.zone.runOutsideAngular(() => this.quickStart?.setShown(section === 'quick'));
+
     // Live scenes inside How it works run only for the phase on screen: the
     // rest must not spin for nothing.
     const step = current === 'how' ? 1 : current.startsWith('step') ? Number(current.slice(4)) : null;
@@ -1277,8 +1284,18 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
 
-    this.bindSolCommitHover(root);
-    this.zone.runOutsideAngular(() => this.solCommitCleanups.push(bindQuickStartPointer(root)));
+    const solRows = this.bindSolCommitHover(root);
+    this.zone.runOutsideAngular(() => {
+      this.quickStart = bindQuickStartPointer(root, {
+        coveredTop: () => this.siteHeaderRef?.nativeElement.getBoundingClientRect().bottom ?? 0,
+        playRow: (row) => solRows.get(row)?.play(),
+        stopRow: (row) => solRows.get(row)?.stop()
+      });
+    });
+    this.solCommitCleanups.push(() => {
+      this.quickStart?.dispose();
+      this.quickStart = undefined;
+    });
 
     // Two story layouts, and gsap switches between them itself when the
     // conditions change — a tablet rotating, the window narrowing, reduced
@@ -1553,23 +1570,42 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
         this.storyScrollEngine?.detach();
         this.storyScrollEngine = undefined;
         this.storyTimeline = undefined;
+        // The story is gone (a rotation, a narrower window): Quick start is no
+        // longer its step on show, so a story built later plays the rows again.
+        this.quickStart?.setShown(false);
       };
     });
   }
 
   /**
    * The animation of the "Add SOL" line in Quick start: the bars of the Solana
-   * mark slide into a circle and fly away. It plays on hover in any layout.
+   * mark slide into a circle and fly away. It loops under a mouse in any
+   * layout. Under a finger the row plays it in its step of the walk through
+   * Quick start (quick-start-pointer.ts), through what this returns: two passes,
+   * ending hidden.
    */
-  private bindSolCommitHover(root: HTMLElement): void {
+  private bindSolCommitHover(root: HTMLElement): Map<HTMLElement, { play(): void; stop(): void }> {
+    const rows = new Map<HTMLElement, { play(): void; stop(): void }>();
     gsap.utils.toArray<HTMLElement>('[data-qres-sol-commit-row]', root).forEach((row) => {
       const stage = row.querySelector<HTMLElement>('[data-qres-sol-commit-stage]');
       const symbol = row.querySelector<SVGGElement>('[data-qres-sol-symbol]');
       const bars = gsap.utils.toArray<SVGPathElement>('[data-qres-sol-bar]', row);
       const circle = row.querySelector<SVGCircleElement>('[data-qres-sol-circle]');
+      const words = row.querySelector<HTMLElement>('[data-qres-sol-commit-words]');
       if (!stage || !symbol || !circle || bars.length === 0) {
         return;
       }
+      // The mark forms just after the words, wherever they end at this width
+      // (qres-landing.css). Layout offsets ignore the slide the words are in.
+      const placeStage = () => {
+        const last = words?.lastElementChild as HTMLElement | null;
+        const frame = stage.offsetParent as HTMLElement | null;
+        if (last && frame) {
+          const end = last.offsetLeft + last.offsetWidth;
+          stage.style.setProperty('--qres-sol-words-end', `${end}px`);
+          stage.style.setProperty('--qres-sol-room', `${frame.clientWidth - end}px`);
+        }
+      };
       const resetSolCommit = () => {
         gsap.set(stage, { autoAlpha: 0 });
         gsap.set(symbol, { x: 0, autoAlpha: 1, transformOrigin: '50% 50%' });
@@ -1590,18 +1626,27 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
       // animation would loop until you touched something else.
       const playSolCommit = (event: PointerEvent) => {
         if (event.pointerType !== 'touch') {
-          solTimeline.restart();
+          placeStage();
+          solTimeline.repeat(-1).restart();
         }
       };
       const resetOnLeave = () => { solTimeline.pause(0); resetSolCommit(); };
       row.addEventListener('pointerenter', playSolCommit);
       row.addEventListener('pointerleave', resetOnLeave);
+      rows.set(row, {
+        play: () => {
+          placeStage();
+          solTimeline.repeat(1).restart();
+        },
+        stop: resetOnLeave
+      });
       this.solCommitCleanups.push(() => {
         row.removeEventListener('pointerenter', playSolCommit);
         row.removeEventListener('pointerleave', resetOnLeave);
         solTimeline.kill();
       });
     });
+    return rows;
   }
 
   ngOnDestroy(): void {

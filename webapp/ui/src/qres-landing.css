@@ -110,6 +110,20 @@
 }
 
 /* --- quick-start: "pick a memecoin" falling coins ------------------------- */
+/* The coins' layer, the row's own box. Under a finger it fades when the coins'
+   step ends, so they do not vanish mid-fall (quick-start-pointer.ts). */
+.qres-falling-coins {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.qres-coin-hover--fading .qres-falling-coins {
+  opacity: 0;
+  transition: opacity 400ms ease;
+}
+
 .qres-coin-hover .qres-falling-coin {
   position: absolute;
   top: 0;
@@ -128,8 +142,8 @@
 }
 
 /* Hover only where there is a mouse: on a phone :hover stuck after a tap and the
-   coins fell endlessly. There the shower runs once, when the row appears on
-   screen (quick-start-pointer.ts). */
+   coins fell endlessly. There the shower is the first step of the walk through
+   the rows (quick-start-pointer.ts). */
 @media (hover: hover) {
   .qres-coin-hover:hover .qres-falling-coin {
     animation: qres-coin-fall var(--qres-coin-duration) cubic-bezier(0.18, 0.72, 0.24, 1) var(--qres-coin-delay) infinite;
@@ -192,6 +206,27 @@
   }
 }
 
+/* The same under a finger, for the row's step of the walk (`qres-quick-play`, quick-start-pointer.ts). */
+.qres-draw-hover-row.qres-quick-play .qres-draw-timer-word {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-0.7em) scaleX(0.08);
+}
+
+.qres-draw-hover-row.qres-quick-play .qres-draw-timer-icon {
+  opacity: 1;
+  transform: translateY(-50%) scale(1) rotate(0deg);
+}
+
+.qres-draw-hover-row.qres-quick-play .qres-draw-timer-hand {
+  transform-origin: 32px 32px;
+  animation: qres-timer-spin 1.05s linear infinite;
+}
+
+.qres-draw-hover-row.qres-quick-play .qres-draw-timer-hand-secondary {
+  animation-duration: 4.2s;
+}
+
 /* --- quick-start: "make a bet" commit SOL --------------------------------- */
 .qres-commit-sol-row {
   transition:
@@ -212,6 +247,16 @@
   }
 }
 
+.qres-commit-sol-row.qres-quick-play {
+  background: var(--qres-black);
+  box-shadow: 6px 7px 0 var(--qres-purple);
+  transform: translateY(-2px);
+}
+
+.qres-commit-sol-row.qres-quick-play .qres-commit-sol-fill {
+  transform: translateX(0);
+}
+
 .qres-commit-sol-fill {
   position: absolute;
   inset: 0;
@@ -222,13 +267,26 @@
 }
 
 
+/* The Solana mark forms just after the words COMMIT SOL. It used to hang from
+   the right edge of the title (`right: 2rem`, a share of its width), so it
+   landed wherever the column ended: on the word SOL on phones (22 to 34px over
+   it), at 1024 to 1140px under a mouse, and cut off on a phone on its side.
+   Now it starts where the words end (`--qres-sol-words-end`, measured when the
+   row starts playing, bindSolCommitHover) and is sized by the title's letters.
+   The drawing is 288 by 100 units and its circle is 62 across, starting 51 in:
+   at 2.05em tall the circle is 1.27em, 56px at 44px as before, and it starts
+   0.66em after the text. Where the column ends sooner (`--qres-sol-room`, the
+   width left after the words: 63px at 1024px) the mark gets smaller to fit:
+   its ink, strokes included, ends 65 units past the circle's start. */
 .qres-commit-sol-stage {
+  --qres-sol-height: min(2.05em, calc((var(--qres-sol-room, 100vw) - 0.66em) / 0.65));
   position: absolute;
-  right: 2rem;
+  left: var(--qres-sol-words-end, 0px);
   top: 50%;
   z-index: 1;
-  width: min(48%, 20rem);
-  height: 5.6rem;
+  width: calc(var(--qres-sol-height) * 2.88);
+  height: var(--qres-sol-height);
+  margin-left: calc(0.66em - var(--qres-sol-height) * 0.51);
   opacity: 0;
   pointer-events: none;
   transform: translateY(-50%);
@@ -292,5 +350,6 @@
   .qres-marquee-track { animation: none; }
   .qres-coin-hover:hover .qres-falling-coin,
   .qres-coin-hover--burst .qres-falling-coin { animation: none; }
-  .qres-draw-hover-row:hover .qres-draw-timer-hand { animation: none; }
+  .qres-draw-hover-row:hover .qres-draw-timer-hand,
+  .qres-draw-hover-row.qres-quick-play .qres-draw-timer-hand { animation: none; }
 }

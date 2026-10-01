@@ -103,6 +103,22 @@ in your wallet…" for good, and only reloading the page helped. Two guards:
 
 The suite is `wallet-silent`.
 
+## Hover on a touch screen
+
+Tailwind 4 puts `hover:` and `group-hover:` under `@media (hover: hover)`, and
+our own hover rules sit under the same query so a tap cannot leave them stuck.
+On a phone a hover effect therefore does not exist at all: anything shown only
+on hover needs a finger version, or a phone never sees it. Quick start has one
+in `public/main-page/quick-start-pointer.ts`: once the list is on screen and the
+page has come to rest (in the pinned story, once Quick start is the step on
+show), the rows show their hover looks in turn, 01 to 05, a few seconds each,
+one at a time. The look is a `qres-quick-play` class styled next to each hover
+rule. Do not trigger such things row by row as they cross the screen: a real
+swipe carries the page on with its momentum, and they go off as it flies past,
+several at once and out of order. Check them with touch gestures
+(`Input.synthesizeScrollGesture`), not `scrollTo`, which has no momentum. The
+suite is `quick-touch`.
+
 ## The burn
 
 A participant can have part of what is bought for them burned instead of
