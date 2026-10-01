@@ -49,10 +49,6 @@ EXECUTION_COUNTDOWN_SECONDS=600
 # The "done" pause between rounds, during which the page counts down to the next
 # pool. Five minutes by default on mainnet, a minute is enough for tests.
 LOTTERY_AUTOSTART_GAP_SECONDS=60
-# Careful: a round is closed on chain CLOSE_LOTTERY_BUFFER_SECONDS before the end
-# of the buying window. The default buffer is 600, so with a 600 second window the
-# close would land exactly on the start of the buying. For a ten minute window use a minute.
-CLOSE_LOTTERY_BUFFER_SECONDS=60
 
 # The buyer fits inside the window: a purchase will not go through on devnet
 # anyway, so there is no point waiting a full hour.

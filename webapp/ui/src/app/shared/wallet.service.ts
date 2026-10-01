@@ -40,6 +40,14 @@ export class WalletExternalNavigationError extends Error {
   }
 }
 
+/** The wallet was asked something and gave no answer at all: not a refusal, silence. */
+export class WalletNotRespondingError extends Error {
+  constructor(readonly walletName: SupportedWalletName) {
+    super(`${walletName} is not responding`);
+    this.name = 'WalletNotRespondingError';
+  }
+}
+
 export function isWalletFlowInterruption(error: unknown): boolean {
   return error instanceof WalletFlowCancelledError || error instanceof WalletExternalNavigationError;
 }
@@ -121,6 +129,12 @@ const INJECTION_SETTLE_MS = 1600;
 const INJECTION_RESCAN_MS = 400;
 /** A silent session restore must not hold up the page starting. */
 const SILENT_CONNECT_TIMEOUT_MS = 1500;
+/**
+ * How long Phantom gets to confirm the connection before a signature. A
+ * working Phantom answers `connect({ onlyIfTrusted: true })` straight away and
+ * never opens a window for it, so seconds of silence mean it is stuck.
+ */
+export const PHANTOM_SESSION_CHECK_MS = 5000;
 
 const SUPPORTED_WALLETS: WalletDefinition[] = [
   {
@@ -223,6 +237,71 @@ export class WalletService {
     } finally {
       this.switchDepth -= 1;
     }
+  }
+
+  /** The wallet the page signs with right now, by its name. */
+  get activeWalletName(): SupportedWalletName | null {
+    return this.currentWalletName;
+  }
+
+  /** On a phone the wallet is an app, not an icon in the browser's toolbar. */
+  get onMobile(): boolean {
+    return this.isMobileBrowser();
+  }
+
+  /**
+   * Phantom only: before a signature, check the connection with Phantom itself.
+   *
+   * `connect()` trusts the page's own copy of the provider: when it says
+   * `isConnected`, the address is returned and Phantom is never asked. On
+   * 2026-09-30 that copy said connected while Phantom answered nothing: the
+   * signature request after it opened no window and never came back, and only
+   * reloading the page brought Phantom round.
+   *
+   * `connect({ onlyIfTrusted: true })` asks Phantom directly. By Phantom's
+   * documentation it never opens a window, and for a site the person has
+   * approved it connects straight away
+   * (docs.phantom.com/solana/establishing-a-connection). So no answer within
+   * PHANTOM_SESSION_CHECK_MS means Phantom is stuck, and the person hears that
+   * instead of waiting on a window that will not come.
+   *
+   * A site Phantom no longer trusts (disconnected in Phantom) gets 4001 from
+   * the same call; then the ordinary connect follows, with Phantom's window,
+   * and `onPrompt` is told a window is due.
+   *
+   * Other wallets are left as they were: `onlyIfTrusted` is Phantom's own flag,
+   * and some wallets open a window for it. Returns the address Phantom will
+   * sign with, or null for any other wallet.
+   */
+  async confirmPhantomSession(onPrompt?: () => void): Promise<string | null> {
+    const provider = this.currentProvider;
+    if (this.currentWalletName !== 'Phantom' || !provider || typeof provider.connect !== 'function') {
+      return null;
+    }
+
+    let result: unknown;
+    try {
+      const answer = await this.raceWithTimeout(provider.connect({ onlyIfTrusted: true }), PHANTOM_SESSION_CHECK_MS);
+      if (!('value' in answer)) {
+        throw new WalletNotRespondingError('Phantom');
+      }
+      result = answer.value;
+    } catch (error) {
+      if (error instanceof WalletNotRespondingError || (error as { code?: unknown })?.code !== 4001) {
+        throw error;
+      }
+      onPrompt?.();
+      result = await provider.connect();
+    }
+
+    const address = this.readProviderAddress(provider) || this.readAddressFromConnectResult(result);
+    if (!address) {
+      throw new Error('Wallet did not provide public key');
+    }
+    if (address !== this.walletAddressSubject.value) {
+      this.setWalletAddress(address);
+    }
+    return address;
   }
 
   getProvider(): InjectedSolanaProvider | null {
@@ -687,6 +766,17 @@ export class WalletService {
   }
 
   /** We cannot wait for a wallet forever: a person may not answer its dialog. */
+  /** Like `withTimeout`, but tells an answer of `undefined` apart from no answer at all. */
+  private raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<{ timedOut: false; value: T } | { timedOut: true }> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    return Promise.race([
+      promise.then((value) => ({ timedOut: false as const, value })),
+      new Promise<{ timedOut: true }>((resolve) => {
+        timer = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
+      }),
+    ]).finally(() => clearTimeout(timer));
+  }
+
   private withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | undefined> {
     return Promise.race([
       promise,

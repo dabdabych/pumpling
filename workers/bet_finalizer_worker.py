@@ -13,6 +13,7 @@ from database.database import SessionLocal
 from database.models.bet_participation_model import BetParticipationModel
 from database.models.lottery_model import LotteryModel, LotteryStatus
 from database.models.user_model import UserModel  # noqa: F401 - registers users table for bet_participations FK
+from shared.log_redaction import install_log_redaction
 from shared.bet_confirmation import (
     BET_STATUS_CONFIRMED,
     BET_STATUS_FINALIZED,
@@ -32,6 +33,8 @@ def setup_logging() -> None:
         level=getattr(logging, LOG_LEVEL, logging.INFO),
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
+    # The RPC endpoint carries its API key in the query string.
+    install_log_redaction()
 
 
 def _install_signal_handlers(stop_event: asyncio.Event) -> None:

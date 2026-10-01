@@ -3,7 +3,8 @@
 
 import { Keypair, PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { connection, sendTxLimiter } from "../solana/connection";
-import { getSignedTransactionSignature, PostSendError } from "../solana/transaction";
+import { BuyHooks, getSignedTransactionSignature, PostSendError } from "../solana/transaction";
+import { sendAndConfirmWithRebroadcast } from "../solana/rebroadcast";
 import {
     JUPITER_QUOTE_URL,
     JUPITER_SWAP_URL,
@@ -12,7 +13,7 @@ import {
     JUPITER_ONLY_DIRECT_ROUTES,
 } from "../solana/config";
 import { logger as rootLogger, Logger } from "../logger";
-import { estimatePrice, priceFor, priorityLamports } from "../solana/priorityFee";
+import { priceFor, priorityLamports, buyPriceEstimate } from "../solana/priorityFee";
 
 // =============================================================================
 // CONSTANTS
@@ -204,7 +205,7 @@ async function getQuote(
  */
 async function jupiterPriorityLamports(userPublicKey: PublicKey): Promise<number> {
     const units = 210_000;
-    const estimate = await estimatePrice([userPublicKey]);
+    const estimate = await buyPriceEstimate([userPublicKey]);
     const price = priceFor("dex", units, estimate);
     return Math.max(PRIORITIZATION_FEE_LAMPORTS, priorityLamports(units, price));
 }
@@ -266,7 +267,8 @@ export async function buyDex(
     solAmount: number,
     keeper: Keypair,
     slippageBps: number,
-    log?: Logger
+    log?: Logger,
+    hooks?: BuyHooks
 ): Promise<string> {
     const l = log || rootLogger;
     const lamports = Math.floor(solAmount * 1_000_000_000);
@@ -322,33 +324,30 @@ export async function buyDex(
     // 5. Post-send stage: signature is known before send, so scheduler can
     // check it before any retry and avoid double-buy.
     const signature = getSignedTransactionSignature(transaction);
+    if (!signature) {
+        throw new Error("Signed Jupiter transaction has no signature");
+    }
+    // Written down before it goes out: from the first send on it may land.
+    hooks?.onSigned?.({ signature, lastValidBlockHeight });
     try {
-        const sentSignature = await connection.sendRawTransaction(transaction.serialize(), {
-            skipPreflight: true,
-            maxRetries: 3,
-        });
-
-        const blockhash = transaction.message.recentBlockhash;
-        const confirmation = await connection.confirmTransaction(
-            {
-                signature: sentSignature,
-                blockhash,
-                lastValidBlockHeight,
-            },
-            "confirmed"
+        // The same bytes go out again every couple of seconds until the
+        // blockhash Jupiter built it with expires (see solana/rebroadcast.ts).
+        const confirmation = await sendAndConfirmWithRebroadcast(
+            transaction.serialize(),
+            { signature, blockhash: transaction.message.recentBlockhash, lastValidBlockHeight }
         );
 
         if (confirmation.value.err) {
-            l.error({ event: "dex.on_chain_failure", mint: mint.toBase58(), signature: sentSignature, err: confirmation.value.err },
+            l.error({ event: "dex.on_chain_failure", mint: mint.toBase58(), signature, err: confirmation.value.err },
                 "DEX transaction failed on-chain");
             throw new Error(
                 `Transaction confirmed but failed on-chain: ${JSON.stringify(confirmation.value.err)}`
             );
         }
 
-        l.info({ event: "dex.completed", mint: mint.toBase58(), signature: sentSignature.slice(0, 16) },
+        l.info({ event: "dex.completed", mint: mint.toBase58(), signature: signature.slice(0, 16) },
             "DEX buy completed");
-        return sentSignature;
+        return signature;
     } catch (error) {
         if (error instanceof PostSendError) throw error;
         const msg = error instanceof Error ? error.message : String(error);

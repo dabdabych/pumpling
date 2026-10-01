@@ -8,7 +8,7 @@ import { buyDex, NoRouteError } from "./dex/buy";
 import { buyPumpswap } from "./pumpswap/buy";
 import { logger as rootLogger, Logger } from "./logger";
 import { isSlippageError } from "./scheduler/errors";
-import { tagVenue } from "./solana/transaction";
+import { BuyHooks, tagVenue } from "./solana/transaction";
 
 // =============================================================================
 // TYPES
@@ -32,10 +32,11 @@ async function buyGraduated(
     solAmount: number,
     keeper: Keypair,
     slippageBps: number,
-    l: Logger
+    l: Logger,
+    hooks?: BuyHooks
 ): Promise<BuyResult> {
     try {
-        const signature = await buyDex(mint, solAmount, keeper, slippageBps, l);
+        const signature = await buyDex(mint, solAmount, keeper, slippageBps, l, hooks);
         return { signature, venue: "dex" };
     } catch (dexError) {
         if (!(dexError instanceof NoRouteError)) {
@@ -47,7 +48,7 @@ async function buyGraduated(
         l.warn({ event: "buy.fallback.dex_to_pumpswap", mint: mint.toBase58(), reason: dexError.message },
             "Jupiter has no route, switching to direct PumpSwap pool");
         try {
-            const signature = await buyPumpswap(mint, solAmount, keeper, slippageBps, l);
+            const signature = await buyPumpswap(mint, solAmount, keeper, slippageBps, l, hooks);
             return { signature, venue: "pumpswap", fallback: true };
         } catch (pumpswapError) {
             throw tagVenue(pumpswapError, "pumpswap");
@@ -80,14 +81,15 @@ export async function buy(
     solAmount: number,
     keeper: Keypair,
     slippageBps: number = DEFAULT_SLIPPAGE_BPS,
-    log?: Logger
+    log?: Logger,
+    hooks?: BuyHooks
 ): Promise<BuyResult> {
     const l = log || rootLogger;
     const isActive = await isBondingCurveActive(mint, keeper);
 
     if (isActive) {
         try {
-            const signature = await buyPumpfun(mint, solAmount, keeper, slippageBps, l);
+            const signature = await buyPumpfun(mint, solAmount, keeper, slippageBps, l, hooks);
             return { signature, venue: "pumpfun" };
         } catch (rawPumpfunError) {
             const pumpfunError = tagVenue(rawPumpfunError, "pumpfun");
@@ -109,10 +111,10 @@ export async function buy(
             const msg = pumpfunError instanceof Error ? pumpfunError.message : String(pumpfunError);
             l.warn({ event: "buy.fallback.pumpfun_to_dex", mint: mint.toBase58(), reason: msg },
                 "Pumpfun pre-send failed, switching to DEX");
-            return { ...(await buyGraduated(mint, solAmount, keeper, slippageBps, l)), fallback: true };
+            return { ...(await buyGraduated(mint, solAmount, keeper, slippageBps, l, hooks)), fallback: true };
         }
     } else {
-        return buyGraduated(mint, solAmount, keeper, slippageBps, l);
+        return buyGraduated(mint, solAmount, keeper, slippageBps, l, hooks);
     }
 }
 

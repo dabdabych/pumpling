@@ -1,4 +1,4 @@
-import { PoolPhase, PoolSnapshot, formatSol } from '../pool-state';
+import { PoolPhase, PoolSnapshot, coinInitials, formatSol } from '../pool-state';
 
 /**
  * A card that can go into a post: what somebody did, behind which coin, and
@@ -12,6 +12,11 @@ import { PoolPhase, PoolSnapshot, formatSol } from '../pool-state';
  *
  * The texts live in a separate pure function: they are checked by a test rather
  * than by eye on a picture.
+ *
+ * The same card is drawn a second time on the server, for the link's preview
+ * (`webapp/backend/shared/share_card.py`): same words, same look, 2:1 because
+ * that is what X shows. A change to the words here goes there too; the backend
+ * test `test_share_card.py` reads this file and fails when they part.
  */
 
 export const SHARE_CARD_WIDTH = 1200;
@@ -37,6 +42,8 @@ export interface ShareCardData {
   capSol: number;
   coins: number;
   closesAtMs: number | null;
+  /** The commit's transaction signature: the card about my commit is looked up by it. */
+  signature: string;
 }
 
 export interface ShareHeadlinePart {
@@ -64,7 +71,10 @@ const COLORS = {
 };
 
 /** Card data from the pool state. An empty `mint` means a card about the whole pool. */
-export function shareCardData(snapshot: PoolSnapshot, options: { kind: ShareKind; mint?: string; commitSol?: number }): ShareCardData {
+export function shareCardData(
+  snapshot: PoolSnapshot,
+  options: { kind: ShareKind; mint?: string; commitSol?: number; signature?: string }
+): ShareCardData {
   const coin = options.mint ? snapshot.coins.find((item) => item.mint === options.mint) : undefined;
   return {
     kind: options.kind,
@@ -80,7 +90,8 @@ export function shareCardData(snapshot: PoolSnapshot, options: { kind: ShareKind
     poolSol: snapshot.totalSol,
     capSol: snapshot.capSol,
     coins: snapshot.coins.length,
-    closesAtMs: snapshot.closesAtMs
+    closesAtMs: snapshot.closesAtMs,
+    signature: options.signature ?? ''
   };
 }
 
@@ -145,10 +156,32 @@ export function shareCardFooterNote(data: ShareCardData): string {
   }
 }
 
-/** A link to the pool; with a coin, so its row is visible at once. */
-export function shareCardLink(data: ShareCardData, origin: string): string {
-  const base = `${origin.replace(/\/$/, '')}/pool`;
-  return data.mint ? `${base}?coin=${data.mint}` : base;
+/**
+ * The link that goes into the post, with the card behind it.
+ *
+ * X builds a link's preview from the page's tags and runs no script, so the
+ * pool page, being a script, always showed the site's generic picture. A link
+ * under `/s/` is answered by the server: a preview crawler gets the tags and
+ * this card drawn from the database, a person is sent on to the pool, with the
+ * coin's row in view (`webapp/backend/presentation/share/share_router.py`).
+ *
+ * `v` changes every minute. X keeps a link's preview for about a week, so
+ * without it the second person to post the same coin would get the first
+ * person's numbers.
+ */
+export function shareCardLink(data: ShareCardData, origin: string, nowMs: number = Date.now()): string {
+  const site = origin.replace(/\/$/, '');
+  const version = `?v=${Math.floor(nowMs / 60_000).toString(36)}`;
+  if (data.kind === 'commit' && data.signature && data.mint) {
+    return `${site}/s/commit/${data.signature}${version}`;
+  }
+  if (data.poolId !== null && data.mint && data.kind !== 'pool') {
+    return `${site}/s/coin/${data.poolId}/${data.mint}${version}`;
+  }
+  if (data.poolId !== null) {
+    return `${site}/s/pool/${data.poolId}${version}`;
+  }
+  return data.mint ? `${site}/pool?coin=${data.mint}` : `${site}/pool`;
 }
 
 export function shareCardFileName(data: ShareCardData): string {
@@ -218,12 +251,20 @@ export async function drawShareCard(canvas: HTMLCanvasElement, data: ShareCardDa
   const rightColumnW = data.ticker ? 300 : 320;
   const textWidth = frame.w - 84 - rightColumnW - 28;
 
-  // The right column: the coin on top, the mascot under it.
+  // The right column: the coin on top, the mascot under it. A coin without a
+  // picture, or one whose server will not let the canvas export it, gets its
+  // initials in the same place, as in the coin list. Only the card about the
+  // whole pool, which has no coin, gives the column to the mascot.
   const rightX = frame.x + frame.w - 42 - rightColumnW;
   const rightBottom = stripY - 12;
-  if (logo) {
+  if (logo || data.ticker) {
     const badge = 132;
-    drawCoinBadge(ctx, { x: rightX + rightColumnW - badge, y: contentTop + 6, size: badge, logo });
+    const badgeBox = { x: rightX + rightColumnW - badge, y: contentTop + 6, size: badge };
+    if (logo) {
+      drawCoinBadge(ctx, { ...badgeBox, logo });
+    } else {
+      drawInitialsBadge(ctx, { ...badgeBox, text: coinInitials(data.ticker) });
+    }
     if (mascot) {
       const size = 200;
       ctx.drawImage(mascot, rightX + rightColumnW - size, rightBottom - size, size, size);
@@ -237,7 +278,7 @@ export async function drawShareCard(canvas: HTMLCanvasElement, data: ShareCardDa
   const subSize = 26;
   const subLineHeight = 36;
   const headlineSize = fitHeadline(ctx, copy.headline, textWidth, contentBottom - contentTop - 2 * subLineHeight - 22);
-  setFont(ctx, 500, subSize, '0');
+  setFont(ctx, 500, subSize, '0px');
   const subLines = clampLines(wrapText(ctx, copy.sub, textWidth), 2);
   const headlineHeight = copy.headline.length * headlineSize * 1.1;
   const blockHeight = headlineHeight + 18 + subLines.length * subLineHeight;
@@ -264,7 +305,7 @@ export async function drawShareCard(canvas: HTMLCanvasElement, data: ShareCardDa
 
   // The caption under the title.
   y += 12;
-  setFont(ctx, 500, subSize, '0');
+  setFont(ctx, 500, subSize, '0px');
   ctx.fillStyle = COLORS.muted;
   for (const line of subLines) {
     ctx.fillText(line, padX, y);
@@ -352,9 +393,31 @@ function drawCoinBadge(
   ctx.strokeRect(x + 2.5, y + 2.5, size - 5, size - 5);
 }
 
+/** The coin's initials on green in a framed square: the coin list's stand-in, card size. */
+function drawInitialsBadge(
+  ctx: CanvasRenderingContext2D,
+  options: { x: number; y: number; size: number; text: string }
+): void {
+  const { x, y, size, text } = options;
+  ctx.fillStyle = COLORS.green;
+  ctx.fillRect(x, y, size, size);
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = COLORS.ink;
+  ctx.strokeRect(x + 2.5, y + 2.5, size - 5, size - 5);
+  setFont(ctx, 700, Math.round(size * 0.4), '0px');
+  ctx.fillStyle = COLORS.ink;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + size / 2, y + size / 2 + size * 0.02);
+  ctx.textAlign = 'start';
+  ctx.textBaseline = 'alphabetic';
+}
+
 function setFont(ctx: CanvasRenderingContext2D, weight: number, size: number, letterSpacing: string): void {
   ctx.font = `${weight} ${size}px Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`;
   // letterSpacing is not available everywhere; without it the card is simply a little wider.
+  // It takes a length with a unit: Chrome ignores a bare '0' and keeps the last
+  // value, so "no spacing" is '0px'.
   if ('letterSpacing' in ctx) {
     (ctx as CanvasRenderingContext2D & { letterSpacing: string }).letterSpacing = letterSpacing;
   }

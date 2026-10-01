@@ -36,6 +36,7 @@ from database.models.lottery_model import LotteryModel, LotteryStatus
 from shared.bet_confirmation import BET_STATUS_CONFIRMED
 from shared.burn_memo import burn_bps_from_logs
 from shared.deposit_event_decoder import DEPOSIT_EVENT_DISCRIMINATOR, decode_deposit_event
+from shared.log_redaction import install_log_redaction
 from shared.solana_rpc import SolanaJsonRpc, signature_failed
 from shared.wallet_owner import resolve_wallet_owner_id
 
@@ -117,6 +118,8 @@ def setup_logging() -> None:
         level=getattr(logging, LOG_LEVEL, logging.INFO),
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
+    # The RPC endpoint carries its API key in the query string.
+    install_log_redaction()
 
 
 def _install_signal_handlers(stop_event: asyncio.Event) -> None:

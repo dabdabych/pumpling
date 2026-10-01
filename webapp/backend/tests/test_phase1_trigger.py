@@ -12,7 +12,7 @@ PHASE2_CAP_THRESHOLD_SOL = 221.95 with a cap of 222. That worked not by design
 but because 221.95 = 222 - 0.05 happened to match the formula we needed. After
 the cap came down to 111 the threshold became min(221.95, 111) = 111, and the
 pool never rises above the cap — the condition became unreachable and a round
-with a full vault would hang for all 111 minutes.
+with a full vault would hang for all 70 minutes.
 """
 
 import sys

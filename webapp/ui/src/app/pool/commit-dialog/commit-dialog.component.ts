@@ -11,7 +11,7 @@ import { AuthDialogService } from '../../auth/auth-dialog.service';
 import { LegalDialogComponent } from '../../shared/legal/legal-dialog.component';
 import { authSelector } from '../../store/selectors/auth';
 import { IAppState } from '../../store/state/app.state';
-import { CheckedCoin, CommitError, CommitService, SentCommit } from '../commit.service';
+import { CheckedCoin, CommitError, CommitService, SentCommit, walletWindowMissingText } from '../commit.service';
 import { BURN_CHOICES, BurnPercent, burnKeepLabel, burnSentence, burnSummary } from '../burn';
 import { FlameComponent } from '../../shared/flame/flame.component';
 import { PRIORITY_LEVELS, PriorityLevel, RECOMMENDED_LEVEL, feeLabel, isPriorityLevel, priceFor } from '../priority-fee';
@@ -37,6 +37,17 @@ type CoinState =
 type SendState = 'idle' | 'wallet' | 'sending';
 
 const MIN_LAMPORTS = solToLamportsFloor(MIN_COMMIT_SOL);
+
+/**
+ * How long a wallet window may keep us waiting before the dialog says so.
+ *
+ * A wallet opens its window in a second or two. Ten seconds is where waiting
+ * stops holding attention, and past it a person needs to hear what is going
+ * on and to get a clear way out (nngroup.com/articles/response-times-3-important-limits).
+ * The request is not cancelled: if the window turns up and is approved, the
+ * commit goes through as usual.
+ */
+export const WALLET_WINDOW_HINT_MS = 10_000;
 const PRESETS = ['0.05', '0.5', '1', '5'];
 /**
  * The amount that sits in the field straight away. An empty field is an extra
@@ -83,6 +94,10 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
   coin: CoinState = { kind: 'empty' };
   send: SendState = 'idle';
   error = '';
+  /** The wallet was asked for a window WALLET_WINDOW_HINT_MS ago and has not answered. */
+  walletStalled = false;
+  /** Whether that attempt may be replaced by a fresh one (see CommitRequest.onWalletPrompt). */
+  stalledRetryable = false;
   submitted = false;
   signedIn = false;
   snapshot: PoolSnapshot | null = null;
@@ -90,9 +105,13 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
 
   @ViewChild('mintField') private mintFieldRef?: ElementRef<HTMLInputElement>;
   @ViewChild('amountField') private amountField?: ElementRef<HTMLInputElement>;
+  @ViewChild('stalledNote') private stalledNote?: ElementRef<HTMLElement>;
 
   private readonly mint$ = new Subject<string>();
   private checkId = 0;
+  /** Which commit attempt is current: an answer for an older one is dropped. */
+  private attempt = 0;
+  private walletTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly subscriptions = new Subscription();
 
   constructor(
@@ -191,6 +210,7 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.subscriptions.unsubscribe();
+    this.stopWalletTimer();
   }
 
   // ------------------------------------------------------------ state
@@ -258,12 +278,29 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
     return lamports !== null && !this.amountError ? formatLamports(lamports) : '';
   }
 
+  /** The wallet sits on a request that a fresh attempt may safely replace. */
+  get canRetryWallet(): boolean {
+    return this.send === 'wallet' && this.walletStalled && this.stalledRetryable;
+  }
+
+  get submitDisabled(): boolean {
+    return !this.poolOpen || (this.send !== 'idle' && !this.canRetryWallet);
+  }
+
+  /** What to do when the wallet has not opened its window. */
+  get walletHint(): string {
+    return walletWindowMissingText({ name: this.walletName, mobile: this.wallet.onMobile });
+  }
+
   get submitLabel(): string {
     if (!this.poolOpen) {
       return 'Pool is not open';
     }
     if (!this.signedIn) {
       return 'Sign in to commit';
+    }
+    if (this.canRetryWallet) {
+      return 'Try again';
     }
     if (this.send === 'wallet') {
       return 'Confirm in your wallet…';
@@ -518,7 +555,9 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
   }
 
   async submit(): Promise<void> {
-    if (this.send !== 'idle' || !this.poolOpen) {
+    // A stalled wallet request can be replaced by a fresh one; anything else
+    // in flight is left to finish.
+    if ((this.send !== 'idle' && !this.canRetryWallet) || !this.poolOpen) {
       return;
     }
     if (!this.signedIn) {
@@ -536,6 +575,8 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const attempt = ++this.attempt;
+    this.stopWalletTimer();
     this.send = 'wallet';
     this.cdr.markForCheck();
     try {
@@ -546,9 +587,15 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
         mint: coin.mint,
         lamports,
         priority: this.priority,
-        burn: this.burnToSend
+        burn: this.burnToSend,
+        onWalletPrompt: (retryable) => this.zone.run(() => this.startWalletTimer(attempt, retryable)),
+        isCurrent: () => attempt === this.attempt
       });
+      if (attempt !== this.attempt) {
+        return;
+      }
       this.zone.run(() => {
+        this.stopWalletTimer();
         this.send = 'idle';
         if (sent) {
           this.dialogRef.close(sent);
@@ -556,12 +603,42 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       });
     } catch (error) {
+      if (attempt !== this.attempt) {
+        return;
+      }
       this.zone.run(() => {
+        this.stopWalletTimer();
         this.send = 'idle';
         this.error = error instanceof CommitError ? error.message : 'Could not send the transaction. Try again.';
         this.cdr.markForCheck();
       });
     }
+  }
+
+  /** The wallet has been asked for a window: count from now. */
+  private startWalletTimer(attempt: number, retryable: boolean): void {
+    this.stopWalletTimer();
+    this.walletTimer = setTimeout(() => {
+      this.walletTimer = null;
+      if (attempt !== this.attempt || this.send !== 'wallet') {
+        return;
+      }
+      this.walletStalled = true;
+      this.stalledRetryable = retryable;
+      this.cdr.markForCheck();
+      // On a phone the form may be scrolled away from the note, and the sticky
+      // button would cover it at the edge: bring it to the middle.
+      setTimeout(() => this.stalledNote?.nativeElement.scrollIntoView({ block: 'center' }));
+    }, WALLET_WINDOW_HINT_MS);
+  }
+
+  private stopWalletTimer(): void {
+    if (this.walletTimer) {
+      clearTimeout(this.walletTimer);
+      this.walletTimer = null;
+    }
+    this.walletStalled = false;
+    this.stalledRetryable = false;
   }
 
   private async checkCoin(value: string): Promise<void> {

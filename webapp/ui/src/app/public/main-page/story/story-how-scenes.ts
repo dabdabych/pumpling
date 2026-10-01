@@ -82,7 +82,7 @@ export function feedFrame(elapsedMs: number, firstPoolId = 128): FeedFrame {
     rows.push(STORY_SEED_COMMITS[index]);
   }
 
-  // The timer runs from two hours and lands exactly when the pool is locked.
+  // The timer runs from an hour and lands exactly when the pool is locked.
   const fullMs = STORY_COMMITS.length * COMMIT_EVERY_MS;
   const leftShare = locked ? 0 : 1 - inCycle / fullMs;
   return {
@@ -90,7 +90,7 @@ export function feedFrame(elapsedMs: number, firstPoolId = 128): FeedFrame {
     totalSol: round2(total),
     rows,
     locked,
-    secondsLeft: Math.max(0, Math.round(leftShare * 2 * 60 * 60))
+    secondsLeft: Math.max(0, Math.round(leftShare * 60 * 60))
   };
 }
 

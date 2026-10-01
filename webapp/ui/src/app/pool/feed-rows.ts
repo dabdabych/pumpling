@@ -1,5 +1,5 @@
 /**
- * The "On Solana" feed: every transaction the round makes, newest first.
+ * The "Transactions" feed: every transaction the round makes, newest first.
  *
  * Four kinds, told apart by their backing, mark and chip:
  *   - a purchase: SOL in, the venue it went through;

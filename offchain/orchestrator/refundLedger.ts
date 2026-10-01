@@ -90,6 +90,7 @@ export function collectRoundSignatures(state: LotteryState, loadBatch: BatchLoad
             for (const purchase of batch.purchases ?? []) {
                 if (purchase.signature) signatures.push(purchase.signature);
                 if (purchase.pendingSignature) signatures.push(purchase.pendingSignature);
+                for (const attempt of purchase.sentAttempts ?? []) signatures.push(attempt.signature);
             }
         }
     }
@@ -190,16 +191,22 @@ function buySpend(
             // asked even about a purchase that succeeded, or a first attempt
             // that quietly landed would go uncounted — and that one did not
             // only pay a fee, it bought.
-            const pending = purchase.pendingSignature;
-            if (!pending || pending === purchase.signature) {
-                continue;
-            }
-            const debit = debits.get(pending);
-            if (typeof debit === "number") {
-                spent += debit;
-            } else {
-                spent += BUY_TX_FEE_SOL;
-                exact = false;
+            //
+            // Every attempt counts, not only the last: a purchase signed again
+            // after its blockhash ran out sent several, and one that landed and
+            // failed paid its fee whichever attempt it was.
+            const earlier = new Set<string>();
+            if (purchase.pendingSignature) earlier.add(purchase.pendingSignature);
+            for (const attempt of purchase.sentAttempts ?? []) earlier.add(attempt.signature);
+            if (purchase.signature) earlier.delete(purchase.signature);
+            for (const signature of earlier) {
+                const debit = debits.get(signature);
+                if (typeof debit === "number") {
+                    spent += debit;
+                } else {
+                    spent += BUY_TX_FEE_SOL;
+                    exact = false;
+                }
             }
         }
     }

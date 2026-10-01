@@ -33,10 +33,20 @@ all the layers; do not pile logic into a router.
 ## Routers (main.py)
 
 `auth_router`, `lottery_router`, `events_router`, `rpc_router`, `chat_router`,
-`chat_ws_router`. Health: `GET /ping`, `GET /`. Profile: `GET /profile`.
+`chat_ws_router`, `share_router`. Health: `GET /ping`, `GET /`. Profile:
+`GET /profile`.
 
 `rpc_router` is a narrow allowlist proxy to the Solana node: the browser never
 gets the RPC key, and only the methods the site actually needs are permitted.
+It spends the same Helius plan as the buyer, so it is limited per client
+(`RPC_PROXY_RATE_LIMIT_PER_MINUTE`, every call in a batch counts) and for
+everybody together (`RPC_PROXY_GLOBAL_LIMIT_PER_MINUTE`). The client is the
+last address in X-Forwarded-For, the one nginx appends; everything before it is
+the client's own word (`shared/rate_limit.client_key`). The other paths that
+spend the plan without a sign-in are bounded the same way: Helius DAS lookups
+have a shared ceiling and come after the free sources, `check-mint` and `bet`
+have shared ceilings in `shared/rate_limit.RULES`, and the verification page
+reads the chain only for a round in progress, once per 15 seconds.
 
 **Any call that reads a transaction asks for `maxSupportedTransactionVersion:
 1`.** Version 1 transactions are live on mainnet, devnet and testnet, and a node
@@ -53,6 +63,36 @@ everything a round rests on: the weights commitment with the exact text that was
 hashed, where the randomness came from, the algorithm fingerprint, and the
 result. It is the endpoint the "Verify this pool" button on the site uses, so
 its shape is a public contract.
+
+## Share links
+
+`presentation/share/share_router.py`, behind `/s/` on the site (nginx rewrites
+it to `/share/`): `/s/pool/<id>`, `/s/coin/<id>/<mint>`, `/s/commit/<signature>`.
+X and the other previewers build a link's card from `og:`/`twitter:` tags and
+run no script, so a link to the pool page always showed the generic picture. A
+preview crawler (told apart by user agent) gets a page with the tags and
+`.../card.png`, the site's share card redrawn in Pillow at 1200x600, the 2:1
+X shows (`shared/share_card.py`). A person gets a 302 to the pool. Everything on
+the card is read from the database (`application/lottery/share_card_data.py`);
+the link carries only keys. The words are the site's, and
+`tests/test_share_card.py` reads `share-card.ts` to keep them so.
+
+The coin's picture comes from an address the coin's creator wrote, so
+`shared/remote_image.py` fetches it as untrusted: public addresses only,
+checked after resolving and connected to directly, redirects re-checked, size,
+pixel and time limits, and a small pool of its own threads so a slow server
+cannot tie up the API.
+
+## Coin pictures on IPFS
+
+ipfs.io stopped serving files over HTTP on 2026-09-21, and most pump.fun
+pictures point there, whether they come from pump.fun, Helius DAS or Helius's
+image CDN. `shared/coin_images.py` rewrites any IPFS address (a `/ipfs/<cid>`
+path, a `<cid>.ipfs.` subdomain, `ipfs://`, or Helius's CDN in front of one) to
+pump.fun's Pinata gateway, by content id. The rewrite sits in the response
+types (`ImageUrl` in `application/lottery/schemas.py`), so every answer that
+carries a picture goes through it and what is stored stays what the sources
+said. The share card fetches through each gateway in turn, Filebase second.
 
 ## The burn choice
 

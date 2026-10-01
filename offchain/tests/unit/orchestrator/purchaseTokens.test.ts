@@ -134,6 +134,26 @@ describe("tokensBought and refreshPurchaseTokens", () => {
         expect(tokensBought(stateManager.getState(), MINT, loadBatch)).toEqual({ known: 0n, unread: [], unreadPending: [] });
     });
 
+    // A purchase signed again after its blockhash ran out has several attempts,
+    // and only the last one used to be on the record. Whichever landed bought.
+    it("every attempt the purchase sent counts, not only the last", async () => {
+        const { stateManager, loadBatch } = setup([
+            {
+                index: 1, status: "completed", signature: "third", pendingSignature: "third", updatedAt: NOW,
+                sentAttempts: [
+                    { signature: "first", lastValidBlockHeight: 1, at: NOW - 120_000 },
+                    { signature: "second", lastValidBlockHeight: 2, at: NOW - 60_000 },
+                    { signature: "third", lastValidBlockHeight: 3, at: NOW },
+                ],
+            },
+        ]);
+        // "first" quietly landed; "second" never did.
+        const { rpcBatch } = node({ third: { [MINT]: 30n }, first: { [MINT]: 29n } });
+        await refreshPurchaseTokens(stateManager, keeper, [MINT], loadBatch, { rpcBatch, logger: quiet, now: () => NOW + PENDING_FINAL_AFTER_MS + 1 });
+        expect(tokensBought(stateManager.getState(), MINT, loadBatch)).toEqual({ known: 59n, unread: [], unreadPending: [] });
+        expect(stateManager.getState().purchaseTokens?.second).toBe("0");
+    });
+
     it("an unread earlier attempt never holds B back", () => {
         const { stateManager, loadBatch } = setup([
             { index: 1, status: "completed", signature: "ok", pendingSignature: "first", updatedAt: NOW },

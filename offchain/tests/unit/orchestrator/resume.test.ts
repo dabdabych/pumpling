@@ -12,6 +12,7 @@ import {
     findUnfinishedStates,
     isUnfinished,
     planResume,
+    purchasesThatMayHaveLanded,
     remainingWindowMinutes,
     spentInBatch,
 } from "../../../orchestrator/resume";
@@ -223,5 +224,65 @@ describe("what is left of the buying window", () => {
     it("is never zero: there has to be some time to buy in", () => {
         const startedAt = state.summary.startedAt;
         expect(remainingWindowMinutes(state, startedAt + 5 * 60 * 60_000)).toBe(MIN_RESUME_WINDOW_MINUTES);
+    });
+});
+
+// A purchase caught between its send and its confirmation when the process
+// died. Counting only completed purchases bought it again, and if the first
+// transaction had landed the coin was bought twice.
+describe("a purchase that was on the wire when the process died", () => {
+    function withInFlight(signature: string, status: "in_progress" | "failed" | "abandoned" = "in_progress"): BatchState {
+        const batch = batchWith([2]);
+        batch.purchases.push({
+            id: "f1", index: 50, scheduledAt: 0, solAmount: 1, status, attempts: 0, updatedAt: 0,
+            pendingSignature: signature, pendingLastValidBlockHeight: 1_000,
+            sentAttempts: [{ signature, lastValidBlockHeight: 1_000, at: 0 }],
+        } as BatchState["purchases"][number]);
+        return batch;
+    }
+
+    it("counts as spent when its transaction may have landed", () => {
+        const batch = withInFlight("sig-flying");
+        expect(spentInBatch(batch)).toBe(2);
+        expect(spentInBatch(batch, new Set(["sig-flying"]))).toBe(3);
+    });
+
+    it("is asked about, and counted as spent when it landed or the chain cannot tell", async () => {
+        const verdicts: Record<string, "landed" | "unknown" | "absent" | "failed"> = {
+            "sig-landed": "landed", "sig-unknown": "unknown", "sig-absent": "absent", "sig-failed": "failed",
+        };
+        const asked: Array<[string, number | undefined]> = [];
+        const outcome = async (signature: string, lastValidBlockHeight?: number) => {
+            asked.push([signature, lastValidBlockHeight]);
+            return verdicts[signature];
+        };
+        const files: Record<string, BatchState> = {
+            "batch-a.json": withInFlight("sig-landed"),
+            "batch-b.json": withInFlight("sig-unknown", "failed"),
+            "batch-c.json": withInFlight("sig-absent"),
+            "batch-d.json": withInFlight("sig-failed", "abandoned"),
+        };
+        const state = makeState({
+            tokenBuys: [
+                { mint: MINT_A, adjustedSolAmount: 6, status: "in_progress", batchStateFiles: ["batch-a.json", "batch-b.json", "batch-c.json", "batch-d.json"], updatedAt: 1 },
+            ],
+        });
+        const landed = await purchasesThatMayHaveLanded(state, (file) => files[file] ?? null, outcome);
+
+        expect([...landed].sort()).toEqual(["sig-landed", "sig-unknown"]);
+        // Asked with the blockhash limit it was signed with, and never about a completed purchase.
+        expect(asked).toHaveLength(4);
+        expect(asked.every(([, limit]) => limit === 1_000)).toBe(true);
+    });
+
+    it("is not bought again on resume when it may have landed", () => {
+        const manager = managerFor(makeState());
+        const withoutIt = planResume(manager, () => withInFlight("sig-flying"));
+        const manager2 = managerFor(makeState());
+        const withIt = planResume(manager2, () => withInFlight("sig-flying"), new Set(["sig-flying"]));
+
+        const remainder = (plan: ReturnType<typeof planResume>) => plan.buys.find((b) => b.mint.toBase58() === MINT_A)?.solAmount;
+        expect(remainder(withoutIt)).toBe(4);
+        expect(remainder(withIt)).toBe(3);
     });
 });

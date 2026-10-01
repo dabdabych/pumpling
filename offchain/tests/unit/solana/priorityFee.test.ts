@@ -7,15 +7,19 @@ const mockGetRecentPrioritizationFees = jest.fn();
 
 jest.mock("../../../solana/connection", () => ({
     connection: {
+        rpcEndpoint: "http://rpc.test",
         getRecentPrioritizationFees: (...args: unknown[]) => mockGetRecentPrioritizationFees(...args),
     },
     sendTxLimiter: { acquire: jest.fn() },
 }));
 
 import {
+    BUY_MIN_PRICE_MICRO_LAMPORTS,
     MAX_PRIORITY_LAMPORTS,
     COMPUTE_UNITS,
     budgetInstructions,
+    buyPriceEstimate,
+    recommendedPrice,
     deliveryComputeUnits,
     estimatePrice,
     hasBudgetInstruction,
@@ -28,10 +32,27 @@ import { BUY_PRIORITY_FEE_SOL, TX_PRIORITY_FEE_SOL } from "../../../scheduler/fe
 const LAMPORTS_PER_SOL = 1_000_000_000;
 const account = new PublicKey("EGDo2JhA2c3QPDQLKV9Umgfn3srkYvRKmfXPAYasDLeJ");
 
+const mockFetch = jest.fn();
+
+/** A fresh account per case: the estimates are cached per set of accounts. */
+let accountSeed = 1;
+function freshAccount(): PublicKey {
+    const bytes = new Uint8Array(32);
+    bytes[0] = accountSeed++;
+    bytes[1] = 77;
+    return new PublicKey(bytes);
+}
+
+function recommends(value: unknown) {
+    mockFetch.mockResolvedValue({ json: async () => ({ jsonrpc: "2.0", id: "priority", result: { priorityFeeEstimate: value } }) });
+}
+
 describe("the priority fee", () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockGetRecentPrioritizationFees.mockResolvedValue([]);
+        (globalThis as { fetch: unknown }).fetch = mockFetch;
+        recommends(null);
     });
 
     describe("the ceiling", () => {
@@ -174,6 +195,87 @@ describe("the priority fee", () => {
             expect(hasBudgetInstruction(instructions, "price")).toBe(true);
             expect(hasBudgetInstruction([], "limit")).toBe(false);
             expect(hasBudgetInstruction([instructions[0]], "price")).toBe(false);
+        });
+    });
+
+    // Two of 27 purchases in the demo round of 2026-09-29 never reached a
+    // block, all 27 at 1,000 microlamports. Helius routes over its staked
+    // connections only at or above its recommended fee, which was 10,000.
+    describe("the purchase floor", () => {
+        it("a purchase never pays less than the floor, on every path", () => {
+            for (const [path, units] of [["pumpfun", COMPUTE_UNITS.pumpfun], ["pumpswap", COMPUTE_UNITS.pumpswap], ["dex", 210_000]] as const) {
+                expect(priceFor(path, units, null)).toBe(BUY_MIN_PRICE_MICRO_LAMPORTS);
+                expect(priceFor(path, units, 3_000)).toBe(BUY_MIN_PRICE_MICRO_LAMPORTS);
+                expect(priceFor(path, units, 50_000)).toBe(50_000);
+            }
+            expect(BUY_MIN_PRICE_MICRO_LAMPORTS).toBe(10_000);
+        });
+
+        it("delivery and refunds keep their own floor", () => {
+            expect(priceFor("delivery", deliveryComputeUnits(2), null)).toBe(1_000);
+            expect(priceFor("refund", refundComputeUnits(4), null)).toBe(1_000);
+        });
+
+        it("the floor fits under every purchase ceiling and inside the reserve for an attempt", () => {
+            for (const [path, units] of [["pumpfun", COMPUTE_UNITS.pumpfun], ["pumpswap", COMPUTE_UNITS.pumpswap], ["dex", 210_000]] as const) {
+                const lamports = priorityLamports(units, BUY_MIN_PRICE_MICRO_LAMPORTS);
+                expect(lamports).toBeLessThanOrEqual(MAX_PRIORITY_LAMPORTS[path]);
+                expect(lamports).toBeLessThanOrEqual(Math.round(BUY_PRIORITY_FEE_SOL * LAMPORTS_PER_SOL));
+            }
+            // In money: 1,400 lamports on the curve, 2,100 through Jupiter.
+            expect(priorityLamports(COMPUTE_UNITS.pumpfun, BUY_MIN_PRICE_MICRO_LAMPORTS)).toBe(1_400);
+            expect(priorityLamports(210_000, BUY_MIN_PRICE_MICRO_LAMPORTS)).toBe(2_100);
+        });
+    });
+
+    describe("Helius's recommended fee", () => {
+        it("is asked for the accounts the purchase writes, with recommended on", async () => {
+            recommends(10_000);
+            const who = freshAccount();
+            expect(await recommendedPrice([who])).toBe(10_000);
+            const [url, init] = mockFetch.mock.calls[0];
+            expect(url).toBe("http://rpc.test");
+            const body = JSON.parse(init.body);
+            expect(body.method).toBe("getPriorityFeeEstimate");
+            expect(body.params[0]).toEqual({ accountKeys: [who.toBase58()], options: { recommended: true } });
+        });
+
+        it("another provider's error is no answer, not a failure", async () => {
+            mockFetch.mockResolvedValue({ json: async () => ({ jsonrpc: "2.0", error: { code: -32601, message: "Method not found" } }) });
+            expect(await recommendedPrice([freshAccount()])).toBeNull();
+            mockFetch.mockRejectedValue(new Error("aborted"));
+            expect(await recommendedPrice([freshAccount()])).toBeNull();
+        });
+
+        it("is held for a minute, like the network estimate", async () => {
+            recommends(12_000);
+            const who = freshAccount();
+            let clock = 1_000_000;
+            await recommendedPrice([who], { now: () => clock });
+            clock += 30_000;
+            await recommendedPrice([who], { now: () => clock });
+            expect(mockFetch).toHaveBeenCalledTimes(1);
+            clock += 31_000;
+            await recommendedPrice([who], { now: () => clock });
+            expect(mockFetch).toHaveBeenCalledTimes(2);
+        });
+
+        it("a purchase starts from the higher of the two", async () => {
+            recommends(10_000);
+            mockGetRecentPrioritizationFees.mockResolvedValue([{ slot: 1, prioritizationFee: 40_000 }]);
+            expect(await buyPriceEstimate([freshAccount()])).toBe(40_000);
+            mockGetRecentPrioritizationFees.mockResolvedValue([]);
+            expect(await buyPriceEstimate([freshAccount()])).toBe(10_000);
+        });
+
+        it("a purchase asks for it; delivery does not", async () => {
+            recommends(25_000);
+            const bought = await budgetInstructions("pumpfun", COMPUTE_UNITS.pumpfun, [freshAccount()], 0.2);
+            expect(mockFetch).toHaveBeenCalledTimes(1);
+            expect(bought[1].data.readBigUInt64LE(1)).toBe(25_000n);
+            mockFetch.mockClear();
+            await budgetInstructions("delivery", deliveryComputeUnits(1), [freshAccount()]);
+            expect(mockFetch).not.toHaveBeenCalled();
         });
     });
 });

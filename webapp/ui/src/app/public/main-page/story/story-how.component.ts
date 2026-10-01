@@ -1,6 +1,7 @@
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Input, NgZone, OnChanges, OnDestroy, QueryList, ViewChild, ViewChildren } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 
+import { FlameComponent } from '../../../shared/flame/flame.component';
 import { MOCHI, StoryBuy, StoryCommit, TOAD, ZAPZ } from './story-how-data';
 import {
   BUY_TARGET_SOL,
@@ -55,7 +56,7 @@ const PRICE_BASE_USD = 0.0000182;
 @Component({
   selector: 'app-story-how',
   standalone: true,
-  imports: [NgTemplateOutlet],
+  imports: [NgTemplateOutlet, FlameComponent],
   templateUrl: './story-how.component.html',
   styleUrls: ['./story-how.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -82,9 +83,9 @@ export class StoryHowComponent implements AfterViewInit, OnChanges, OnDestroy {
 
   readonly nodes = [
     { label: 'Open', at: 0 },
-    { label: 'Public', at: 100 / 3 },
-    { label: 'Locked', at: 200 / 3 },
-    { label: 'Buying', at: 250 / 3 },
+    { label: 'Public', at: 25 },
+    { label: 'Locked', at: 50 },
+    { label: 'Buying', at: 75 },
     { label: 'Sent', at: 100 }
   ];
 
@@ -101,9 +102,10 @@ export class StoryHowComponent implements AfterViewInit, OnChanges, OnDestroy {
   ];
 
 
-  readonly payouts = [
+  readonly payouts: { wallet: string; sol: number; tokens: number; share: number; burned?: boolean }[] = [
     { wallet: '7xQ…p2', sol: 30, tokens: 1_440_000, share: 60 },
-    { wallet: 'Bn4…zK', sol: 15, tokens: 720_000, share: 30 },
+    // This backer burns their share: the one row that shows the choice exists.
+    { wallet: 'Bn4…zK', sol: 15, tokens: 720_000, share: 30, burned: true },
     { wallet: '3Fh…9w', sol: 5, tokens: 240_000, share: 10 }
   ];
 
@@ -365,7 +367,10 @@ export class StoryHowComponent implements AfterViewInit, OnChanges, OnDestroy {
       this.drawFinishedPrice();
       this.write(this.boughtValueRef, String(BUY_TARGET_SOL));
       this.setWidth(this.boughtBarRef, 100);
-      this.payoutBars?.forEach((bar, index) => this.setWidth(bar, this.payouts[index].share));
+      this.payoutBars?.forEach((bar, index) => {
+        this.setWidth(bar, this.payouts[index].share);
+        bar.nativeElement.closest('.hrow')?.classList.add('is-sent');
+      });
       this.payoutTokens?.forEach((node, index) => this.write(node, this.formatTokens(this.payouts[index].tokens)));
     });
   }
@@ -566,7 +571,8 @@ export class StoryHowComponent implements AfterViewInit, OnChanges, OnDestroy {
     }
     this.payoutBars?.forEach((bar, index) => {
       this.setWidth(bar, this.payouts[index].share * frame.fill[index]);
-      bar.nativeElement.parentElement?.classList.toggle('is-sent', frame.sent[index]);
+      // On the row, where the styles look for it: the burned row lights up then.
+      bar.nativeElement.closest('.hrow')?.classList.toggle('is-sent', frame.sent[index]);
     });
     this.payoutTokens?.forEach((node, index) => {
       this.write(node, this.formatTokens(this.payouts[index].tokens * frame.fill[index]));

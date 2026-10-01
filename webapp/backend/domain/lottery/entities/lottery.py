@@ -46,6 +46,8 @@ class Lottery:
     second_phase_started_at: Optional[datetime] = None
     proceeding_purchases_started_at: Optional[datetime] = None
     close_reason: Optional[str] = None
+    #: When the round was closed; the pause before the next pool runs from here.
+    closed_at: Optional[datetime] = None
     initialize_abandoned_at: Optional[datetime] = None
     initialize_abandoned_error: Optional[str] = None
     is_offchain_vrf: bool = False

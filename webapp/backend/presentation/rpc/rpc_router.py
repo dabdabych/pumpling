@@ -8,6 +8,7 @@ from urllib import request, error
 
 from fastapi import APIRouter, Request, Response, HTTPException
 
+from shared.rate_limit import client_key
 from shared.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -128,15 +129,6 @@ def _is_exhausted(raw: bytes) -> bool:
     return False
 
 
-def _client_ip(http_request: Request) -> str:
-    forwarded_for = http_request.headers.get("x-forwarded-for", "")
-    if forwarded_for:
-        return forwarded_for.split(",", 1)[0].strip() or "unknown"
-    if http_request.client and http_request.client.host:
-        return http_request.client.host
-    return "unknown"
-
-
 def _prune_rate_limit_buckets(now: float) -> None:
     """Throw out the counters of anyone long gone: otherwise the dictionary grows forever."""
     stale = [ip for ip, bucket in _RATE_LIMIT_BUCKETS.items() if not bucket or now - bucket[-1] >= _RATE_LIMIT_WINDOW_SECONDS]
@@ -144,21 +136,62 @@ def _prune_rate_limit_buckets(now: float) -> None:
         _RATE_LIMIT_BUCKETS.pop(ip, None)
 
 
-def _enforce_rate_limit(client_ip: str, max_requests_per_minute: int) -> None:
+def _take(bucket: deque[float], calls: int, limit: int, now: float) -> bool:
+    """Count `calls` into a sliding minute, unless that would pass `limit`."""
+    while bucket and now - bucket[0] >= _RATE_LIMIT_WINDOW_SECONDS:
+        bucket.popleft()
+    if len(bucket) + calls > limit:
+        return False
+    bucket.extend([now] * calls)
+    return True
+
+
+def _enforce_rate_limit(client_ip: str, max_requests_per_minute: int, calls: int = 1) -> None:
+    """One client's share. Every call in a batch counts: a batch of ten used to
+    count as one request and cost ten times the credits."""
     if max_requests_per_minute <= 0:
         return
 
     now = time.monotonic()
     if len(_RATE_LIMIT_BUCKETS) > 1024:
         _prune_rate_limit_buckets(now)
-    bucket = _RATE_LIMIT_BUCKETS[client_ip]
-    while bucket and now - bucket[0] >= _RATE_LIMIT_WINDOW_SECONDS:
-        bucket.popleft()
-
-    if len(bucket) >= max_requests_per_minute:
+    if not _take(_RATE_LIMIT_BUCKETS[client_ip], calls, max_requests_per_minute, now):
         raise HTTPException(status_code=429, detail="RPC rate limit exceeded")
 
-    bucket.append(now)
+
+_GLOBAL_CALLS: deque[float] = deque()
+_last_ceiling_alarm = 0.0
+
+
+def _enforce_global_limit(max_calls_per_minute: int, calls: int) -> None:
+    """Everybody's share together: the most the public can spend of the plan.
+
+    However many addresses a script rotates through, it cannot push more than
+    this through the proxy, and the rest of the plan's per-second limit stays
+    with the buyer and the workers. Reaching it is logged as an error, once a
+    minute: in normal use the site is far below it.
+    """
+    global _last_ceiling_alarm
+    if max_calls_per_minute <= 0:
+        return
+    now = time.monotonic()
+    if _take(_GLOBAL_CALLS, calls, max_calls_per_minute, now):
+        return
+    if now - _last_ceiling_alarm >= _RATE_LIMIT_WINDOW_SECONDS:
+        _last_ceiling_alarm = now
+        logger.error(
+            "RPC proxy is at its ceiling of %s calls a minute from all clients together; "
+            "refusing until it drains. Normal use is far below this: someone may be spending the plan.",
+            max_calls_per_minute,
+        )
+    raise HTTPException(status_code=429, detail="The network is busy. Try again in a moment.")
+
+
+def reset_limits_for_tests() -> None:
+    global _last_ceiling_alarm
+    _RATE_LIMIT_BUCKETS.clear()
+    _GLOBAL_CALLS.clear()
+    _last_ceiling_alarm = 0.0
 
 
 def _parse_rpc_payload(body: bytes) -> list[dict[str, Any]]:
@@ -178,7 +211,8 @@ def _parse_rpc_payload(body: bytes) -> list[dict[str, Any]]:
     return requests
 
 
-def _validate_rpc_payload(body: bytes, max_batch_size: int) -> None:
+def _validate_rpc_payload(body: bytes, max_batch_size: int) -> int:
+    """Checks the payload and returns how many calls it makes."""
     requests = _parse_rpc_payload(body)
     if max_batch_size > 0 and len(requests) > max_batch_size:
         raise HTTPException(status_code=413, detail="RPC batch too large")
@@ -189,6 +223,7 @@ def _validate_rpc_payload(body: bytes, max_batch_size: int) -> None:
             raise HTTPException(status_code=400, detail="JSON-RPC method is required")
         if method not in _ALLOWED_METHODS:
             raise HTTPException(status_code=403, detail=f"RPC method not allowed: {method}")
+    return len(requests)
 
 
 def _safe_url(url: str) -> str:
@@ -217,8 +252,9 @@ async def proxy_rpc(http_request: Request) -> Response:
         raise HTTPException(status_code=413, detail="RPC payload too large")
 
     settings = get_settings()
-    _enforce_rate_limit(_client_ip(http_request), settings.rpc_proxy_rate_limit_per_minute)
-    _validate_rpc_payload(body, settings.rpc_proxy_max_batch_size)
+    calls = _validate_rpc_payload(body, settings.rpc_proxy_max_batch_size)
+    _enforce_rate_limit(client_key(http_request), settings.rpc_proxy_rate_limit_per_minute, calls)
+    _enforce_global_limit(settings.rpc_proxy_global_limit_per_minute, calls)
 
     urls = _upstream_urls()
     last_status: int | None = None

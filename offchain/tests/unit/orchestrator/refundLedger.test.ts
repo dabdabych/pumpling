@@ -201,6 +201,40 @@ describe("the signatures a round may have been charged for", () => {
     });
 });
 
+describe("a purchase signed more than once", () => {
+    // Signed again after its blockhash ran out: the record keeps every attempt,
+    // and the last one is also its pending signature from the moment it was signed.
+    function resigned(): BatchState {
+        const b = batch();
+        b.purchases[27] = {
+            ...b.purchases[27],
+            pendingSignature: "buy-28",
+            sentAttempts: [
+                { signature: "buy-28-failed", lastValidBlockHeight: 1, at: 0 },
+                { signature: "buy-28-expired", lastValidBlockHeight: 2, at: 0 },
+                { signature: "buy-28", lastValidBlockHeight: 3, at: 0 },
+            ],
+        };
+        return b;
+    }
+
+    it("asks the chain about every attempt", () => {
+        const signatures = collectRoundSignatures(state(), loader(resigned()));
+        expect(signatures).toContain("buy-28-failed");
+        expect(signatures).toContain("buy-28-expired");
+    });
+
+    it("charges the fee of an attempt that landed and failed, even when it was not the last", () => {
+        const debits = chainDebits();
+        // Reached the chain and failed there: it paid its fee and bought nothing.
+        debits.set("buy-28-failed", 0.000105);
+        const plain = buildRefundLedger(state(), loader(), chainDebits()).get(MINT)!;
+        const withAttempts = buildRefundLedger(state(), loader(resigned()), debits).get(MINT)!;
+        expect(withAttempts.spentSol - plain.spentSol).toBeCloseTo(0.000105, 9);
+        expect(withAttempts.exact).toBe(true);
+    });
+});
+
 describe("what the round really cost", () => {
     it("counts the fees and the rent the plan does not know about", () => {
         const basis = buildRefundLedger(state(), loader(), chainDebits()).get(MINT)!;

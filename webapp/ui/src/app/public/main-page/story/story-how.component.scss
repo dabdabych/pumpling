@@ -130,13 +130,13 @@
   text-transform: uppercase;
 }
 
-/* Two hours out of three: the pool is open for 125 minutes, then an hour of buying. */
+/* Half and half: the pool is open for an hour (70 minutes), then an hour of buying. */
 .track__segments span:first-child {
-  width: 66.667%;
+  width: 50%;
 }
 
 .track__segments span:last-child {
-  width: 33.333%;
+  width: 50%;
   text-align: right;
 }
 
@@ -504,8 +504,36 @@
 }
 
 .hrow__tokens {
-  min-width: 3.6em;
-  text-align: right;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3em;
+  /* Wide enough for the flame, the gap and "720K" (1.05 + 0.3 + 2.6em), and
+     the same in every row: the bars keep one length and compare. */
+  min-width: 4.1em;
+}
+
+/* The backer who burns their share. The flame keeps its place from the start,
+   so nothing shifts when it lights up. It is sized in em, so it grows with the
+   numbers as the card scales. */
+.hrow__flame {
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.hrow--burned {
+  transition: background-color 0.25s ease;
+}
+
+/* The same tint the pool's feed gives a burn. */
+.hrow--burned.is-sent {
+  background: color-mix(in srgb, var(--qres-purple) 14%, var(--qres-white));
+}
+
+.hrow--burned.is-sent .hrow__flame {
+  opacity: 1;
+  transform: none;
 }
 
 /* ------------------------------------- as a column: phone, reduced motion */
@@ -530,8 +558,8 @@
 }
 
 /* On a phone five captions overlapped on the narrow scale: three nodes sit in
-   the last third. We keep the dots and the times, and give the meaning of the
-   scale — "open for 2 hours, an hour of buying" — as segment captions. */
+   the second half. We keep the dots and the times, and give the meaning of the
+   scale ("open for an hour, an hour of buying") as segment captions. */
 :host-context(.qres-story--static) .track__label {
   display: none;
 }
@@ -670,6 +698,11 @@
     animation: none;
     transition: none;
     opacity: 1;
+  }
+
+  .hrow--burned,
+  .hrow__flame {
+    transition: none;
   }
 }
 

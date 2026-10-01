@@ -10,7 +10,7 @@
 //      the wallet, while we take the blockhash from our own node. A wallet on
 //      mainnet plus a stand on devnet and the signature goes to the wrong place.
 import { launch } from '../lib/browser.mjs';
-import { SCENARIOS, mockCurrent, MINTS } from '../lib/pool-mock.mjs';
+import { SCENARIOS, mockCurrent, MINTS, commitCheck } from '../lib/pool-mock.mjs';
 
 const BASE = process.env.BASE || 'http://localhost:3200';
 const WALLET = 'EGDo2JhA2c3QPDQLKV9Umgfn3srkYvRKmfXPAYasDLeJ';
@@ -94,6 +94,10 @@ const openPool = async (kind, delayMs = 0) => {
     }
     if (method === 'sendTransaction') {
       return reply(SIGNATURE);
+    }
+    const checked = commitCheck(method);
+    if (checked !== undefined) {
+      return reply(checked);
     }
     if (method === 'getSignatureStatuses') {
       return reply({ context: { slot: 2 }, value: [{ slot: 2, confirmations: 1, err: null, confirmationStatus: 'confirmed' }] });
@@ -256,6 +260,8 @@ for (const kind of ['phantom', 'solflare', 'backpack', 'coinbase']) {
     const reply = (result) => route.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify({ jsonrpc: '2.0', id: body.id ?? 1, result }) });
     if (body.method === 'getLatestBlockhash') return reply({ context: { slot: 1 }, value: { blockhash: BLOCKHASH, lastValidBlockHeight: 1000 } });
     if (body.method === 'sendTransaction') return reply(SIGNATURE);
+    const checked = commitCheck(body.method);
+    if (checked !== undefined) return reply(checked);
     if (body.method === 'getRecentPrioritizationFees') return reply([{ slot: 1, prioritizationFee: 30000 }]);
     if (body.method === 'getSignatureStatuses') return reply({ context: { slot: 2 }, value: [{ slot: 2, confirmations: 1, err: null, confirmationStatus: 'confirmed' }] });
     return reply(null);

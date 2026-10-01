@@ -31,6 +31,7 @@ import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
   `]
 })
 export class FlameComponent {
-  @Input() size = 14;
+  /** Pixels, or any CSS length: '1em' keeps the flame the size of the text beside it. */
+  @Input() size: number | string = 14;
   @Input() inverted = false;
 }

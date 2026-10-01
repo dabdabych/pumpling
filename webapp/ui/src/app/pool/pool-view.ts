@@ -52,7 +52,7 @@ export function buildPoolView(snapshot: PoolSnapshot, nowMs: number, feed?: Purc
         phase: 'launch',
         chip: { label: 'Soon', tone: 'soon' },
         title: { lead: 'The first pool', plate: 'opens soon' },
-        lede: 'When it opens, anyone can name a Solana memecoin and add SOL for two hours. Then that SOL goes into public buys of those coins.',
+        lede: 'When it opens, anyone can name a Solana memecoin and add SOL for an hour. Then that SOL goes into public buys of those coins.',
         timer: { label: 'Opens in', value: formatLongCountdown(msUntil(snapshot.launchAtMs, nowMs)), note: null, ticking: true },
         progress: null,
         step: null,
@@ -144,24 +144,49 @@ export function buildPoolView(snapshot: PoolSnapshot, nowMs: number, feed?: Purc
           chip: { label: 'Buying', tone: 'buying' },
           title: { lead: 'Buying what is', plate: 'left' },
           lede: 'Some of the buys did not go through the first time round, so the coins that came up short are being bought again. Everything that gets bought goes to the people who backed those coins, exactly as before.',
-          timer: fallbackLeftMs !== null
-            ? { label: 'Second pass ends in', value: formatClock(fallbackLeftMs), note: 'then this pool wraps up', ticking: true }
-            : { label: 'Second pass', value: 'Running', note: 'buying what the first pass missed', ticking: false },
+          timer: fallbackLeftMs === null
+            ? { label: 'Second pass', value: 'Running', note: 'buying what the first pass missed', ticking: false }
+            : fallbackLeftMs > 0
+              ? { label: 'Second pass ends in', value: formatClock(fallbackLeftMs), note: 'then this pool wraps up', ticking: true }
+              : { label: 'Second pass', value: 'Finishing', note: 'the last purchases are going through', ticking: false },
           progress,
           step: 2,
           canCommit: false
         };
       }
 
-      // Everything has been bought and the window has not run out. Saying
-      // nothing here leaves a countdown ticking with nothing behind it.
+      // Nothing is left to buy. The pool still closes at the end of its
+      // window and not before, so the countdown goes on, to the close: in a
+      // small round that can be twenty-five minutes, which "shortly" was not.
+      // Past the end the close is a matter of seconds and there is nothing to
+      // count.
+      const wrapUp: PoolView['timer'] = leftMs !== null && leftMs > 0
+        ? { label: 'Pool wraps up in', value: formatClock(leftMs), note: null, ticking: true }
+        : { label: 'Pool', value: 'Wrapping up', note: null, ticking: false };
+
+      // "Nothing left to buy" is two different stories. When not one purchase
+      // went through, every coin failed and the SOL is on its way back; saying
+      // the buys were made was a lie, and on devnet, where mainnet coins do not
+      // exist, it was the only thing the page ever said.
+      if (feed?.phase === 'finished' && feed.completed === 0) {
+        return {
+          phase: 'buying',
+          chip: { label: 'Buying', tone: 'buying' },
+          title: { lead: 'Nothing could be', plate: 'bought' },
+          lede: 'None of the coins in this pool could be bought. The SOL goes back to the wallets that put it in, less the pool fee and the network fees.',
+          timer: { ...wrapUp, note: 'the SOL is on its way back' },
+          progress,
+          step: 2,
+          canCommit: false
+        };
+      }
       if (feed?.phase === 'finished') {
         return {
           phase: 'buying',
           chip: { label: 'Buying', tone: 'buying' },
           title: { lead: 'The buys are', plate: 'done' },
-          lede: 'Every buy this pool planned has been made. The tokens are on their way to the wallets that backed each coin.',
-          timer: { label: 'Buys', value: 'All done', note: 'this pool wraps up shortly', ticking: false },
+          lede: 'The buying is over. The tokens are on their way to the wallets that backed each coin, and whatever could not be spent goes back to them.',
+          timer: { ...wrapUp, note: 'nothing more to buy' },
           progress,
           step: 2,
           canCommit: false
@@ -173,9 +198,14 @@ export function buildPoolView(snapshot: PoolSnapshot, nowMs: number, feed?: Purc
         chip: { label: 'Buying', tone: 'buying' },
         title: { lead: 'Buys are', plate: 'running' },
         lede: 'The SOL goes into public on-chain buys, in small batches spread across the hour. What gets bought goes to the people who backed each coin.',
-        timer: leftMs !== null
-          ? { label: 'Buys end in', value: formatClock(leftMs), note: 'then this pool wraps up', ticking: true }
-          : { label: 'Buys', value: 'Starting', note: null, ticking: false },
+        // Past the end of the window with the buyer still at it: the last
+        // purchase is on its way, and the pool waits for it. A clock frozen at
+        // 00:00:00 would say the buying is over while it is not.
+        timer: leftMs === null
+          ? { label: 'Buys', value: 'Starting', note: null, ticking: false }
+          : leftMs > 0
+            ? { label: 'Buys end in', value: formatClock(leftMs), note: 'then this pool wraps up', ticking: true }
+            : { label: 'Buys', value: 'Finishing', note: 'the last purchases are going through', ticking: false },
         progress,
         step: 2,
         canCommit: false

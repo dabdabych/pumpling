@@ -127,7 +127,7 @@ for (const [width, height, mobile] of [[1440, 900, false], [390, 844, true], [32
       fits: row.scrollWidth <= row.clientWidth + 1
     }))
   }));
-  ok(feed.title === 'On Solana', `${width}px: the feed is "On Solana" now (${feed.title})`);
+  ok(feed.title === 'Transactions', `${width}px: the feed is "Transactions" (${feed.title})`);
   ok(feed.count === '25 of 40 buys', `${width}px: the counter still counts buys only (${feed.count})`);
   const kinds = feed.rows.map((r) => r.kind).join(',');
   // Buys every 95s from now, deliveries 60s and 150s ago, the burn 120s ago, the refund 200s ago.

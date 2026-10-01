@@ -9,6 +9,7 @@ from solders.pubkey import Pubkey
 import events_worker as event_worker
 from database.database import SessionLocal
 from database.models.backfill_state_model import BackfillStateModel
+from shared.log_redaction import install_log_redaction
 from shared.solana_rpc import SolanaJsonRpc, signature_failed
 
 
@@ -34,6 +35,8 @@ def setup_logging() -> None:
         level=getattr(logging, LOG_LEVEL, logging.INFO),
         format="%(asctime)s | %(levelname)s | %(message)s",
     )
+    # The RPC endpoint carries its API key in the query string.
+    install_log_redaction()
 
 
 def _resolve_idl_path() -> Path:

@@ -223,3 +223,156 @@ class TestThePictureIsAskedForAgain:
     def test_the_cap_is_a_few_hours_of_trying_not_a_few_minutes(self):
         hours = queue_module.MAX_ATTEMPTS * queue_module.RETRY_AFTER_SECONDS / 3600
         assert 2 <= hours <= 12
+
+
+class TestThePictureIsFoundWhereItIs:
+    """Where a small coin's picture comes from, and why it was never found.
+
+    pump.fun has the picture from the moment a coin is created. Its old path
+    started answering 404 for every coin and the 404 went unlogged, and the
+    search stopped at the first source that knew anything at all, so a source
+    with the name and no picture ended it.
+    """
+
+    @staticmethod
+    def router():
+        from presentation.lottery import lottery_router
+
+        return lottery_router
+
+    def test_pumpfun_is_asked_at_coins_v2(self, monkeypatch):
+        router = self.router()
+        asked = []
+
+        class Answer:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b'{"mint": "%s", "name": "Mochi", "symbol": "MOCHI", "image_uri": "https://ipfs.io/ipfs/mochi"}' % MINT.encode()
+
+        def urlopen(request, timeout=None, context=None):
+            asked.append(request.full_url)
+            return Answer()
+
+        monkeypatch.setattr(router.urllib_request, "urlopen", urlopen)
+        metadata = router._fetch_pumpfun_token_metadata(MINT)
+
+        assert asked == [f"https://frontend-api-v3.pump.fun/coins-v2/{MINT}"]
+        assert metadata == {"token_name": "Mochi", "token_symbol": "MOCHI", "token_image_url": "https://ipfs.io/ipfs/mochi"}
+
+    def test_a_404_is_logged_rather_than_taken_quietly(self, monkeypatch, caplog):
+        import io
+        from urllib import error as urllib_error
+
+        router = self.router()
+
+        def urlopen(request, timeout=None, context=None):
+            raise urllib_error.HTTPError(request.full_url, 404, "Not Found", {}, io.BytesIO(b"{}"))
+
+        monkeypatch.setattr(router.urllib_request, "urlopen", urlopen)
+        with caplog.at_level("WARNING"):
+            metadata = router._fetch_pumpfun_token_metadata(MINT)
+
+        assert not any(metadata.values())
+        assert "status=404" in caplog.text
+
+    def test_a_name_without_a_picture_does_not_end_the_search(self, monkeypatch):
+        router = self.router()
+        empty = {"token_name": None, "token_symbol": None, "token_image_url": None}
+        monkeypatch.setattr(router, "_fetch_pumpfun_token_metadata", lambda mint: {**empty, "token_name": "Convict.fun", "token_symbol": "CONVICT"})
+        monkeypatch.setattr(router, "_fetch_helius_token_metadata", lambda mint: dict(empty))
+        monkeypatch.setattr(router, "_fetch_dexscreener_token_metadata", lambda mint: {**empty, "token_name": "Other", "token_image_url": "https://cdn/convict.png"})
+
+        metadata = router._fetch_token_metadata(MINT)
+
+        # The name from the first source that had one, the picture from the one that had it.
+        assert metadata == {"token_name": "Convict.fun", "token_symbol": "CONVICT", "token_image_url": "https://cdn/convict.png"}
+
+    def test_and_stops_as_soon_as_everything_is_known(self, monkeypatch):
+        router = self.router()
+        calls = []
+
+        def complete(mint):
+            calls.append("pumpfun")
+            return {"token_name": "Mochi", "token_symbol": "MOCHI", "token_image_url": "https://ipfs.io/ipfs/mochi"}
+
+        def later(name):
+            def fetch(mint):
+                calls.append(name)
+                return {"token_name": None, "token_symbol": None, "token_image_url": None}
+            return fetch
+
+        monkeypatch.setattr(router, "_fetch_pumpfun_token_metadata", complete)
+        monkeypatch.setattr(router, "_fetch_helius_token_metadata", later("helius"))
+        monkeypatch.setattr(router, "_fetch_dexscreener_token_metadata", later("dexscreener"))
+
+        router._fetch_token_metadata(MINT)
+
+        assert calls == ["pumpfun"]
+
+    def test_the_paid_source_is_asked_last_and_only_for_what_is_missing(self, monkeypatch):
+        # DexScreener knows the name and the ticker but not the picture, as it
+        # did for both coins of the 2026-09-29 round; Helius DAS, 10 credits a
+        # lookup, is asked only after it, for the picture.
+        router = self.router()
+        calls = []
+        empty = {"token_name": None, "token_symbol": None, "token_image_url": None}
+
+        def source(name, answer):
+            def fetch(mint):
+                calls.append(name)
+                return {**empty, **answer}
+            return fetch
+
+        monkeypatch.setattr(router, "_fetch_pumpfun_token_metadata", source("pumpfun", {}))
+        monkeypatch.setattr(router, "_fetch_dexscreener_token_metadata", source("dexscreener", {"token_name": "lapa.page", "token_symbol": "lapa"}))
+        monkeypatch.setattr(router, "_fetch_helius_token_metadata", source("helius", {"token_image_url": "https://ipfs.io/ipfs/lapa"}))
+
+        metadata = router._fetch_token_metadata(MINT)
+
+        assert calls == ["pumpfun", "dexscreener", "helius"]
+        assert metadata == {"token_name": "lapa.page", "token_symbol": "lapa", "token_image_url": "https://ipfs.io/ipfs/lapa"}
+
+    def test_das_lookups_have_a_ceiling_for_everybody_together(self, monkeypatch):
+        from types import SimpleNamespace
+
+        router = self.router()
+        router._DAS_CALLS.clear()
+        monkeypatch.setattr(router, "get_settings", lambda: SimpleNamespace(
+            helius_api_key="paid-key", helius_das_base_url="https://mainnet.helius-rpc.com",
+            helius_das_limit_per_minute=3, external_lookup_timeout_seconds=1.0,
+        ))
+        sent = []
+
+        class Answer:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b'{"result": {"content": {"metadata": {"name": "Mochi", "symbol": "MOCHI"}, "links": {"image": "https://ipfs.io/ipfs/mochi"}}}}'
+
+        def urlopen(request, timeout=None, context=None):
+            sent.append(request.full_url)
+            return Answer()
+
+        monkeypatch.setattr(router.urllib_request, "urlopen", urlopen)
+        answers = [router._fetch_helius_token_metadata(f"Mint{i}") for i in range(5)]
+        router._DAS_CALLS.clear()
+
+        # Three paid lookups in the minute, then nothing is sent at all.
+        assert len(sent) == 3
+        assert [bool(a["token_name"]) for a in answers] == [True, True, True, False, False]
+
+    def test_the_default_ceiling_bounds_what_das_can_cost(self):
+        from shared.settings import get_settings
+
+        # 10 credits a lookup: at most 300 credits a minute however many
+        # people check coins.
+        assert 0 < get_settings().helius_das_limit_per_minute <= 30

@@ -208,9 +208,9 @@
         </p>
         @if (expectedBuyText) {
           <!-- This number is the whole point: the announced buying visibly grows.
-               "If it closed now" because the draw will still move the shares, and
-               we cannot promise an exact amount. -->
-          <p class="commit__expect">If the pool closed now, <b>${{ readyCoin.ticker }}</b> would get ≈ {{ expectedBuyText }} SOL of buys.</p>
+               It is the expectation over the draw, exact only with a single
+               coin; the draw sets each real share. -->
+          <p class="commit__expect">Expected for <b>${{ readyCoin.ticker }}</b>: ≈ {{ expectedBuyText }} SOL of buys. The draw sets the real share.</p>
         }
       }
       <!-- First what will happen, then what the risk is. The other way round, the
@@ -223,6 +223,13 @@
       <div class="auth-error commit__error" role="alert">{{ error }}</div>
     }
 
+    <!-- The wallet was asked for its window ten seconds ago and nothing came
+         back. Not an error yet: the request is still open and goes through if
+         the window turns up. Said next to the button it concerns. -->
+    @if (walletStalled) {
+      <div class="commit__stalled" role="status" #stalledNote>{{ walletHint }}</div>
+    }
+
     @if (walletAddress) {
       <p class="commit__wallet">
         Signing with <b>{{ walletName || 'your wallet' }}</b> · {{ walletShort }}
@@ -230,7 +237,7 @@
       </p>
     }
 
-    <button type="submit" class="commit__submit" [disabled]="send !== 'idle' || !poolOpen">
+    <button type="submit" class="commit__submit" [disabled]="submitDisabled">
       {{ submitLabel }}
     </button>
 

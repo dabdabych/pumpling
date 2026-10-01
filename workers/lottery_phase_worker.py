@@ -53,6 +53,7 @@ from infrastructure.lottery.offchain_api_client import build_offchain_api_client
 from domain.auth.entities.user import UserRole
 from shared.admin_wallets import configured_admin_pubkeys
 from shared.bet_confirmation import active_bet_condition
+from shared.log_redaction import install_log_redaction
 from shared.lottery_cycle_control import SUPPORTED_LOTTERY_TYPES, is_cycle_enabled, reconcile_hype_countdown
 from shared.weights_commitment import (
     build_lamports_payload,
@@ -233,6 +234,10 @@ def setup_logging(settings: Optional[AppSettings] = None) -> None:
             "Telegram worker notifications are disabled. "
             "Set TELEGRAM_ERROR_BOT_TOKEN and TELEGRAM_ERROR_CHAT_ID."
         )
+
+    # On every handler, the Telegram one included: the RPC endpoint carries its
+    # API key in the query string, and an error can quote it.
+    install_log_redaction()
 
 
 def _install_signal_handlers(stop_event: asyncio.Event) -> None:
@@ -977,33 +982,40 @@ async def _close_is_due(
     knows which, so it is asked (`GET /execute/{id}/purchases`, the `phase`).
 
     ```
-    before main_end - buffer   never
-    before main_end            only if the buyer says it has finished
-    after  main_end            unless the buyer is on its second pass and the
-                               ceiling has not passed
+    before main_end   never, whatever the buyer says
+    after  main_end   unless the buyer is still buying, on its main pass or
+                      its second, and the ceiling has not passed
     ```
 
-    The buffer lets a round that is demonstrably done close a few minutes
-    early; it is invisible on the site, which goes on showing the buying until
-    the window ends either way. A buyer that says nothing — it is down, it has
-    no state for this round, the call failed — never holds a round open: the
-    clock decides, exactly as it did before any of this existed.
+    The clock sets the public timeline and the buyer only extends it, within a
+    ceiling. A round used to close up to five minutes early on the buyer's word
+    that it had finished. That saved nothing, since the purchases are spread
+    across the whole window, and it made the buyer's word able to end a public
+    round: on 2026-09-29 that word turned out to be false at the start of every
+    round, for as long as the coins had no batch files yet. A fixed end is also
+    one that can be announced.
+
+    Still buying at `main_end` holds the round as the second pass does. The
+    buyer's window starts when the buyer does, a moment after `main_end` is
+    counted from, and its last purchase can still be on its way when the clock
+    runs out: the retry ladder waits up to two minutes for a blockhash to
+    expire before it tries again. Closing on "buying" then said the round was
+    over while it bought, and if that purchase went into a second pass, the
+    whole pass ran under "This pool is done".
+
+    A buyer that says nothing — it is down, it has no state for this round, the
+    call failed — never holds a round open: the clock decides.
     """
     settings = _settings()
     main_end = proceeding_started_at + timedelta(seconds=max(0, settings.execution_countdown_seconds))
-    buffer_seconds = max(0, settings.close_lottery_buffer_seconds)
     fallback_seconds = max(0, settings.fallback_countdown_seconds)
 
-    if now_utc < main_end - timedelta(seconds=buffer_seconds):
+    if now_utc < main_end:
         return False
 
     phase = await _buyer_phase(lottery.id)
 
-    if now_utc < main_end:
-        # Early, and only on the buyer's word that there is nothing left to buy.
-        return phase == "finished"
-
-    if fallback_seconds <= 0 or phase != "fallback":
+    if fallback_seconds <= 0 or phase not in ("buying", "fallback"):
         return True
 
     ceiling = main_end + timedelta(seconds=fallback_seconds)
@@ -1013,9 +1025,10 @@ async def _close_is_due(
 
     _throttled_log(
         logging.INFO,
-        f"close-waits-for-fallback:{lottery.id}",
-        "Close held back: the buyer is on its second pass (lottery_id=%s, until=%s)",
+        f"close-waits-for-buyer:{lottery.id}",
+        "Close held back: the buyer is still buying (lottery_id=%s, phase=%s, until=%s)",
         lottery.id,
+        phase,
         ceiling.isoformat(),
     )
     return False
@@ -2805,7 +2818,7 @@ async def main() -> None:
     _install_signal_handlers(stop_event)
 
     logging.info(
-        "Starting lottery lifecycle worker (signers=%s, rpc=%s, interval=%ss, cap_threshold=%s, emergency_delay=%ss, start_purchases_delay=%ss, execution_countdown=%ss, close_buffer=%ss)",
+        "Starting lottery lifecycle worker (signers=%s, rpc=%s, interval=%ss, cap_threshold=%s, emergency_delay=%ss, start_purchases_delay=%ss, execution_countdown=%ss, fallback_countdown=%ss)",
         ",".join(str(pubkey) for pubkey in signer_pubkeys),
         settings.solana_http_endpoint,
         settings.phase2_poll_interval_seconds,
@@ -2813,7 +2826,7 @@ async def main() -> None:
         EMERGENCY_FULFILL_DELAY_SECONDS,
         settings.start_purchases_delay_seconds,
         settings.execution_countdown_seconds,
-        settings.close_lottery_buffer_seconds,
+        settings.fallback_countdown_seconds,
     )
 
     async with AsyncClient(settings.solana_http_endpoint) as client:

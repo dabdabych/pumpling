@@ -199,8 +199,8 @@
           <span class="coin-head__coin">Coin</span>
           <span class="coin-head__mint">Address</span>
           <span class="coin-head__sol">In the pool</span>
-          <span class="coin-head__drawn">
-            @if (model.snapshot.draw === 'ready') { Goes into buys } @else { If it closed now }
+          <span class="coin-head__drawn" [class.coin-head__drawn--ready]="model.snapshot.draw === 'ready'">
+            @if (model.snapshot.draw === 'ready') { Goes into buys } @else { Expected buys }
           </span>
           <span class="coin-head__commits">Commits</span>
           <span></span>
@@ -257,24 +257,31 @@
               </span>
 
               @if (coin.drawnSol === null && coin.sol > 0 && model.snapshot.buyBudgetSol > 0) {
-                <!-- The share before the draw: how much buying would go to the
-                     coin if the pool closed now. This is an expectation rather
-                     than a promise, hence the "≈" and the plain caveat under it. -->
+                <!-- The share before the draw: the coin's SOL over the pool's,
+                     times what goes into buys. It is the average over the draw,
+                     not what it gets: with one coin that is exact, with several
+                     the draw moves every share. Hence "expected", the "≈" and
+                     the caveat under it. -->
                 <span class="coin-row__drawn coin-row__drawn--expected">
                   <span class="coin-row__value">≈ {{ formatSol(coin.poolShare * model.snapshot.buyBudgetSol) }} <small>SOL</small></span>
-                  <span class="coin-row__share coin-row__share--hint">of buys if it closed now</span>
+                  <span class="coin-row__share coin-row__share--hint">on average, before the draw</span>
                 </span>
               }
               @if (coin.drawnSol !== null) {
+                <!-- After the draw this is what the table is read for: how much
+                     of the buys each coin got. The amount sits on the green of
+                     buying, with its share of all the buys beside how much of it
+                     has been bought so far. -->
                 <span class="coin-row__drawn">
                   @if (coin.drawnSol > 0) {
-                    <span class="coin-row__value">{{ formatSol(coin.drawnSol) }} <small>SOL</small></span>
+                    <span class="coin-row__won">{{ formatSol(coin.drawnSol) }} <small>SOL</small></span>
                     @if (boughtShare(model.boughtByMint.get(coin.mint)); as share) {
                       <span class="bar coin-row__bought" aria-hidden="true"><span class="bar__fill bar__fill--bought" [style.width.%]="share * 100"></span></span>
-                      <span class="coin-row__share">{{ formatSol(model.boughtByMint.get(coin.mint)!.boughtSol) }} bought</span>
-                    } @else {
-                      <span class="coin-row__share">to buy</span>
                     }
+                    <span class="coin-row__share">
+                      @if (drawnShareOfBuys(model, coin); as ofBuys) { {{ ofBuys | percent: '1.0-1' }} of buys · }
+                      @if (boughtShare(model.boughtByMint.get(coin.mint))) { {{ formatSol(model.boughtByMint.get(coin.mint)!.boughtSol) }} bought } @else { to buy }
+                    </span>
                   } @else {
                     <span class="chip chip--zero">Zero</span>
                     <span class="coin-row__share">no buy this time</span>
@@ -349,7 +356,9 @@
     @if (model.view.phase === 'buying' || (model.view.phase === 'done' && model.feedRows.length > 0)) {
       <section class="pool-buys" aria-labelledby="pool-buys-title" @sectionEnter>
         <div class="pool-coins__head">
-          <h2 class="pool-coins__title" id="pool-buys-title">On Solana</h2>
+          <!-- Every row is a transaction with its signature; the live mark sits
+               beside the title while the round runs. -->
+          <h2 class="pool-coins__title" id="pool-buys-title">Transactions</h2>
           <span class="pool-coins__meta">
             @if (model.feed.available && !model.feed.finished) {
               <span class="pool-live"><i aria-hidden="true"></i>live</span>
@@ -492,7 +501,7 @@
       <span>{{ current.message }}</span>
       <a [href]="explorerUrl(current.signature)" target="_blank" rel="noreferrer">View on Solscan</a>
       @if (current.share; as share) {
-        <button type="button" class="pool-toast__cta" (click)="openShare('commit', share.mint, share.sol)">
+        <button type="button" class="pool-toast__cta" (click)="openShare('commit', share.mint, share.sol, current.signature)">
           Get your card
         </button>
       }

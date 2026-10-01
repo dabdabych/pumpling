@@ -7,7 +7,7 @@
 // priority turned pale under the pointer, and stayed pale after a tap on a phone.
 import { launch, BASE } from '../lib/browser.mjs';
 import { execSync } from 'node:child_process';
-import { SCENARIOS, mockCurrent, MINTS } from '../lib/pool-mock.mjs';
+import { SCENARIOS, mockCurrent, MINTS, commitCheck } from '../lib/pool-mock.mjs';
 
 const S = process.env.S;
 const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' };
@@ -70,6 +70,8 @@ const setup = async ({ width, height, mobile = false, wallet = false }) => {
       const reply = (result) => route.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify({ jsonrpc: '2.0', id: body.id ?? 1, result }) });
       if (method === 'getLatestBlockhash') return reply({ context: { slot: 1 }, value: { blockhash: '11111111111111111111111111111111', lastValidBlockHeight: 1000 } });
       if (method === 'sendTransaction') return reply('5'.repeat(88));
+      const checked = commitCheck(method);
+      if (checked !== undefined) return reply(checked);
       if (method === 'getSignatureStatuses') return reply({ context: { slot: 2 }, value: [{ slot: 2, confirmations: 1, err: null, confirmationStatus: 'confirmed' }] });
       return reply(null);
     });
@@ -235,6 +237,19 @@ for (const [choice, expected] of [[2, 'pumpling burn 50%'], [0, null]]) {
     ok(memos[0]?.signers?.includes(WALLET), 'signed by the paying wallet');
   } else {
     ok(memos.length === 0 && signed.length > 0, `no memo at all for none (${signed.map((ix) => ix.program).join(', ')})`);
+  }
+  if (choice === 2) {
+    // The card offered after the commit links to that commit by its signature:
+    // the server looks the amount up, the link cannot claim one.
+    const cta = p.locator('.pool-toast__cta');
+    await cta.waitFor({ timeout: 15000 }).catch(() => {});
+    ok(await cta.count() === 1, 'the confirmed commit offers its card');
+    if (await cta.count()) {
+      await cta.click();
+      await p.waitForSelector('.share__button--x[href]', { timeout: 8000 });
+      const post = new URL(await p.locator('.share__button--x').getAttribute('href')).searchParams.get('url') ?? '';
+      ok(new RegExp(`/s/commit/${'5'.repeat(88)}\\?v=[0-9a-z]+$`).test(post), `the commit's card is linked by its signature (${post})`);
+    }
   }
   ok(errors.length === 0, `no page errors ${errors.join(' | ')}`);
   await ctx.close();

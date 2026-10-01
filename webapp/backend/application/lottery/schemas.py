@@ -1,7 +1,16 @@
-from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Optional
+from pydantic import AfterValidator, BaseModel, Field
+from typing import Annotated, Any, Dict, List, Optional
 from decimal import Decimal
 from datetime import datetime
+
+from shared.coin_images import normalize_image_url
+
+# A coin's picture as the site should load it. ipfs.io stopped serving files
+# on 2026-09-21, and most pump.fun pictures point there: an IPFS address is
+# rewritten to a gateway that serves it, on every response that carries one
+# (`shared/coin_images.py`). What is stored stays what the sources said.
+ImageUrl = Annotated[str, AfterValidator(normalize_image_url)]
+OptionalImageUrl = Annotated[Optional[str], AfterValidator(normalize_image_url)]
 
 
 class PricePointResponse(BaseModel):
@@ -17,7 +26,7 @@ class CoinResponse(BaseModel):
     current_price: Decimal
     price_history: List[PricePointResponse]
     volume_24h: Decimal
-    logo_url: str = None
+    logo_url: ImageUrl = None
 
 
 class LotteryEntryResponse(BaseModel):
@@ -147,7 +156,7 @@ class MyCommitCoinResponse(BaseModel):
     mint: str
     name: str
     ticker: str
-    logo_url: Optional[str] = None
+    logo_url: OptionalImageUrl = None
     #: How much SOL I put in.
     my_sol: float
     #: How many commits of mine went behind this coin.
@@ -228,7 +237,7 @@ class PurchaseFeedItemResponse(BaseModel):
     mint: str
     name: str
     symbol: str
-    logo_url: Optional[str] = None
+    logo_url: OptionalImageUrl = None
     sol_amount: float
     signature: str
     venue: Optional[str] = None
@@ -252,7 +261,7 @@ class PurchaseFeedCoinResponse(BaseModel):
     mint: str
     name: str
     symbol: str
-    logo_url: Optional[str] = None
+    logo_url: OptionalImageUrl = None
     target_sol: float
     bought_sol: float
     completed_purchases: int
@@ -271,7 +280,7 @@ class PurchaseFeedDeliveryResponse(BaseModel):
     mint: str
     name: str
     symbol: str
-    logo_url: Optional[str] = None
+    logo_url: OptionalImageUrl = None
     signature: str
     #: What arrived, summed over the wallets in the transaction, raw units.
     raw_amount: str
@@ -285,7 +294,7 @@ class PurchaseFeedRefundResponse(BaseModel):
     mint: str
     name: str
     symbol: str
-    logo_url: Optional[str] = None
+    logo_url: OptionalImageUrl = None
     signature: str
     #: What arrived, summed over the wallets in this transaction for this coin.
     sol_amount: float
@@ -297,7 +306,7 @@ class PurchaseFeedBurnResponse(BaseModel):
     mint: str
     name: str
     symbol: str
-    logo_url: Optional[str] = None
+    logo_url: OptionalImageUrl = None
     signature: str
     raw_amount: str
     decimals: Optional[int] = None
@@ -441,7 +450,7 @@ class MintAllowTokenResponse(BaseModel):
     network_type: str
     token_name: Optional[str] = None
     token_symbol: Optional[str] = None
-    token_image_url: Optional[str] = None
+    token_image_url: OptionalImageUrl = None
     # The coin's market: these are the numbers a person recognises what they are
     # about to pay for. Any field can be missing, the source is external and does
     # not always answer.

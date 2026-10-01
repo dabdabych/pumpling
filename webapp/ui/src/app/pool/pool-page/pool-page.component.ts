@@ -15,7 +15,7 @@ import { buildFeedRows, FeedRow, recipientsShort, recipientsText } from '../feed
 import { CommitDialogComponent, CommitDialogData } from '../commit-dialog/commit-dialog.component';
 import { CommitOutcome, CommitService, SentCommit } from '../commit.service';
 import { lamportsToSol } from '../lamports';
-import { formatSol, PoolCoin, PoolSnapshot } from '../pool-state';
+import { coinInitials, formatSol, PoolCoin, PoolSnapshot } from '../pool-state';
 import { EMPTY_FEED, PurchaseCoin, PurchaseFeed, PurchaseItem, PurchasesService } from '../purchases.service';
 import { chartChangePct, chartPath, CoinChart, CoinChartService } from '../coin-chart.service';
 import { ShareKind, shareCardData } from '../share/share-card';
@@ -71,7 +71,7 @@ function buyWindowMs(snapshot: PoolSnapshot): number {
 }
 
 const TRACK = [
-  { label: 'Open', note: '2 hours' },
+  { label: 'Open', note: '1 hour' },
   { label: 'Locked', note: 'draw' },
   { label: 'Buying', note: '1 hour' },
   { label: 'Done', note: 'next pool' }
@@ -551,6 +551,15 @@ export class PoolPageComponent implements OnInit, OnDestroy {
   }
 
   /** How much of a coin has been bought, 0..1; no data means null and no bar. */
+  /** A coin's part of everything the draw sent into buys, 0..1. */
+  drawnShareOfBuys(model: PageModel, coin: PoolCoin): number | null {
+    if (coin.drawnSol === null || coin.drawnSol <= 0) {
+      return null;
+    }
+    const total = model.snapshot.coins.reduce((sum, item) => sum + (item.drawnSol ?? 0), 0);
+    return total > 0 ? coin.drawnSol / total : null;
+  }
+
   boughtShare(coin: PurchaseCoin | undefined): number | null {
     if (!coin || coin.targetSol <= 0) {
       return null;
@@ -567,7 +576,7 @@ export class PoolPageComponent implements OnInit, OnDestroy {
   }
 
   initials(coin: PoolCoin): string {
-    return coin.ticker.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '?';
+    return coinInitials(coin.ticker);
   }
 
   showLogo(coin: PoolCoin): boolean {
@@ -608,11 +617,11 @@ export class PoolPageComponent implements OnInit, OnDestroy {
     VerifyRoundDialogComponent.open(this.dialog, lotteryId);
   }
 
-  openShare(kind: ShareKind, mint?: string, commitSol?: number): void {
+  openShare(kind: ShareKind, mint?: string, commitSol?: number, signature?: string): void {
     if (!this.latest) {
       return;
     }
-    ShareDialogComponent.open(this.dialog, shareCardData(this.latest, { kind, mint, commitSol }));
+    ShareDialogComponent.open(this.dialog, shareCardData(this.latest, { kind, mint, commitSol, signature }));
   }
 
   openTerms(): void {

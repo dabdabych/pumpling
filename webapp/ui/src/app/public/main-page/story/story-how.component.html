@@ -58,13 +58,13 @@
       }
     </ol>
     <div class="track__segments" aria-hidden="true">
-      <span>Pool open · 2h</span>
+      <span>Pool open · 1h</span>
       <span>Buys · 1h</span>
     </div>
     <div class="track__ticks" aria-hidden="true">
       <span style="left: 0%">0h</span>
-      <span style="left: 66.667%">2h</span>
-      <span style="left: 100%">3h</span>
+      <span style="left: 50%">1h</span>
+      <span style="left: 100%">2h</span>
     </div>
   </div>
 
@@ -72,7 +72,7 @@
     <!-- ------------------------------------------- 1. the pool is open -->
     <section class="scene" data-how-scene="1" data-story-anim aria-label="Step 1">
       <div class="scene__copy" data-how-copy>
-        <h3 class="scene__title">A pool opens <span class="scene__plate">every 3 hours</span></h3>
+        <h3 class="scene__title">A pool opens <span class="scene__plate">every 2 hours</span></h3>
         <p class="scene__text">Add SOL and name any Solana memecoin, still on the pump.fun curve or already trading on a DEX.</p>
       </div>
       <div class="pcard" data-how-card aria-hidden="true">
@@ -83,7 +83,7 @@
           } @else {
             <span class="chip chip--open"><i></i>Open</span>
           }
-          <span class="pcard__meta">closes in <b #poolClock>02:00:00</b></span>
+          <span class="pcard__meta">closes in <b #poolClock>01:00:00</b></span>
         </header>
         <p class="pcard__big"><b #poolTotal>13.0</b> SOL in the pool</p>
         <span class="bar bar--slim"><span class="bar__fill" #poolFill style="width: 11%"></span></span>
@@ -146,7 +146,7 @@
     <section class="scene" data-how-scene="3" data-story-anim aria-label="Step 3">
       <div class="scene__copy" data-how-copy>
         <h3 class="scene__title">The pool <span class="scene__plate">locks</span></h3>
-        <p class="scene__text">After 2 hours or at 111 SOL, whichever comes first. From here no more SOL can go in.</p>
+        <p class="scene__text">After 1 hour or at 111 SOL, whichever comes first. From here no more SOL can go in.</p>
         <p class="scene__note">A draw then sets each coin's share of the buy, so bots can't compute the result in advance. The more SOL behind a coin, the steadier its share. Small stakes swing the most, sometimes down to zero.</p>
       </div>
       <div class="pcard" data-how-card aria-hidden="true">
@@ -222,7 +222,7 @@
     <section class="scene" data-how-scene="5" data-story-anim aria-label="Step 5">
       <div class="scene__copy" data-how-copy>
         <h3 class="scene__title">Tokens go to <span class="scene__plate">backers</span></h3>
-        <p class="scene__text">What was bought for a coin is split between the people who backed it, by how much SOL each put in.</p>
+        <p class="scene__text">What was bought for a coin is split between the people who backed it, by how much SOL each put in. When you commit, you can choose to burn part or all of your share&nbsp;instead.</p>
       </div>
       <div class="pcard" data-how-card aria-hidden="true">
         <header class="pcard__head">
@@ -237,11 +237,18 @@
         <p class="pcard__label">Split by SOL put in</p>
         <ul class="hrows">
           @for (payout of payouts; track payout.wallet) {
-            <li class="hrow hrow--payout" data-how-row>
+            <!-- One backer chose to burn their share: their row lights up with the
+                 mark and tint the pool's feed gives a burn, the moment it is done. -->
+            <li class="hrow hrow--payout" [class.hrow--burned]="payout.burned" data-how-row>
               <span class="hrow__wallet hrow__wallet--strong">{{ payout.wallet }}</span>
               <span class="hrow__put">{{ payout.sol }} SOL</span>
               <span class="bar"><span class="bar__fill" #payoutBar style="width: 0%"></span></span>
-              <b class="hrow__tokens" #payoutTokens>{{ formatTokens(payout.tokens) }}</b>
+              <span class="hrow__tokens">
+                @if (payout.burned) {
+                  <app-flame class="hrow__flame" size="1.05em" />
+                }
+                <b #payoutTokens>{{ formatTokens(payout.tokens) }}</b>
+              </span>
             </li>
           }
         </ul>

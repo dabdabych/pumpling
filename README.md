@@ -39,7 +39,7 @@ on-chain and nobody can pull the SOL back out.
 
 | Phase | Length | What happens |
 |---|---|---|
-| Open | up to ~2 hours, or until the 111 SOL cap | anyone adds SOL behind any Solana memecoin |
+| Open | up to ~1 hour, or until the 111 SOL cap | anyone adds SOL behind any Solana memecoin |
 | Draw | a few seconds | verifiable randomness from ORAO VRF sets each coin's share of the buying |
 | Buys | about an hour | the SOL goes out in small on-chain purchases |
 | Done | five minutes | bought tokens reach the wallets that backed those coins, then the next pool opens |

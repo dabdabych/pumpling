@@ -32,6 +32,10 @@ class Rule:
 
     limit: int
     window_seconds: int
+    #: The same count for everybody together, for a path that spends something
+    #: shared (a call on the Helius plan the buyer runs on): however many
+    #: addresses and accounts a script uses, it cannot go past this.
+    global_limit: Optional[int] = None
 
 
 #: Rules by path prefix. The order matters: the first match wins, so longer
@@ -51,7 +55,8 @@ RULES: tuple[tuple[str, Rule], ...] = (
     ("/auth/wallet/nonce", Rule(limit=30, window_seconds=300)),
     ("/auth/wallet/verify", Rule(limit=30, window_seconds=300)),
     # Coin validation goes outside: we stay well below the sources' limits.
-    ("/lottery/check-mint", Rule(limit=30, window_seconds=60)),
+    # Each check reads the mint from the chain on the paid plan.
+    ("/lottery/check-mint", Rule(limit=30, window_seconds=60, global_limit=600)),
     # The hover chart reaches DexScreener for the pool and GeckoTerminal for the
     # points, and it takes the coin straight from the path, so it is an outside
     # call anyone can aim at any address. GeckoTerminal is behind a global
@@ -60,7 +65,8 @@ RULES: tuple[tuple[str, Rule], ...] = (
     # reading a full pool makes one request per row and no more.
     ("/lottery/coin/", Rule(limit=120, window_seconds=60)),
     # A commit is bounded by the wallet and the network, but it should not be unlimited.
-    ("/lottery/bet", Rule(limit=20, window_seconds=60)),
+    # Each report reads the transaction from the chain on the paid plan.
+    ("/lottery/bet", Rule(limit=20, window_seconds=60, global_limit=600)),
 )
 
 #: The general ceiling for everything else. The pool page polls the server every
@@ -120,12 +126,22 @@ def rule_for(path: str) -> Optional[Rule]:
 
 
 def client_key(request: Request) -> str:
-    """The client address: behind a proxy, the first address in X-Forwarded-For."""
+    """The client's address, as our nginx saw it: the last one in X-Forwarded-For.
+
+    nginx passes `$proxy_add_x_forwarded_for`: whatever X-Forwarded-For the
+    client sent, with the address the connection actually came from appended.
+    So every entry but the last is the client's own word. The first entry used
+    to be taken, and a script that sent a different made-up address with each
+    request was a new client each time, past every per-address limit here and
+    in the RPC proxy. Nothing sits in front of nginx (the domains point straight
+    at the servers), so the last entry is the real one. Without the header, as
+    in local development, it is the connection's own address.
+    """
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
-        first = forwarded.split(",")[0].strip()
-        if first:
-            return first
+        last = forwarded.split(",")[-1].strip()
+        if last:
+            return last
     client = request.client
     return client.host if client else "unknown"
 
@@ -135,11 +151,11 @@ async def rate_limit_middleware(request: Request, call_next):
     if rule is None:
         return await call_next(request)
 
-    retry_after = _counters.check(
-        (rule_key(request.url.path), client_key(request)),
-        rule,
-        time.monotonic(),
-    )
+    now = time.monotonic()
+    key = rule_key(request.url.path)
+    retry_after = _counters.check((key, client_key(request)), rule, now)
+    if retry_after is None and rule.global_limit:
+        retry_after = _counters.check((key, "*everybody*"), Rule(rule.global_limit, rule.window_seconds), now)
     if retry_after is not None:
         return JSONResponse(
             status_code=429,

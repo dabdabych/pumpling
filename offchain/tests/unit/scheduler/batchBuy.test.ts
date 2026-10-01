@@ -1114,3 +1114,197 @@ describe("the retry ladder never signs again while its last attempt may still la
         expect(purchase.pendingSignature).toBe("SIG-LIMBO");
     });
 });
+
+describe("a purchase whose blockhash ran out is signed again at once, and never twice", () => {
+    // Demo round of 2026-09-29: two purchases expired on the way, sat until the
+    // end of the window and were bought in a second pass. Now the main loop
+    // signs again as soon as the expired transaction is provably dead, and
+    // never while it may still land.
+    const { PostSendError } = jest.requireActual("../../../solana/transaction");
+
+    function expired(signature: string, lastValidBlockHeight: number): Error {
+        return new PostSendError(
+            `Transaction send/confirm failed: Signature ${signature} has expired: block height exceeded.`,
+            signature,
+            undefined,
+            lastValidBlockHeight
+        );
+    }
+
+    /**
+     * Each call to buy() plays one attempt: it signs (the recorder writes it
+     * down), then either lands or expires. `script` is what each attempt does.
+     */
+    function attempts(script: Array<{ signature: string; lastValidBlockHeight: number; lands: boolean }>, seen?: (signature: string) => void) {
+        let call = 0;
+        mockBuy.mockImplementation(async (...args: unknown[]) => {
+            const step = script[call++];
+            if (!step) throw new Error("buy() called more often than scripted");
+            const hooks = args[5] as { onSigned?: (a: { signature: string; lastValidBlockHeight: number }) => void } | undefined;
+            hooks?.onSigned?.({ signature: step.signature, lastValidBlockHeight: step.lastValidBlockHeight });
+            seen?.(step.signature);
+            if (step.lands) return { signature: step.signature, venue: "pumpfun" };
+            throw expired(step.signature, step.lastValidBlockHeight);
+        });
+    }
+
+    it("waits the expired one out, finds it dead, and signs again in the main loop", async () => {
+        attempts([
+            { signature: "SIG-1", lastValidBlockHeight: 1_000, lands: false },
+            { signature: "SIG-2", lastValidBlockHeight: 2_000, lands: true },
+        ]);
+        // The finalized chain is past SIG-1's limit plus the margin, and it is not in history.
+        mockGetBlockHeight.mockResolvedValue(1_100);
+        mockGetSignatureStatus.mockResolvedValue({ value: null });
+
+        const sf = stateFilePath("expiry-resign");
+        const result = await batchBuy({ mint: TEST_MINT, totalSolAmount: 0.05, keeper: TEST_KEEPER, windowMinutes: 0, stateFilePath: sf });
+
+        expect(mockBuy).toHaveBeenCalledTimes(2);
+        expect(result.summary.completedPurchases).toBe(1);
+        const state = readState(sf);
+        const purchase = state.purchases[0];
+        expect(purchase.signature).toBe("SIG-2");
+        expect(purchase.sentAttempts?.map((a) => a.signature)).toEqual(["SIG-1", "SIG-2"]);
+        // Done in the main loop: no second pass was needed.
+        expect(state.summary.retryStartedAt).toBeUndefined();
+        expect(state.metrics?.retry?.expiredResigned).toBe(1);
+        expect(state.metrics?.retry?.expiredResignSuccess).toBe(1);
+    });
+
+    it("the expired one landed after all: it is the purchase, and nothing is signed again", async () => {
+        attempts([{ signature: "SIG-EDGE", lastValidBlockHeight: 1_000, lands: false }]);
+        mockGetBlockHeight.mockResolvedValue(1_100);
+        // The confirmation gave up at the limit, but the transaction made it into the last block.
+        mockGetSignatureStatus.mockResolvedValue({ value: { confirmationStatus: "finalized", err: null } });
+
+        const sf = stateFilePath("expiry-landed");
+        const result = await batchBuy({ mint: TEST_MINT, totalSolAmount: 0.05, keeper: TEST_KEEPER, windowMinutes: 0, stateFilePath: sf });
+
+        expect(mockBuy).toHaveBeenCalledTimes(1);
+        expect(result.summary.completedPurchases).toBe(1);
+        expect(readState(sf).purchases[0].signature).toBe("SIG-EDGE");
+    });
+
+    it("the chain will not say: nothing is signed, in the main loop or in the retry phase", async () => {
+        attempts([{ signature: "SIG-LIMBO", lastValidBlockHeight: 1_000, lands: false }]);
+        // Never past the limit plus the margin: the old transaction could still land.
+        mockGetBlockHeight.mockResolvedValue(1_020);
+        mockGetSignatureStatus.mockResolvedValue({ value: null });
+
+        const sf = stateFilePath("expiry-limbo");
+        await batchBuy({ mint: TEST_MINT, totalSolAmount: 0.05, keeper: TEST_KEEPER, windowMinutes: 0, stateFilePath: sf });
+
+        expect(mockBuy).toHaveBeenCalledTimes(1);
+        const purchase = readState(sf).purchases[0];
+        expect(purchase.status).toBe("abandoned");
+        expect(purchase.pendingSignature).toBe("SIG-LIMBO");
+        expect(purchase.pendingLastValidBlockHeight).toBe(1_000);
+    });
+
+    it("signs again at most twice in the main loop, then leaves it to the retry phase", async () => {
+        attempts([
+            { signature: "SIG-A", lastValidBlockHeight: 1_000, lands: false },
+            { signature: "SIG-B", lastValidBlockHeight: 1_000, lands: false },
+            { signature: "SIG-C", lastValidBlockHeight: 1_000, lands: false },
+            { signature: "SIG-D", lastValidBlockHeight: 1_000, lands: true },
+        ]);
+        mockGetBlockHeight.mockResolvedValue(1_100);
+        mockGetSignatureStatus.mockResolvedValue({ value: null });
+
+        const sf = stateFilePath("expiry-cap");
+        const result = await batchBuy({ mint: TEST_MINT, totalSolAmount: 0.05, keeper: TEST_KEEPER, windowMinutes: 0, stateFilePath: sf });
+
+        expect(mockBuy).toHaveBeenCalledTimes(4);
+        expect(result.summary.completedPurchases).toBe(1);
+        const state = readState(sf);
+        expect(state.metrics?.retry?.expiredResigned).toBe(2);
+        // The fourth attempt came from the retry phase.
+        expect(state.summary.retryStartedAt).toBeDefined();
+        expect(state.purchases[0].sentAttempts?.map((a) => a.signature)).toEqual(["SIG-A", "SIG-B", "SIG-C", "SIG-D"]);
+    });
+
+    it("every attempt is on disk before it goes out", async () => {
+        const sf = stateFilePath("expiry-on-disk");
+        const onDiskAtSend: boolean[] = [];
+        attempts(
+            [
+                { signature: "SIG-X", lastValidBlockHeight: 1_000, lands: false },
+                { signature: "SIG-Y", lastValidBlockHeight: 2_000, lands: true },
+            ],
+            (signature) => {
+                const purchase = readState(sf).purchases[0];
+                onDiskAtSend.push(
+                    purchase.pendingSignature === signature &&
+                    !!purchase.sentAttempts?.some((a) => a.signature === signature)
+                );
+            }
+        );
+        mockGetBlockHeight.mockResolvedValue(1_100);
+        mockGetSignatureStatus.mockResolvedValue({ value: null });
+
+        await batchBuy({ mint: TEST_MINT, totalSolAmount: 0.05, keeper: TEST_KEEPER, windowMinutes: 0, stateFilePath: sf });
+
+        expect(onDiskAtSend).toEqual([true, true]);
+    });
+});
+
+describe("the retry phase waits out the main loop's transaction before it signs", () => {
+    // A purchase that failed a minute before the window closed has a
+    // transaction whose blockhash is still valid when the retry phase reaches
+    // it. The retry phase asked only whether it had landed yet, and signed a
+    // second one beside it when it had not.
+    const { PostSendError } = jest.requireActual("../../../solana/transaction");
+
+    function lostAnswer(signature: string, lastValidBlockHeight: number): Error {
+        return new PostSendError("Transaction send/confirm failed: fetch failed", signature, undefined, lastValidBlockHeight);
+    }
+
+    function mainLoopLosesTheAnswer(signature: string, then: () => Promise<unknown>) {
+        let call = 0;
+        mockBuy.mockImplementation(async (...args: unknown[]) => {
+            call++;
+            if (call === 1) {
+                const hooks = args[5] as { onSigned?: (a: { signature: string; lastValidBlockHeight: number }) => void } | undefined;
+                hooks?.onSigned?.({ signature, lastValidBlockHeight: 1_000 });
+                throw lostAnswer(signature, 1_000);
+            }
+            return then();
+        });
+    }
+
+    it("the transaction lands while it waits: it is the purchase, nothing more is signed", async () => {
+        mainLoopLosesTheAnswer("SIG-SLOW", async () => ({ signature: "SIG-SECOND", venue: "pumpfun" }));
+        mockGetBlockHeight.mockResolvedValue(950);
+        let asked = 0;
+        mockGetSignatureStatus.mockImplementation(async () => {
+            asked++;
+            // Unknown in the main loop's quick look and the retry phase's first
+            // look, confirmed a little later.
+            return asked < 3 ? { value: null } : { value: { confirmationStatus: "confirmed", err: null } };
+        });
+
+        const sf = stateFilePath("retry-waits-landed");
+        const result = await batchBuy({ mint: TEST_MINT, totalSolAmount: 0.05, keeper: TEST_KEEPER, windowMinutes: 0, stateFilePath: sf });
+
+        expect(mockBuy).toHaveBeenCalledTimes(1);
+        expect(result.summary.completedPurchases).toBe(1);
+        expect(readState(sf).purchases[0].signature).toBe("SIG-SLOW");
+    });
+
+    it("the transaction is gone once the chain is past its limit: only then a new one", async () => {
+        mainLoopLosesTheAnswer("SIG-GONE", async () => ({ signature: "SIG-NEW", venue: "pumpfun" }));
+        const heights = [950, 950, 1_000, 1_100];
+        mockGetBlockHeight.mockImplementation(async () => heights.shift() ?? 1_100);
+        mockGetSignatureStatus.mockResolvedValue({ value: null });
+
+        const sf = stateFilePath("retry-waits-gone");
+        await batchBuy({ mint: TEST_MINT, totalSolAmount: 0.05, keeper: TEST_KEEPER, windowMinutes: 0, stateFilePath: sf });
+
+        expect(mockBuy).toHaveBeenCalledTimes(2);
+        const purchase = readState(sf).purchases[0];
+        expect(purchase.signature).toBe("SIG-NEW");
+        // The height was read until it cleared the limit, before the new one was signed.
+        expect(mockGetBlockHeight.mock.calls.length).toBeGreaterThanOrEqual(4);
+    });
+});

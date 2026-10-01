@@ -25,6 +25,8 @@ Variables: `BASE` is the frontend address (default `http://localhost:3200`),
 | `how-jump` | the "How it works" link lands exactly on the section |
 | `story-nav` | moving between sections, and the page never gets stuck mid-transition |
 | `commit-flow` | the path to a commit: pick a coin, the amount, the button on a phone screen |
+| `commit-preflight` | the wallet opens only on a commit that passes on our node; a failing one is explained on the page instead |
+| `wallet-silent` | a wallet that answers nothing: Phantom's connection checked first, a note after ten seconds, a fresh try that never sends twice, -32002 in its own words, other wallets untouched |
 | `my-commits` | your own commits show up in the pool table and on your page |
 | `archive` | round history, empty rounds are not shown |
 | `phase-switch` | the pool page in every phase of a round |
@@ -39,6 +41,7 @@ Variables: `BASE` is the frontend address (default `http://localhost:3200`),
 | `wallet-switch` | signing out of one wallet and into another |
 | `header-mark` | the mascot in the header survives dialogs and navigation |
 | `mobile-fit` | nothing spills off the screen on a phone, buttons stay thumb sized |
+| `coin-table-fit` | from 900 to 1920px every coin row stays inside the list, with the widest content a row can hold |
 
 A suite exits non-zero when it fails, so it works in CI.
 

@@ -30,11 +30,12 @@ function canShareFiles(): boolean {
 /**
  * The card for a post: a preview, a file and a link.
  *
- * X will not pull the image out of the link itself — we have no preview and
- * there is nothing to pretend about. So the order is this: the card is copied to
- * the clipboard or downloaded as a file, and the post button opens X with the text
- * ready, where the image is pasted. On a phone, where the clipboard does not take
- * images, the system "Share" works.
+ * The link brings the card with it: it points under `/s/`, where the server
+ * gives X and the other previewers this card, drawn from the database in the
+ * 2:1 shape X shows (see `shareCardLink`). So the post button alone is enough.
+ * The file and the clipboard stay for a post with the picture attached, which
+ * X shows larger, and for places that build no preview. On a phone, where the
+ * clipboard does not take images, the system "Share" works.
  */
 @Component({
   selector: 'app-share-dialog',

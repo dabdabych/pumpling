@@ -59,6 +59,50 @@ add another.
 Rule for this folder: a new suite has to fail on the code as it was before the
 fix. A test that passes either way proves nothing.
 
+## The wallet never opens on a transaction that fails
+
+A wallet simulates what it is asked to sign and shows a failed simulation as
+a red warning ("This transaction reverted during simulation", "This dApp could
+be malicious"). On a site asking for SOL that ends the visit. So
+`CommitService.preflight` runs the exact commit on our node first, unsigned,
+with `sigVerify: false`, which is Phantom's own advice in "Domain and
+transaction warnings". If the program would refuse it (pool closed, paused,
+cap, too little SOL, below rent), the wallet stays closed and the dialog says
+why in words. If the node cannot answer, the wallet stays closed too.
+
+A commit signed after the pool's `end_ts` is not a wallet warning: our own
+`sendRawTransaction` runs the preflight, the node refuses it before it is
+broadcast, no fee is taken, and the dialog says the pool no longer takes SOL.
+
+What this cannot fix: a wallet set to another network than the site. The
+stand runs on devnet, so a wallet left on mainnet simulates against accounts
+that do not exist there and warns (`AccountNotInitialized`, 3012). Test the
+stand with the wallet on devnet. The suite is `commit-preflight`, and every
+suite that commits answers the check through `commitCheck` in
+`e2e/lib/pool-mock.mjs`.
+
+## A wallet that goes quiet
+
+A wallet can take a signature request and answer nothing: no window, no
+error. On 2026-09-30 Phantom did that on the stand, the dialog sat on "Confirm
+in your wallet…" for good, and only reloading the page helped. Two guards:
+
+- For Phantom only, `WalletService.confirmPhantomSession` checks the
+  connection with Phantom itself before the signature,
+  `connect({ onlyIfTrusted: true })`, which by Phantom's documentation never
+  opens a window. No answer in 5 seconds and the dialog says Phantom is not
+  responding instead of asking it to sign. Other wallets are asked nothing
+  new: `onlyIfTrusted` is Phantom's flag and some wallets open a window for it.
+- Ten seconds after any wallet is asked for a window
+  (`WALLET_WINDOW_HINT_MS`), the dialog says the window has not opened and
+  what to do, and the button offers a fresh try. The old request stays open:
+  approved late, the commit goes through. Replaced by a fresh try, its
+  signature is dropped and never broadcast (`CommitRequest.isCurrent`), so one
+  click is still one commit. Error -32002 (a request already open) has its own
+  words. The texts are pure functions in `pool/commit.service.ts`.
+
+The suite is `wallet-silent`.
+
 ## The burn
 
 A participant can have part of what is bought for them burned instead of

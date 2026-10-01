@@ -281,6 +281,21 @@
   margin-top: 14px;
 }
 
+/* A wallet that has not opened its window. Not red: nothing has failed yet,
+   and the request still goes through if the window turns up. Framed like the
+   rest of the dialog, on the purple of the site, so it is seen right away. */
+.commit__stalled {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: rgba(175, 143, 255, 0.16);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--qres-black);
+}
+
 .commit__submit {
   width: 100%;
   height: 54px;

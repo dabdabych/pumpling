@@ -319,6 +319,80 @@ describe("the phase the round is in", () => {
 
         expect(feed.phase).toBe("finished");
     });
+
+    // The start of every round: the state is written, the coins are pending,
+    // and their batch files come a few seconds later. It used to say finished.
+    it("buying before the first batch file exists", () => {
+        const feed = buildPurchaseFeed(
+            state({ tokenBuys: [
+                { mint: MINT_A, adjustedSolAmount: 2, status: "pending", updatedAt: 1 },
+                { mint: MINT_B, adjustedSolAmount: 3, status: "pending", updatedAt: 1 },
+            ] }),
+            () => null
+        );
+
+        expect(feed.phase).toBe("buying");
+    });
+
+    it("buying while a coin's batch file is named but not written yet", () => {
+        const feed = buildPurchaseFeed(
+            state({ tokenBuys: [coin("not-yet.json")] }),
+            () => null
+        );
+
+        expect(feed.phase).toBe("buying");
+    });
+
+    it("buying while a coin waits its turn, though every started batch is done", () => {
+        const feed = buildPurchaseFeed(
+            state({ tokenBuys: [
+                { ...coin("a.json"), status: "completed" },
+                { mint: MINT_B, adjustedSolAmount: 3, status: "pending", updatedAt: 1 },
+            ] }),
+            (file) => file === "a.json"
+                ? batch({ summary: { completedPurchases: 1, abandonedPurchases: 0, totalSolSpent: 0.5, startedAt: 500, finishedAt: 5_000 } })
+                : null
+        );
+
+        expect(feed.phase).toBe("buying");
+    });
+
+    it("buying while a recovery's second batch is named but not written yet", () => {
+        const feed = buildPurchaseFeed(
+            state({ tokenBuys: [{ ...coin("second.json"), batchStateFiles: ["first.json", "second.json"] }] }),
+            (file) => file === "first.json"
+                ? batch({ summary: { completedPurchases: 1, abandonedPurchases: 0, totalSolSpent: 0.5, startedAt: 500, finishedAt: 5_000 } })
+                : null
+        );
+
+        expect(feed.phase).toBe("buying");
+    });
+
+    it("finished once every coin is completed or failed, with nothing to buy", () => {
+        const feed = buildPurchaseFeed(
+            state({ tokenBuys: [
+                { ...coin("a.json"), status: "completed" },
+                { mint: MINT_B, adjustedSolAmount: 3, status: "failed", updatedAt: 1 },
+            ] }),
+            (file) => file === "a.json"
+                ? batch({ summary: { completedPurchases: 1, abandonedPurchases: 0, totalSolSpent: 0.5, startedAt: 500, finishedAt: 5_000 } })
+                : null
+        );
+
+        expect(feed.phase).toBe("finished");
+    });
+
+    it("finished once the round has written its own finish, whatever a coin still says", () => {
+        const feed = buildPurchaseFeed(
+            state({
+                tokenBuys: [{ mint: MINT_A, adjustedSolAmount: 2, status: "pending", updatedAt: 1 }],
+                summary: { ...state().summary, finishedAt: 9_000 },
+            }),
+            () => null
+        );
+
+        expect(feed.phase).toBe("finished");
+    });
 });
 
 describe("buildPurchaseFeed: deliveries and burns", () => {

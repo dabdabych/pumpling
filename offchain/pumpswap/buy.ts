@@ -17,7 +17,8 @@ import {
     canonicalPumpPoolPda,
 } from "@pump-fun/pump-swap-sdk";
 import { connection, sendTxLimiter } from "../solana/connection";
-import { getSignedTransactionSignature, PostSendError } from "../solana/transaction";
+import { BuyHooks, getSignedTransactionSignature, PostSendError } from "../solana/transaction";
+import { sendAndConfirmWithRebroadcast } from "../solana/rebroadcast";
 import { budgetInstructions, COMPUTE_UNITS, hasBudgetInstruction } from "../solana/priorityFee";
 import { logger as rootLogger, Logger } from "../logger";
 
@@ -38,7 +39,8 @@ export async function buyPumpswap(
     solAmount: number,
     keeper: Keypair,
     slippageBps: number,
-    log?: Logger
+    log?: Logger,
+    hooks?: BuyHooks
 ): Promise<string> {
     const l = log || rootLogger;
     const lamports = Math.floor(solAmount * LAMPORTS_PER_SOL);
@@ -97,28 +99,30 @@ export async function buyPumpswap(
     }
 
     const signature = getSignedTransactionSignature(tx);
+    if (!signature) {
+        throw new Error("Signed PumpSwap transaction has no signature");
+    }
+    // Written down before it goes out: from the first send on it may land.
+    hooks?.onSigned?.({ signature, lastValidBlockHeight });
     try {
-        const sentSignature = await connection.sendRawTransaction(tx.serialize(), {
-            skipPreflight: true,
-            maxRetries: 3,
-        });
-
-        const confirmation = await connection.confirmTransaction(
-            { signature: sentSignature, blockhash, lastValidBlockHeight },
-            "confirmed"
+        // The same bytes go out again every couple of seconds until the
+        // blockhash expires (see solana/rebroadcast.ts).
+        const confirmation = await sendAndConfirmWithRebroadcast(
+            tx.serialize(),
+            { signature, blockhash, lastValidBlockHeight }
         );
 
         if (confirmation.value.err) {
-            l.error({ event: "pumpswap.on_chain_failure", mint: mint.toBase58(), signature: sentSignature, err: confirmation.value.err },
+            l.error({ event: "pumpswap.on_chain_failure", mint: mint.toBase58(), signature, err: confirmation.value.err },
                 "PumpSwap transaction failed on-chain");
             throw new Error(
                 `Transaction confirmed but failed on-chain: ${JSON.stringify(confirmation.value.err)}`
             );
         }
 
-        l.info({ event: "pumpswap.completed", mint: mint.toBase58(), signature: sentSignature.slice(0, 16) },
+        l.info({ event: "pumpswap.completed", mint: mint.toBase58(), signature: signature.slice(0, 16) },
             "PumpSwap buy completed");
-        return sentSignature;
+        return signature;
     } catch (error) {
         if (error instanceof PostSendError) throw error;
         const msg = error instanceof Error ? error.message : String(error);

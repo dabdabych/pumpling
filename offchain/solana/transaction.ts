@@ -86,6 +86,23 @@ export interface SignedTxContext {
     lastValidBlockHeight: number;
 }
 
+/** A purchase attempt, the moment before it goes out. */
+export interface SentAttempt {
+    signature: string;
+    lastValidBlockHeight: number;
+}
+
+/**
+ * What a buy path tells its caller on the way. `onSigned` runs after the
+ * simulation passed and BEFORE the first send, so the attempt is written down
+ * before it can land: a process that dies while waiting for the confirmation
+ * leaves the signature behind, and the purchase is counted and not bought again.
+ * If it throws, nothing has been sent.
+ */
+export interface BuyHooks {
+    onSigned?: (attempt: SentAttempt) => void;
+}
+
 /**
  * Prepares and signs a transaction.
  * Adds the blockhash and feePayer, then signs.

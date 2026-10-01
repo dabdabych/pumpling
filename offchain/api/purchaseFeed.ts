@@ -162,11 +162,20 @@ export function buildPurchaseFeed(state: LotteryState, loadBatch: BatchLoader): 
             .map((batch) => batch.summary?.finishedAt)
             .filter((value): value is number => typeof value === "number");
 
-        // A coin whose batch has no finish time is still being bought. One
-        // that never got a batch at all is not: it failed before it started,
-        // and waiting for it would leave the round buying for ever.
+        // A coin whose batch has no finish time is still being bought. So is a
+        // coin the buyer has not reached yet ("pending") or has named a batch
+        // file for that is not on disk yet: at the start of every round a few
+        // seconds of RPC calls sit between the two, and reading them as
+        // "nothing left to buy" told the page the buys were done before the
+        // first purchase. When unsure, it is buying: that can only keep a
+        // countdown running, never declare a round over while it buys. A coin
+        // that failed before it started is not being bought, and its status
+        // says so.
         const unfinished = batches.filter((batch) => batch.summary?.finishedAt === undefined);
-        buying += unfinished.length;
+        const named = files.filter((file): file is string => !!file).length;
+        const notStarted = token.status === "pending"
+            || (token.status === "in_progress" && batches.length < named);
+        buying += unfinished.length > 0 ? unfinished.length : notStarted ? 1 : 0;
         for (const batch of unfinished) {
             const endsAt = batch.summary?.retryEndsAt;
             if (typeof endsAt === "number" && endsAt > fallbackEndsAt) {

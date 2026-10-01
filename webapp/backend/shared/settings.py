@@ -27,7 +27,6 @@ class AppSettings:
     start_purchases_delay_seconds: int
     execution_countdown_seconds: int
     fallback_countdown_seconds: int
-    close_lottery_buffer_seconds: int
     lottery_admin_signer_keypair_json: str
     lottery_admin_signer_keypair_path: str
     lottery_admin_signer_keypairs_json: str
@@ -69,8 +68,19 @@ class AppSettings:
     lottery_hype_countdown_seconds: int
     lottery_autostart_fee_bps: int
     lottery_autostart_vrf_algorithm_hash: str
+    #: Calls a minute one client may send through the public RPC proxy. A batch
+    #: counts every call in it.
     rpc_proxy_rate_limit_per_minute: int
     rpc_proxy_max_batch_size: int
+    #: Calls a minute through the public RPC proxy from everybody together. The
+    #: proxy spends the same Helius plan as the buyer and the workers, so this is
+    #: the fastest the public can spend it however many addresses it uses, and
+    #: it keeps the plan's per-second limit free for the buyer. A commit takes
+    #: about ten calls.
+    rpc_proxy_global_limit_per_minute: int
+    #: Helius DAS lookups (`getAsset`, 10 credits each) a minute, from everybody
+    #: together. Past it a coin's details come from the free sources only.
+    helius_das_limit_per_minute: int
     #: How long to wait for the Solana RPC in the proxy. Separate from the
     #: buyer's timeout: the buyer works for an hour, while a wallet request must
     #: either go through or fail.
@@ -267,17 +277,18 @@ def _default_autostart_prediction_seconds(network: str) -> int:
     It goes straight into the program: the autostart worker computes
     `end_ts = start_ts + this value` and passes both marks to `initialize`.
 
-    111 minutes on mainnet and devnet alike (it was 125, before that 170, 105 and
-    30). The same number as the pool cap: 111 SOL and 111 minutes are easier to
-    hold in your head. To a person it is still "about two hours", which is what
-    the site promises (the 0h / 2h / 3h scale in How it works).
+    70 minutes on mainnet and devnet alike (it was 111, before that 125, 170,
+    105 and 30). The demo rounds of 2026-09-29 showed that two hours of waiting
+    is longer than people stay: an hour is what the site promises (the 0h / 1h /
+    2h scale in How it works), and with the draw, fifty minutes of buying and
+    the five minute pause a new pool opens about every two hours.
     The same value on both networks means a devnet run reproduces a real round
     in time rather than a shortened version of it.
 
     This is an upper bound, not a fixed length: the phase closes early as soon as
     the vault reaches max_total.
     """
-    return 111 * 60
+    return 70 * 60
 
 
 def _default_solana_http_endpoint(network: str) -> str:
@@ -366,7 +377,6 @@ def get_settings() -> AppSettings:
         ),
         # A round is closed on chain five minutes before the end of the buying
         # window — exactly when the buyer finishes its main pass.
-        close_lottery_buffer_seconds=_env_int_non_negative("CLOSE_LOTTERY_BUFFER_SECONDS", 5 * 60),
         lottery_admin_signer_keypair_json=_env_str("LOTTERY_ADMIN_SIGNER_KEYPAIR_JSON"),
         lottery_admin_signer_keypair_path=_env_str("LOTTERY_ADMIN_SIGNER_KEYPAIR_PATH"),
         lottery_admin_signer_keypairs_json=_env_str("LOTTERY_ADMIN_SIGNER_KEYPAIRS_JSON"),
@@ -431,6 +441,8 @@ def get_settings() -> AppSettings:
             "0x00a9da1268f2d909dbf6700a15ec3f902630c5194306bfffcf713150279d831b",
         ),
         rpc_proxy_rate_limit_per_minute=_env_int_non_negative("RPC_PROXY_RATE_LIMIT_PER_MINUTE", 240),
+        rpc_proxy_global_limit_per_minute=_env_int_non_negative("RPC_PROXY_GLOBAL_LIMIT_PER_MINUTE", 1200),
+        helius_das_limit_per_minute=_env_int_non_negative("HELIUS_DAS_LIMIT_PER_MINUTE", 30),
         rpc_proxy_max_batch_size=_env_int_non_negative("RPC_PROXY_MAX_BATCH_SIZE", 10),
         rpc_proxy_timeout_seconds=_env_float("RPC_PROXY_TIMEOUT_SECONDS", 15.0),
         rpc_proxy_public_fallback_url=_env_str(

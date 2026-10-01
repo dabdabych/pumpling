@@ -281,3 +281,43 @@ class TestVerificationBurns:
         session = FakeSession([("MintX", 1.0)], FakeLottery())
         monkeypatch.setattr(router, "_cached_purchase_feed", lambda lottery_id: None)
         assert router.get_lottery_verification(LOTTERY_ID, db=session).burns == []
+
+
+class TestThePublicPageCannotSpendThePlan:
+    """The verification page is public, and each chain read is a call on the plan
+    the buyer runs on. Asking for every round number in turn used to cost one
+    call each; a finished round has no account to read anyway."""
+
+    @pytest.fixture
+    def counting(self, monkeypatch):
+        reads = []
+
+        class Response:
+            value = None
+
+        class CountingClient:
+            def __init__(self, *_a, **_k):
+                pass
+
+            def get_account_info(self, pubkey):
+                reads.append(str(pubkey))
+                return Response()
+
+        router._VERIFICATION_ACCOUNT_CACHE.clear()
+        monkeypatch.setattr(router, "Client", CountingClient)
+        monkeypatch.setattr(router, "_derive_lottery_account_summary", lambda *_a, **_k: ("7KNhgG9gAbpsUYVi9kshECy9DZxLqGTpdeqseRqDiiQp", "vault", "admin"))
+        monkeypatch.setattr(router, "_verification_from_events", lambda db, pda: {})
+        yield reads
+        router._VERIFICATION_ACCOUNT_CACHE.clear()
+
+    def test_a_finished_round_is_not_read_from_the_chain(self, counting):
+        lottery = FakeLottery()
+        lottery.status = "closed"
+        for _ in range(5):
+            router.get_lottery_verification(LOTTERY_ID, db=FakeSession([], lottery))
+        assert counting == []
+
+    def test_a_round_in_progress_is_read_once_a_window(self, counting):
+        for _ in range(5):
+            router.get_lottery_verification(LOTTERY_ID, db=FakeSession([], FakeLottery()))
+        assert len(counting) == 1

@@ -71,3 +71,15 @@ export async function mockPurchases(ctx, getFeed) {
     body: JSON.stringify(getFeed())
   }));
 }
+
+/**
+ * What the node says about a commit before the wallet opens: the simulation
+ * passes, so the page goes on to the wallet. The answers that stop it are in
+ * `commit-preflight`. Undefined for any other method.
+ */
+export function commitCheck(method) {
+  if (method === 'simulateTransaction') {
+    return { context: { slot: 2 }, value: { err: null, logs: [], accounts: null, unitsConsumed: 35000, returnData: null } };
+  }
+  return undefined;
+}

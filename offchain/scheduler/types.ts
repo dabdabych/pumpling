@@ -41,6 +41,14 @@ export type PurchaseStatus =
     | "failed"
     | "abandoned";
 
+/** One transaction a purchase sent. */
+export interface SentAttemptRecord {
+    signature: string;
+    lastValidBlockHeight: number;
+    /** When it was signed, unix ms. */
+    at: number;
+}
+
 export interface PurchaseRecord {
     /** A unique purchase id */
     id: string;
@@ -58,6 +66,15 @@ export interface PurchaseRecord {
     signature?: string;
     /** The signature of a sent but unconfirmed tx (checked before a retry) */
     pendingSignature?: string;
+    /** The blockhash limit of `pendingSignature`: until the chain is past it, it may still land. */
+    pendingLastValidBlockHeight?: number;
+    /**
+     * Every transaction this purchase put on the wire, written down before it
+     * went out. Whatever became of each, the chain has the answer: the round's
+     * accounting asks about all of them, so a purchase that landed is counted
+     * however the process that sent it ended.
+     */
+    sentAttempts?: SentAttemptRecord[];
     /** Where it was bought */
     venue?: BuyVenue;
     /** How many attempts were made */
@@ -162,6 +179,11 @@ export interface BatchMetrics {
         pendingTxConfirmed: number;          // #19, #23, #28
         /** The retry ladder stopped: its last attempt might still land. */
         inFlightStopped?: number;
+        /** Main loop: signed again after the blockhash provably expired. */
+        expiredResigned?: number;
+        expiredResignSuccess?: number;
+        /** Main loop: expired, but the chain would not confirm it dead in time; left to the retry phase. */
+        expiryStillInFlight?: number;
         nonRetryableAbandon: number;         // #20, #25
         retryableDeferred: number;           // #21
         unknownDeferred: number;             // #22

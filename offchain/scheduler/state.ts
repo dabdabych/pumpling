@@ -131,6 +131,8 @@ export class BatchStateManager {
                 | "status"
                 | "signature"
                 | "pendingSignature"
+                | "pendingLastValidBlockHeight"
+                | "sentAttempts"
                 | "venue"
                 | "attempts"
                 | "lastSlippageBps"
@@ -148,6 +150,25 @@ export class BatchStateManager {
         Object.assign(purchase, update, { updatedAt: Date.now() });
         this.updateSummary();
         this.save();
+    }
+
+    /**
+     * An attempt is about to go out. Written down, and saved, before it does:
+     * see `BuyHooks` in solana/transaction.ts.
+     */
+    recordSentAttempt(index: number, attempt: { signature: string; lastValidBlockHeight: number }): void {
+        const purchase = this.getPurchase(index);
+        if (!purchase) {
+            throw new Error(`Purchase ${index} not found`);
+        }
+        this.updatePurchase(index, {
+            pendingSignature: attempt.signature,
+            pendingLastValidBlockHeight: attempt.lastValidBlockHeight,
+            sentAttempts: [
+                ...(purchase.sentAttempts ?? []),
+                { signature: attempt.signature, lastValidBlockHeight: attempt.lastValidBlockHeight, at: Date.now() },
+            ],
+        });
     }
 
     /**

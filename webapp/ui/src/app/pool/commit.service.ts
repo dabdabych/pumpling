@@ -1,7 +1,16 @@
 import { HttpContext, HttpErrorResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { AnchorProvider, BN, Program } from '@coral-xyz/anchor';
-import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction } from '@solana/web3.js';
+import {
+  ComputeBudgetProgram,
+  Connection,
+  PublicKey,
+  SimulatedTransactionResponse,
+  SystemProgram,
+  Transaction,
+  TransactionInstruction,
+  VersionedTransaction
+} from '@solana/web3.js';
 import { Buffer } from 'buffer';
 import { firstValueFrom } from 'rxjs';
 
@@ -14,7 +23,7 @@ import { AllowTokenResponse, AllowTokenService } from '../shared/allow-token.ser
 import { isBlockedBetMint } from '../shared/blocked-bet-mints';
 import { SUPPRESS_GLOBAL_ERROR_DIALOG } from '../shared/http-context-tokens';
 import { buildPendingTransactionMessage, waitForConfirmedTransactionSignature } from '../shared/solana-transaction-confirmation';
-import { isWalletFlowInterruption, WalletService } from '../shared/wallet.service';
+import { isWalletFlowInterruption, WalletNotRespondingError, WalletService } from '../shared/wallet.service';
 import { BurnPercent, MEMO_PROGRAM_ID, burnMemoText } from './burn';
 import { lamportsToSol } from './lamports';
 import { DEPOSIT_COMPUTE_UNITS, PriorityLevel, RECOMMENDED_LEVEL, estimateFromSamples, priceFor } from './priority-fee';
@@ -53,6 +62,16 @@ export interface CommitRequest {
   priority?: PriorityLevel;
   /** The share of the tokens bought for this wallet to burn. Empty or 0 means none, and no memo. */
   burn?: BurnPercent;
+  /**
+   * Called when the wallet is about to be asked for a window: the moment the
+   * dialog starts waiting on the person and the wallet rather than on the
+   * network. `retryable` is true when a fresh attempt may replace this one:
+   * the wallet only signs and we broadcast, so a signature that turns up for
+   * a replaced attempt is simply never sent.
+   */
+  onWalletPrompt?: (retryable: boolean) => void;
+  /** Whether this attempt is still the one the dialog waits for. */
+  isCurrent?: () => boolean;
 }
 
 export type CommitOutcome =
@@ -75,6 +94,60 @@ export interface SentCommit {
 
 /** An error that can be shown to a person as it is. */
 export class CommitError extends Error {}
+
+/** A newer attempt took this one's place: whatever this one gets back is dropped. */
+class SupersededAttemptError extends Error {}
+
+/** Who the messages below talk about, and whether they may point at a toolbar icon. */
+export interface WalletContext {
+  name: string | null;
+  mobile: boolean;
+}
+
+/*
+ * What to say when a wallet goes quiet. Each says what happened, in plain
+ * words, and what to do about it, in the order to try it (the error-message
+ * guidelines at nngroup.com/articles/error-message-guidelines). On a phone the
+ * wallet is an app with no toolbar icon, so there the advice is the reload.
+ */
+
+function walletIconStep(wallet: WalletContext): string {
+  return wallet.name ? `Click the ${wallet.name} icon in your browser's toolbar` : "Open your wallet from your browser's toolbar";
+}
+
+/** Asked for a window, nothing yet: shown while the request may still come through. */
+export function walletWindowMissingText(wallet: WalletContext): string {
+  const who = wallet.name ?? 'Your wallet';
+  if (wallet.mobile) {
+    return `${who} hasn't shown the request. Reload this page and try again.`;
+  }
+  return `${who} hasn't opened its window. ${walletIconStep(wallet)} to find the request. If nothing's there, reload this page and try again.`;
+}
+
+/** Asked to confirm the connection, no answer at all. */
+export function walletNotRespondingText(wallet: WalletContext): string {
+  const who = wallet.name ?? 'Your wallet';
+  if (wallet.mobile) {
+    return `${who} isn't responding. Reload this page and try again.`;
+  }
+  return `${who} isn't responding. ${walletIconStep(wallet)}. If nothing opens, reload this page and try again.`;
+}
+
+/** Error -32002: the wallet still has an earlier request open. */
+export function walletRequestPendingText(wallet: WalletContext): string {
+  const who = wallet.name ?? 'Your wallet';
+  if (wallet.mobile) {
+    return `${who} already has a request waiting. Approve or reject it there, then try again.`;
+  }
+  return `${who} already has a request waiting. ${walletIconStep(wallet)}, approve or reject it, then try again.`;
+}
+
+/** Phantom's code for "an approval window is already open" (docs.phantom.com/solana/errors). */
+const REQUEST_ALREADY_PENDING = -32002;
+
+function errorCode(error: unknown): unknown {
+  return (error as { code?: unknown })?.code;
+}
 
 const MINT_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
@@ -150,14 +223,20 @@ export class CommitService {
   async send(request: CommitRequest): Promise<SentCommit | null> {
     let walletAddress: string;
     try {
-      // We reconnect before every transaction: some wallets remember the address
-      // after a page reload but refuse to sign without connect().
       walletAddress = await this.wallet.connect();
+      // `connect()` believes the page's copy of the provider. For Phantom the
+      // connection is also checked with Phantom itself, without a window: a
+      // stuck Phantom is named now rather than left to swallow the signature
+      // request. Other wallets are not asked anything new.
+      walletAddress = (await this.wallet.confirmPhantomSession(() => request.onWalletPrompt?.(true))) ?? walletAddress;
     } catch (error) {
       if (isWalletFlowInterruption(error)) {
         return null;
       }
-      throw new CommitError(walletError(error));
+      throw new CommitError(walletError(error, this.walletContext()));
+    }
+    if (request.isCurrent && !request.isCurrent()) {
+      return null;
     }
 
     const connection = new Connection(environment.solanaRpcUrl, 'confirmed');
@@ -190,12 +269,12 @@ export class CommitService {
 
     let signature: string;
     try {
-      signature = await this.signAndSend(transaction, connection, payer);
+      signature = await this.signAndSend(transaction, connection, payer, () => this.preflight(transaction, connection), request);
     } catch (error) {
-      if (isWalletFlowInterruption(error) || isUserRejection(error)) {
+      if (error instanceof SupersededAttemptError || isWalletFlowInterruption(error) || isUserRejection(error)) {
         return null;
       }
-      throw new CommitError(transactionError(error));
+      throw new CommitError(transactionError(error, this.walletContext()));
     }
 
     return {
@@ -286,7 +365,48 @@ export class CommitService {
     return { lottery: found.lottery, vault: found.vault };
   }
 
-  private async signAndSend(transaction: Transaction, connection: Connection, payer: PublicKey): Promise<string> {
+  /**
+   * Run the commit on our own node before the wallet sees it.
+   *
+   * A wallet simulates whatever it is asked to sign and shows a failed
+   * simulation as a red warning: "This transaction reverted during simulation",
+   * "This dApp could be malicious". Someone who sees that on a site asking for
+   * their SOL leaves, and they are right to. Everything that can make a commit
+   * fail is ours to catch first: the pool closed or paused, the cap reached, too
+   * little SOL in the wallet. So the wallet opens only on a transaction that has
+   * just gone through here. It is Phantom's own advice ("Domain and transaction
+   * warnings" in their developer docs): simulate with `sigVerify: false` on your
+   * node before asking for a signature.
+   *
+   * A node that cannot answer stops the commit too. A transaction we could not
+   * check is not one we hand to the wallet.
+   */
+  private async preflight(transaction: Transaction, connection: Connection): Promise<void> {
+    // The message alone, with empty signatures: nothing is signed yet, and the
+    // wallet stays closed until this returns.
+    const unsigned = new VersionedTransaction(transaction.compileMessage());
+    let simulation: SimulatedTransactionResponse;
+    try {
+      simulation = await simulate(connection, unsigned);
+    } catch {
+      throw new CommitError('Could not reach Solana to check the transaction. Try again in a moment.');
+    }
+    if (simulation.err) {
+      throw new CommitError(transactionError({ message: JSON.stringify(simulation.err), logs: simulation.logs ?? [] }, this.walletContext()));
+    }
+  }
+
+  private walletContext(): WalletContext {
+    return { name: this.wallet.activeWalletName, mobile: this.wallet.onMobile };
+  }
+
+  private async signAndSend(
+    transaction: Transaction,
+    connection: Connection,
+    payer: PublicKey,
+    check: () => Promise<void>,
+    hooks: Pick<CommitRequest, 'onWalletPrompt' | 'isCurrent'> = {}
+  ): Promise<string> {
     const provider = this.wallet.getProvider() as any;
     if (!provider) {
       throw new CommitError('Connect a wallet first.');
@@ -294,6 +414,7 @@ export class CommitService {
     const { blockhash } = await connection.getLatestBlockhash('confirmed');
     transaction.feePayer = payer;
     transaction.recentBlockhash = blockhash;
+    await check();
 
     // We sign in the wallet and send ourselves. That matters, and here is why.
     //
@@ -307,13 +428,22 @@ export class CommitService {
     // Our own `sendRawTransaction` keeps the network, the preflight and the
     // retries under our control. The wallet stays what it should be: a signer.
     if (typeof provider.signTransaction === 'function') {
+      hooks.onWalletPrompt?.(true);
       const signed = await provider.signTransaction(transaction);
+      // A newer attempt replaced this one while the wallet sat on it: the
+      // signature is dropped here, never broadcast, so one click is one commit.
+      if (hooks.isCurrent && !hooks.isCurrent()) {
+        throw new SupersededAttemptError();
+      }
       return connection.sendRawTransaction(signed.serialize(), { skipPreflight: false, preflightCommitment: 'confirmed', maxRetries: 3 });
     }
 
     // A fallback for wallets that can only "sign and send": those turn up in the
     // in-app browsers of mobile apps.
     if (typeof provider.signAndSendTransaction === 'function') {
+      // The wallet broadcasts this one itself, so a replaced attempt could
+      // still land: this attempt is not offered for replacing.
+      hooks.onWalletPrompt?.(false);
       const result = await provider.signAndSendTransaction(transaction);
       const signature = extractSignature(result);
       if (!signature) {
@@ -341,6 +471,21 @@ export function burnMemoInstruction(payer: PublicKey, percent: BurnPercent): Tra
     keys: [{ pubkey: payer, isSigner: true, isWritable: false }],
     data: Buffer.from(text, 'utf-8')
   });
+}
+
+/**
+ * The simulation the wallet would run. Our node can sit a slot behind the one
+ * that handed out the blockhash, and then it answers "blockhash not found"
+ * about a perfectly good transaction. The question here is whether the program
+ * takes the commit, so that case is asked again with the node's own blockhash.
+ */
+async function simulate(connection: Connection, transaction: VersionedTransaction): Promise<SimulatedTransactionResponse> {
+  const { value } = await connection.simulateTransaction(transaction, { sigVerify: false, commitment: 'confirmed' });
+  if (value.err !== 'BlockhashNotFound') {
+    return value;
+  }
+  const again = await connection.simulateTransaction(transaction, { sigVerify: false, replaceRecentBlockhash: true, commitment: 'confirmed' });
+  return again.value;
 }
 
 /** Anchor needs a wallet, but the real provider signs separately. */
@@ -463,7 +608,13 @@ function mintCheckError(error: unknown): string {
   return 'Could not check this coin. Try again in a moment.';
 }
 
-function walletError(error: unknown): string {
+function walletError(error: unknown, wallet: WalletContext): string {
+  if (error instanceof WalletNotRespondingError) {
+    return walletNotRespondingText(wallet);
+  }
+  if (errorCode(error) === REQUEST_ALREADY_PENDING) {
+    return walletRequestPendingText(wallet);
+  }
   const text = errorText(error);
   if (/not been authorized|not authorized|unauthorized/i.test(text)) {
     return 'The wallet did not allow the connection. Approve it in the wallet and try again.';
@@ -472,9 +623,12 @@ function walletError(error: unknown): string {
 }
 
 /** Program (IDL) and network errors, in human words. */
-function transactionError(error: unknown): string {
+function transactionError(error: unknown, wallet: WalletContext): string {
   if (error instanceof CommitError) {
     return error.message;
+  }
+  if (errorCode(error) === REQUEST_ALREADY_PENDING) {
+    return walletRequestPendingText(wallet);
   }
   const pending = buildPendingTransactionMessage(error);
   if (pending) {
@@ -487,13 +641,24 @@ function transactionError(error: unknown): string {
   if (/TotalLimitExceeded|Total limit exceeded/.test(text)) {
     return 'That would take the pool over its cap. Try a smaller amount.';
   }
+  if (/NotStarted/.test(text)) {
+    return 'This pool has not opened yet.';
+  }
   if (/InvalidAmount|Invalid amount/.test(text)) {
     return 'The amount is below the minimum of 0.05 SOL.';
   }
   if (/BlockedBetMint/.test(text)) {
     return 'SOL, wSOL and USDC are not memecoins. Paste the address of the coin you want bought.';
   }
-  if (/insufficient (funds|lamports)|Attempt to debit an account but found no record/i.test(text)) {
+  // An account on Solana either holds nothing or holds at least the rent
+  // minimum, 890,880 lamports for a plain wallet. A commit that would leave
+  // less than that behind fails on its own.
+  if (/InsufficientFundsForRent|insufficient funds for rent/i.test(text)) {
+    return 'That would leave less than 0.0009 SOL in the wallet, and Solana does not allow it. Commit a little less.';
+  }
+  // `\b` keeps ProgramAccountNotFound, a missing program, out of this: that is
+  // not about the person's SOL.
+  if (/insufficient (funds|lamports)|InsufficientFundsForFee|\bAccountNotFound\b|Attempt to debit an account but found no record/i.test(text)) {
     return 'Not enough SOL in the wallet to cover the amount and the network fee.';
   }
   if (/blockhash not found|Blockhash not found/i.test(text)) {
@@ -516,7 +681,9 @@ function errorText(error: unknown): string {
     return '';
   }
   const logs = (error as { logs?: unknown })?.logs;
-  const logText = Array.isArray(logs) ? logs.join('\n') : '';
+  // "Program data:" lines are base64 event payloads. They mean nothing to a
+  // person, and a random run of letters in them could match a word below.
+  const logText = Array.isArray(logs) ? logs.filter((line) => !/^Program data: /.test(String(line))).join('\n') : '';
   const message = error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error);
   return `${message}\n${logText}`.trim();
 }

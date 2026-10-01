@@ -25,7 +25,7 @@ import {
     getDefaultStatePath,
 } from "./state";
 import { classifyError, isSlippageError } from "./errors";
-import { getErrorVenue } from "../solana/transaction";
+import { BuyHooks, getErrorVenue } from "../solana/transaction";
 import { inspectMint } from "../solana/tokenExtensions";
 import { PostSendError } from "../pumpfun/buy";
 import { signatureOutcome } from "../solana/signatureOutcome";
@@ -107,9 +107,17 @@ async function pendingVerdict(error: unknown, polls: number): Promise<PendingVer
     if (!(error instanceof PostSendError) || !error.signature) {
         return { kind: "clear" };
     }
-    const signature = error.signature;
+    return signatureVerdict(error.signature, error.lastValidBlockHeight, polls);
+}
+
+/** The same, for a signature on record rather than one carried by an error. */
+async function signatureVerdict(
+    signature: string,
+    lastValidBlockHeight: number | undefined,
+    polls: number
+): Promise<PendingVerdict> {
     for (let poll = 0; ; poll++) {
-        const outcome = await signatureOutcome(signature, error.lastValidBlockHeight);
+        const outcome = await signatureOutcome(signature, lastValidBlockHeight);
         if (outcome === "landed") {
             return { kind: "landed", signature };
         }
@@ -118,7 +126,7 @@ async function pendingVerdict(error: unknown, polls: number): Promise<PendingVer
         }
         // Unknown. Without the limit there is nothing to wait for, and this is
         // what the check always did: an RPC error during the check, carry on.
-        if (error.lastValidBlockHeight === undefined) {
+        if (lastValidBlockHeight === undefined) {
             return { kind: "clear" };
         }
         if (poll >= polls) {
@@ -126,6 +134,33 @@ async function pendingVerdict(error: unknown, polls: number): Promise<PendingVer
         }
         await sleepUntil(Date.now() + IN_FLIGHT_POLL_MS);
     }
+}
+
+/**
+ * How many times the main loop signs a purchase again after its blockhash ran
+ * out, before leaving it to the retry phase. Each one first waits the old
+ * transaction out, about half a minute.
+ */
+export const MAX_EXPIRY_RESIGNS = 2;
+
+/**
+ * The blockhash ran out before the transaction reached a block: the send
+ * worked, the network simply never included it.
+ */
+export function isBlockhashExpiry(error: unknown): error is PostSendError {
+    return (
+        error instanceof PostSendError &&
+        !!error.signature &&
+        error.lastValidBlockHeight !== undefined &&
+        /block height exceeded/i.test(error.message)
+    );
+}
+
+/** Writes every attempt down before it goes out (see `BuyHooks`). */
+function attemptRecorder(stateManager: BatchStateManager, purchaseIndex: number): BuyHooks {
+    return {
+        onSigned: (attempt) => stateManager.recordSentAttempt(purchaseIndex, attempt),
+    };
 }
 
 /**
@@ -537,7 +572,7 @@ export async function batchBuy(params: BatchBuyParams): Promise<BatchBuyResult> 
         }, `Buying ${spendable.toFixed(6)} SOL`);
 
         try {
-            const result = await buy(mint, spendable, keeper, slippage, plog);
+            const result = await buy(mint, spendable, keeper, slippage, plog, attemptRecorder(stateManager, purchase.index));
             stateManager.markCompleted(
                 purchase.index,
                 result.signature,
@@ -560,6 +595,76 @@ export async function batchBuy(params: BatchBuyParams): Promise<BatchBuyResult> 
 
             // PostSendError with a signature: check, the tx may already have gone through
             if (await tryConfirmPending(failure, purchase.index, stateManager, plog)) {
+                continue;
+            }
+
+            // The blockhash ran out before the transaction reached a block. The
+            // purchase itself is fine; it did not get through. Leaving it to the
+            // retry phase put it at the end of the window, off its schedule, and
+            // sent the round into a second pass (demo round, 2026-09-29). It is
+            // signed again here instead, but only once the old transaction is
+            // provably dead: the chain's finalized height past its limit with a
+            // margin, and the signature not in history. Signing while it may
+            // still land is how a coin gets bought twice (the Solana guide on
+            // retrying transactions says the same).
+            let settled = false;
+            for (let resign = 1; resign <= MAX_EXPIRY_RESIGNS && isBlockhashExpiry(failure); resign++) {
+                const expired: PostSendError = failure;
+                const verdict = await signatureVerdict(expired.signature!, expired.lastValidBlockHeight, IN_FLIGHT_POLLS);
+                if (verdict.kind === "landed") {
+                    const venue = getErrorVenue(expired) ?? "pumpfun";
+                    stateManager.markCompleted(purchase.index, verdict.signature, venue);
+                    recordVenueRouting(stateManager, { signature: verdict.signature, venue });
+                    stateManager.incrementMetric("retry.pendingTxConfirmed");
+                    plog.info({
+                        event: "purchase.pending_confirmed",
+                        signature: verdict.signature.slice(0, 16),
+                    }, "Landed after all; not signing again");
+                    settled = true;
+                    break;
+                }
+                if (verdict.kind === "in_flight") {
+                    // The chain would not say in time. Signing now could buy
+                    // twice, so the purchase goes to the retry phase, which
+                    // waits it out again before it signs anything.
+                    stateManager.incrementMetric("retry.expiryStillInFlight");
+                    plog.warn({
+                        event: "purchase.expiry_in_flight",
+                        signature: verdict.signature.slice(0, 16),
+                    }, "Expired transaction not provably dead yet; deferring");
+                    break;
+                }
+
+                stateManager.incrementMetric("retry.expiredResigned");
+                plog.info({
+                    event: "purchase.expired_resign",
+                    resign,
+                    expired: expired.signature!.slice(0, 16),
+                }, `Blockhash expired before landing; signing again (#${resign})`);
+                stateManager.markInProgress(purchase.index, slippage);
+                try {
+                    const result = await buy(mint, spendable, keeper, slippage, plog, attemptRecorder(stateManager, purchase.index));
+                    stateManager.markCompleted(purchase.index, result.signature, result.venue);
+                    recordVenueRouting(stateManager, result);
+                    stateManager.incrementMetric("retry.expiredResignSuccess");
+                    plog.info({
+                        event: "purchase.completed",
+                        venue: result.venue,
+                        resignedAfterExpiry: resign,
+                        signature: result.signature.slice(0, 16),
+                        progress: `${purchase.index}/${n}`,
+                    }, `Completed via ${result.venue} after the blockhash expired`);
+                    settled = true;
+                    break;
+                } catch (resignError) {
+                    failure = resignError;
+                    if (await tryConfirmPending(failure, purchase.index, stateManager, plog)) {
+                        settled = true;
+                        break;
+                    }
+                }
+            }
+            if (settled) {
                 continue;
             }
 
@@ -608,7 +713,7 @@ export async function batchBuy(params: BatchBuyParams): Promise<BatchBuyResult> 
                     spendable = shrunk;
                     stateManager.markInProgress(purchase.index, slippage);
                     try {
-                        const result = await buy(mint, spendable, keeper, slippage, plog);
+                        const result = await buy(mint, spendable, keeper, slippage, plog, attemptRecorder(stateManager, purchase.index));
                         stateManager.markCompleted(
                             purchase.index,
                             result.signature,
@@ -663,7 +768,7 @@ export async function batchBuy(params: BatchBuyParams): Promise<BatchBuyResult> 
 
                     try {
                         // The same shrunk amount: the balance has not grown since the last attempt.
-                        const result = await buy(mint, spendable, keeper, instantSlippage, plog);
+                        const result = await buy(mint, spendable, keeper, instantSlippage, plog, attemptRecorder(stateManager, purchase.index));
                         stateManager.markCompleted(
                             purchase.index,
                             result.signature,
@@ -765,36 +870,44 @@ export async function batchBuy(params: BatchBuyParams): Promise<BatchBuyResult> 
 
             const rlog = log.child({ purchaseIndex: purchase.index });
 
-            // Check the pending signature: the tx may have confirmed since the main loop
+            // The pending transaction from the main loop: it may have landed
+            // since, or it may still land. A purchase that failed a minute
+            // before the window closed has a transaction whose blockhash is
+            // still valid when its turn comes here, and asking only "has it
+            // landed yet" then signed a second one beside it. So it is waited
+            // out the same way the ladder waits out its own attempts.
             if (purchase.pendingSignature) {
-                try {
-                    // History too: the pending purchase is minutes old by now,
-                    // past the recent status cache (see checkPendingSignature).
-                    const status = await connection.getSignatureStatus(purchase.pendingSignature, {
-                        searchTransactionHistory: true,
-                    });
-                    if (
-                        (status.value?.confirmationStatus === "confirmed" ||
-                            status.value?.confirmationStatus === "finalized") &&
-                        // See checkPendingSignature: confirmed without checking
-                        // err means "failed on chain", not "bought".
-                        !status.value?.err
-                    ) {
-                        stateManager.markCompleted(
-                            purchase.index,
-                            purchase.pendingSignature,
-                            purchase.venue ?? "pumpfun"
-                        );
-                        stateManager.incrementMetric("retry.pendingTxConfirmed");
-                        rlog.info({
-                            event: "purchase.pending_confirmed",
-                            signature: purchase.pendingSignature.slice(0, 16),
-                            phase: "retry",
-                        }, "Confirmed from pending tx");
-                        continue;
-                    }
-                } catch {
-                    // The check failed: carry on with the retry
+                const verdict = await signatureVerdict(
+                    purchase.pendingSignature,
+                    purchase.pendingLastValidBlockHeight,
+                    IN_FLIGHT_POLLS
+                );
+                if (verdict.kind === "landed") {
+                    stateManager.markCompleted(
+                        purchase.index,
+                        purchase.pendingSignature,
+                        purchase.venue ?? "pumpfun"
+                    );
+                    stateManager.incrementMetric("retry.pendingTxConfirmed");
+                    rlog.info({
+                        event: "purchase.pending_confirmed",
+                        signature: purchase.pendingSignature.slice(0, 16),
+                        phase: "retry",
+                    }, "Confirmed from pending tx");
+                    continue;
+                }
+                if (verdict.kind === "in_flight") {
+                    stateManager.markAbandoned(
+                        purchase.index,
+                        "Earlier transaction may still land; not signing another"
+                    );
+                    stateManager.incrementMetric("retry.inFlightStopped");
+                    rlog.warn({
+                        event: "purchase.in_flight_stopped",
+                        signature: purchase.pendingSignature.slice(0, 16),
+                        phase: "retry",
+                    }, "Earlier attempt may still land; not signing another");
+                    continue;
                 }
             }
 
@@ -867,7 +980,8 @@ export async function batchBuy(params: BatchBuyParams): Promise<BatchBuyResult> 
                         retrySpendable,
                         keeper,
                         slippage,
-                        rlog
+                        rlog,
+                        attemptRecorder(stateManager, purchase.index)
                     );
                     stateManager.markCompleted(
                         purchase.index,

@@ -75,9 +75,10 @@ t('after the pause the next pool opens at 13 SOL', () => {
 
 
 
-t('the timer runs from two hours down to zero', () => {
-  assert.equal(clockText(feedFrame(0).secondsLeft), '02:00:00');
-  assert.ok(feedFrame(COMMITS * COMMIT_EVERY_MS / 2).secondsLeft < 3700);
+t('the timer runs from an hour down to zero', () => {
+  assert.equal(clockText(feedFrame(0).secondsLeft), '01:00:00');
+  const half = feedFrame(COMMITS * COMMIT_EVERY_MS / 2).secondsLeft;
+  assert.ok(half > 1700 && half < 1900, `half way is half an hour (${half})`);
   assert.equal(clockText(feedFrame(COMMITS * COMMIT_EVERY_MS + 5).secondsLeft), '00:00:00');
 });
 

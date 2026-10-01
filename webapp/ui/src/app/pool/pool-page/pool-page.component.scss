@@ -459,6 +459,31 @@
   list-style: none;
 }
 
+/* The coin table. Its rows become table rows from $coin-table-from; below that
+   each coin is a card. The header and the rows share one column template, or
+   the captions drift off their columns.
+
+   The roomy template's minimums add up to about 1040px with the row's padding
+   and gaps, so from 900px, where the table used to start, to about 1100px the
+   rows ran past the screen. Between $coin-table-from and $coin-table-roomy the
+   minimums are what the cells actually need at their widest: 110.95 SOL beside
+   a short bar, the draw's result, 123 commits, the address chip on one line
+   and the two buttons, with 10px between columns instead of 14. That is about
+   934px with the row's padding, which still fits at 1024px beside a 17px
+   Windows scrollbar. From $coin-table-roomy on the columns get their roomy
+   minimums back. */
+$coin-table-from: 1024px;
+$coin-table-roomy: 1140px;
+/* Every column but the coin and the amount has a fixed width. Each row is a
+   grid of its own, so an `auto` column is as wide as that row's content: the
+   address, the draw's result and the commit count used to sit a few pixels
+   apart from row to row, which the green plate of the draw's result made plain
+   (18px between two rows). The widths fit the widest content each column
+   holds: the address chip, 110.95 SOL on its plate or ≈ 107.63 SOL expected
+   with its caption, 123 commits, the two buttons. */
+$coin-columns: 2rem minmax(10rem, 1.1fr) 7rem minmax(13rem, 1.3fr) 8.5rem 5.5rem 6.6rem 5.4rem;
+$coin-columns-compact: 2rem minmax(6.5rem, 1.1fr) 7rem minmax(10.5rem, 1.3fr) 8.5rem 5rem 6.6rem 5.4rem;
+
 .coin-row {
   display: grid;
   grid-template-columns: 2rem minmax(0, 1fr) auto;
@@ -474,11 +499,9 @@
   background: var(--qres-white);
 }
 
-@media (min-width: 900px) {
+@media (min-width: $coin-table-from) {
   .coin-row {
-    /* The last two columns are fixed width. An `auto` column stretches to its
-       content, and the header has none of those buttons: the captions would drift. */
-    grid-template-columns: 2rem minmax(10rem, 1.1fr) minmax(7rem, auto) minmax(13rem, 1.3fr) minmax(7rem, auto) minmax(5.5rem, auto) 6.6rem 5.4rem;
+    grid-template-columns: $coin-columns-compact;
     grid-template-areas: "rank coin mint sol drawn commits add card";
   }
 }
@@ -577,7 +600,7 @@
   }
 }
 
-@media (min-width: 900px) {
+@media (min-width: $coin-table-from) {
   .coin-row__card {
     justify-self: end;
   }
@@ -592,7 +615,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (min-width: 900px) {
+@media (min-width: $coin-table-from) {
   .coin-row__rank {
     align-self: center;
   }
@@ -708,6 +731,8 @@
   color: var(--qres-black);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
+  /* A button wraps its text by default, and "7XqN…2rLh" broke in two. */
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -726,7 +751,7 @@
   }
 }
 
-@media (min-width: 900px) {
+@media (min-width: $coin-table-from) {
   .coin-row__mint {
     justify-self: start;
   }
@@ -768,6 +793,33 @@
   display: grid;
   justify-items: start;
   gap: 2px;
+}
+
+/* What the draw gave a coin: the loudest number in the row once it is known.
+   The green is the colour of buying on this page, the frame the same 2px as
+   everything else; the amount committed beside it stays plain. */
+.coin-row__won {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-green);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.coin-row__won small {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* The column caption turns from grey to ink when it holds the draw's result. */
+.coin-head__drawn--ready {
+  color: var(--qres-black);
 }
 
 .coin-row__commits {
@@ -1014,10 +1066,10 @@
   display: none;
 }
 
-@media (min-width: 900px) {
+@media (min-width: $coin-table-from) {
   .coin-head {
     display: grid;
-    grid-template-columns: 2rem minmax(10rem, 1.1fr) minmax(7rem, auto) minmax(13rem, 1.3fr) minmax(7rem, auto) minmax(5.5rem, auto) 6.6rem 5.4rem;
+    grid-template-columns: $coin-columns-compact;
     gap: 10px 14px;
     /* The padding matches the row: otherwise the captions drift against the columns. */
     padding: 0 18px 8px;
@@ -1047,12 +1099,38 @@
   }
 }
 
+@media (min-width: $coin-table-from) {
+  .coin-row,
+  .coin-head {
+    column-gap: 10px;
+  }
+
+  /* A shorter bar while the table is tight; the amount beside it is what counts. */
+  .coin-row__sol {
+    grid-template-columns: auto minmax(3rem, 1fr);
+  }
+}
+
+@media (min-width: $coin-table-roomy) {
+  .coin-row,
+  .coin-head {
+    grid-template-columns: $coin-columns;
+    column-gap: 14px;
+  }
+
+  .coin-row__sol {
+    grid-template-columns: auto minmax(4rem, 1fr);
+  }
+}
+
 .coin-row__drawn--expected .coin-row__value {
   color: rgba(2, 2, 2, 0.78);
 }
 
 .coin-row__drawn--expected .coin-row__share {
   max-width: 11rem;
+  /* Two even lines on a phone, not a line and a lone "draw". */
+  text-wrap: balance;
 }
 
 /* The pool leader is visible at once: a thicker border, the number on purple. */

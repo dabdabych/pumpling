@@ -82,6 +82,27 @@ export function refundComputeUnits(transfers: number): number {
 
 /** Below this price paying is pointless. */
 const MIN_PRICE_MICRO_LAMPORTS = 1_000;
+
+/**
+ * The floor for a purchase, microlamports per compute unit.
+ *
+ * Two purchases of 27 in the demo round of 2026-09-29 never reached a block,
+ * and every one of the 27 had paid 1,000: the network estimate for a coin only
+ * we trade is zero, so the old floor was all there was. Helius routes a
+ * transaction over its staked connections, the ones that reliably reach the
+ * leader, only when it pays at least what it calls the recommended fee
+ * (helius.dev/docs/sending-transactions/optimizing-transactions). Asked the
+ * same day for a pump.fun purchase, it recommended 10,000 while the median was
+ * 4,225, so 10,000 is its own floor. Here it costs 1,400 lamports on the curve
+ * (140,000 units), 2,000 on PumpSwap and 2,100 through Jupiter, against a
+ * reserve of 100,000 per attempt.
+ */
+export const BUY_MIN_PRICE_MICRO_LAMPORTS = envInt("PRIORITY_MIN_MICRO_LAMPORTS_BUY", 10_000);
+
+/** The paths that buy: the ones the floor above is for. */
+export function isBuyPath(path: FeePath): boolean {
+    return path === "pumpfun" || path === "pumpswap" || path === "dex";
+}
 /** How long an estimate from the network lives. */
 const ESTIMATE_TTL_MS = 60_000;
 
@@ -127,6 +148,77 @@ export async function estimatePrice(accounts: PublicKey[]): Promise<number | nul
     return value;
 }
 
+const recommendedCache = new Map<string, { at: number; value: number | null }>();
+
+/** A slow answer must not hold a purchase: past this the floor stands in. */
+const RECOMMENDED_TIMEOUT_MS = 3_000;
+
+export interface RecommendedDeps {
+    endpoint?: string;
+    fetch?: typeof fetch;
+    now?: () => number;
+}
+
+/**
+ * Helius's recommended fee for a transaction writing these accounts, or null.
+ *
+ * Helius sends a transaction over its staked connections only when it pays at
+ * least this much, and that is the difference between reaching the leader and
+ * being dropped on the way when the network is busy. The floor above covers a
+ * quiet hour; this follows the recommendation up when the network is not
+ * quiet, where a floor alone would leave us under it exactly when it matters.
+ *
+ * `getPriorityFeeEstimate` is Helius's own method. Any other provider answers
+ * with an error, which is null here, and then the floor and the network
+ * estimate decide as before.
+ */
+export async function recommendedPrice(accounts: PublicKey[], deps: RecommendedDeps = {}): Promise<number | null> {
+    const key = accounts.map((account) => account.toBase58()).sort().join(",");
+    const now = (deps.now ?? Date.now)();
+    const cached = recommendedCache.get(key);
+    if (cached && now - cached.at < ESTIMATE_TTL_MS) {
+        return cached.value;
+    }
+
+    let value: number | null = null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), RECOMMENDED_TIMEOUT_MS);
+    try {
+        const response = await (deps.fetch ?? fetch)(deps.endpoint ?? connection.rpcEndpoint, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                jsonrpc: "2.0",
+                id: "priority",
+                method: "getPriorityFeeEstimate",
+                params: [{ accountKeys: accounts.map((account) => account.toBase58()), options: { recommended: true } }],
+            }),
+            signal: controller.signal,
+        });
+        const body = (await response.json()) as { result?: { priorityFeeEstimate?: unknown } };
+        const estimate = Number(body?.result?.priorityFeeEstimate);
+        value = Number.isFinite(estimate) && estimate > 0 ? Math.round(estimate) : null;
+    } catch {
+        value = null;
+    } finally {
+        clearTimeout(timer);
+    }
+
+    recommendedCache.set(key, { at: now, value });
+    return value;
+}
+
+/**
+ * The price a purchase starts from: the higher of what the accounts' own
+ * traffic pays and what Helius recommends. Asked together, so the purchase
+ * waits for the slower of two calls rather than their sum.
+ */
+export async function buyPriceEstimate(accounts: PublicKey[]): Promise<number | null> {
+    const [network, recommended] = await Promise.all([estimatePrice(accounts), recommendedPrice(accounts)]);
+    const values = [network, recommended].filter((value): value is number => typeof value === "number" && value > 0);
+    return values.length > 0 ? Math.max(...values) : null;
+}
+
 /**
  * The share of a purchase above which we will not pay for queue position.
  *
@@ -154,10 +246,11 @@ export function priceFor(
     solAmount?: number
 ): number {
     const ceiling = Math.floor((capLamports(path, solAmount) * 1_000_000) / Math.max(1, units));
-    const base = estimate && estimate > 0 ? estimate : MIN_PRICE_MICRO_LAMPORTS;
+    const floor = isBuyPath(path) ? BUY_MIN_PRICE_MICRO_LAMPORTS : MIN_PRICE_MICRO_LAMPORTS;
+    const base = estimate && estimate > 0 ? Math.max(estimate, floor) : floor;
     // The lower bound matters more than the ceiling: a price of zero means a
     // transaction with no priority at all, which is exactly what we are fixing.
-    return Math.max(MIN_PRICE_MICRO_LAMPORTS, Math.min(base, Math.max(1, ceiling)));
+    return Math.max(floor, Math.min(base, Math.max(1, ceiling)));
 }
 
 /** What the priority will cost, in lamports. */
@@ -179,7 +272,7 @@ export async function budgetInstructions(
     accounts: PublicKey[],
     solAmount?: number
 ): Promise<TransactionInstruction[]> {
-    const estimate = await estimatePrice(accounts);
+    const estimate = isBuyPath(path) ? await buyPriceEstimate(accounts) : await estimatePrice(accounts);
     const microLamports = priceFor(path, units, estimate, solAmount);
     return [
         ComputeBudgetProgram.setComputeUnitLimit({ units }),

@@ -64,6 +64,13 @@ class TestTheWindowIsTheBuyersWindow:
 
         assert _default_fallback_countdown_seconds("mainnet") == int(match.group(1)) * 60
 
+    def test_a_pool_takes_commits_for_seventy_minutes(self):
+        # "1 hour" on the site; 70 minutes, the same on both networks.
+        from shared.settings import _default_autostart_prediction_seconds
+
+        assert _default_autostart_prediction_seconds("mainnet") == 70 * 60
+        assert _default_autostart_prediction_seconds("devnet") == 70 * 60
+
     def test_devnet_is_shorter_but_still_has_one(self):
         # A devnet round exists to be watched end to end in a few minutes, and
         # a second pass that never runs is a path nobody would ever test.
@@ -110,53 +117,65 @@ class TestWhenARoundMayClose:
         return (
             settings.execution_countdown_seconds,
             settings.fallback_countdown_seconds,
-            settings.close_lottery_buffer_seconds,
         )
 
     def test_not_while_the_main_window_still_runs(self, monkeypatch):
-        main, _fallback, buffer_seconds = self.window
-        # Well inside the window, and the buffer does not reach back this far.
-        assert self.close_due(monkeypatch, {"phase": "buying"}, at_seconds=main - buffer_seconds - 60) is False
+        main, _fallback = self.window
+        assert self.close_due(monkeypatch, {"phase": "buying"}, at_seconds=main - 60) is False
 
-    def test_a_little_early_only_when_the_buying_is_demonstrably_done(self, monkeypatch):
-        main, _fallback, buffer_seconds = self.window
-        if buffer_seconds <= 0:
-            pytest.skip("no buffer configured")
-        inside = main - buffer_seconds + 1
+    def test_not_before_the_window_ends_even_when_the_buyer_says_it_is_done(self, monkeypatch):
+        main, _fallback = self.window
+        # The round used to close up to five minutes early on this word, and
+        # the word was false at the start of every round (2026-09-29). The end
+        # of the window is public; nothing the buyer says brings it forward.
+        for at_seconds in (1, 60, main - 5 * 60 + 1, main - 60, main - 1):
+            assert self.close_due(monkeypatch, {"phase": "finished"}, at_seconds=at_seconds) is False, at_seconds
+            assert self.close_due(monkeypatch, None, at_seconds=at_seconds) is False, at_seconds
 
-        assert self.close_due(monkeypatch, {"phase": "finished"}, at_seconds=inside) is True
-        assert self.close_due(monkeypatch, {"phase": "buying"}, at_seconds=inside) is False
-        # The buffer used to close the round on the clock alone. With the
-        # window and the main pass now the same fifty minutes, that meant
-        # closing while the buyer was still on its first pass.
-        assert self.close_due(monkeypatch, None, at_seconds=inside) is False
+    def test_on_time_when_the_buyer_is_done(self, monkeypatch):
+        main, _fallback = self.window
+        assert self.close_due(monkeypatch, {"phase": "finished"}, at_seconds=main) is True
 
     def test_the_second_pass_holds_the_round_open(self, monkeypatch):
-        main, fallback, _buffer = self.window
+        main, fallback = self.window
 
         assert self.close_due(monkeypatch, {"phase": "fallback"}, at_seconds=main + 60) is False
         assert self.close_due(monkeypatch, {"phase": "fallback"}, at_seconds=main + fallback - 1) is False
 
     def test_but_not_past_the_ceiling(self, monkeypatch):
-        main, fallback, _buffer = self.window
+        main, fallback = self.window
         # A buyer stuck in a loop must not be able to hold a public round open.
         assert self.close_due(monkeypatch, {"phase": "fallback"}, at_seconds=main + fallback) is True
 
     def test_a_finished_buyer_closes_the_round(self, monkeypatch):
-        main, _fallback, _buffer = self.window
+        main, _fallback = self.window
         assert self.close_due(monkeypatch, {"phase": "finished"}, at_seconds=main + 60) is True
 
-    def test_so_does_an_answer_we_did_not_expect(self, monkeypatch):
-        main, _fallback, _buffer = self.window
-        assert self.close_due(monkeypatch, {"phase": "buying"}, at_seconds=main + 60) is True
+    def test_a_main_pass_still_finishing_holds_the_round_open(self, monkeypatch):
+        main, fallback = self.window
+        # The buyer's window starts a moment after the one counted here, and
+        # its last purchase can be on its way for up to two minutes when the
+        # clock runs out. Closing then put "This pool is done" over purchases
+        # that were still going out.
+        assert self.close_due(monkeypatch, {"phase": "buying"}, at_seconds=main) is False
+        assert self.close_due(monkeypatch, {"phase": "buying"}, at_seconds=main + 60) is False
+        assert self.close_due(monkeypatch, {"phase": "buying"}, at_seconds=main + fallback - 1) is False
+
+    def test_and_under_the_same_ceiling(self, monkeypatch):
+        main, fallback = self.window
+        assert self.close_due(monkeypatch, {"phase": "buying"}, at_seconds=main + fallback) is True
+
+    def test_an_answer_we_did_not_expect_closes_it(self, monkeypatch):
+        main, _fallback = self.window
+        assert self.close_due(monkeypatch, {"phase": "paused"}, at_seconds=main + 60) is True
 
     def test_and_so_does_silence(self, monkeypatch):
-        main, _fallback, _buffer = self.window
+        main, _fallback = self.window
         assert self.close_due(monkeypatch, None, at_seconds=main + 60) is True
         assert self.close_due(monkeypatch, RuntimeError("connection refused"), at_seconds=main + 60) is True
 
     def test_rubbish_is_silence(self, monkeypatch):
-        main, _fallback, _buffer = self.window
+        main, _fallback = self.window
         assert self.close_due(monkeypatch, {"phase": 12}, at_seconds=main + 60) is True
         assert self.close_due(monkeypatch, "<html>502</html>", at_seconds=main + 60) is True
 
@@ -192,3 +211,27 @@ class TestThePauseRunsFromTheClose:
         # countdown that has already expired while no pool opens is the worse
         # of the two.
         assert self.next_pool_at(None) == expected
+
+    def test_the_moment_reaches_the_page(self):
+        """`/lottery/current` reads rounds through the repository, as entities.
+
+        The entity had no `closed_at`, so the router's `getattr(..., None)` was
+        always None and every countdown used the ceiling: fifteen minutes past
+        the moment the worker actually opened the next pool, on every round.
+        """
+        from domain.lottery.entities.lottery import LotteryStatus
+        from infrastructure.database.models.lottery_model import LotteryModel
+        from infrastructure.lottery.database_lottery_repository import DatabaseLotteryRepository
+        from presentation.lottery.lottery_router import _next_pool_at
+        from shared.settings import get_settings
+
+        closed_at = NOW + timedelta(minutes=52)
+        model = LotteryModel(
+            id=1790708345700, name="pool", created_by_user_id=1, created_at=NOW - timedelta(hours=2),
+            status=LotteryStatus.CLOSED, lottery_type="dex", proceeding_purchases_started_at=NOW, closed_at=closed_at,
+        )
+        entity = DatabaseLotteryRepository(db=None)._model_to_entity(model)
+
+        assert entity.closed_at == closed_at
+        gap = get_settings().lottery_autostart_gap_seconds
+        assert _next_pool_at(entity.proceeding_purchases_started_at, entity.closed_at) == closed_at + timedelta(seconds=gap)

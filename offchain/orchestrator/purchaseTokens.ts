@@ -87,6 +87,14 @@ function pendingPurchaseAttempts(token: TokenBuyRecord, loadBatch: BatchLoader):
                     updatedAt: purchase.updatedAt,
                 });
             }
+            // Every attempt the purchase sent, not only the last one: a
+            // purchase signed again after its blockhash ran out has several,
+            // and whichever landed bought. Its own signing time is exact.
+            for (const attempt of purchase.sentAttempts ?? []) {
+                if (attempt.signature !== purchase.signature) {
+                    attempts.set(attempt.signature, { signature: attempt.signature, updatedAt: attempt.at });
+                }
+            }
         }
     }
     return [...attempts.values()];

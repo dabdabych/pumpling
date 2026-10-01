@@ -34,13 +34,26 @@ ok(true, 'the card dialog opens from a coin row without signing in');
 ok(await p.locator('app-auth-dialog').count() === 0, 'it does not ask to sign in first');
 const size = await save('card-coin');
 ok(size > 20000, `the canvas is not tainted and exports a file (${size} chars of data url)`);
+// The mock's logo address does not resolve, so the card has no picture of the
+// coin: its initials stand in, on green in the top right, as in the coin list.
+// The point is 12 px inside that square (share-card.ts: 132 px at x 978, y 174).
+const badgePixel = (page) => page.locator('.share__canvas').evaluate((el) => Array.from(el.getContext('2d').getImageData(990, 186, 1, 1).data.slice(0, 3)));
+const coinPixel = await badgePixel(p);
+ok(coinPixel.join() === '143,255,175', `a coin without a picture shows its initials on green (${coinPixel})`);
 const xHref = await p.locator('.share__button--x').getAttribute('href');
 ok(/MOCHI/.test(decodeURIComponent(xHref)) && /pumpling/.test(decodeURIComponent(xHref)), `the post text is ready ${decodeURIComponent(xHref).slice(0, 120)}`);
-ok(decodeURIComponent(xHref).includes(`/pool?coin=${MINTS.mochi}`), 'the link points at this coin');
+// The link carries the card: /s/ is answered by the server, which gives X the
+// card's tags and sends a person on to the pool (share_router.py).
+const coinLink = new RegExp(`/s/coin/128/${MINTS.mochi}\\?v=[0-9a-z]+$`);
+const postUrl = new URL(xHref).searchParams.get('url') ?? '';
+ok(coinLink.test(postUrl), `the post links to this coin's card (${postUrl})`);
+// Read before anything is copied: the note then shows the feedback instead.
+const note = (await p.locator('.share__note').innerText()).trim();
+ok(/X shows this card/.test(note) && !/attach it yourself/.test(note), `the note says the link brings the card (${note})`);
 await p.locator('.share__button', { hasText: 'Copy link' }).click();
 await p.waitForTimeout(400);
 const clip = await p.evaluate(() => navigator.clipboard.readText());
-ok(clip.includes(`/pool?coin=${MINTS.mochi}`), `copy link puts the coin link in the clipboard (${clip})`);
+ok(coinLink.test(clip), `copy link puts the same link in the clipboard (${clip})`);
 await p.screenshot({ path: `${S}/pw/shots/share-dialog.png` });
 execSync(`sips -s format jpeg -s formatOptions 65 -Z 900 ${S}/pw/shots/share-dialog.png --out ${S}/pw/shots/share-dialog.jpg >/dev/null`);
 await p.keyboard.press('Escape');
@@ -51,6 +64,10 @@ await p.locator('.pool-link--button').click();
 await p.waitForSelector('.share__preview.is-ready', { timeout: 15000 });
 await save('card-pool');
 ok(true, 'the pool card renders too');
+const poolPixel = await badgePixel(p);
+ok(poolPixel.join() !== '143,255,175', `the pool card has no coin square (${poolPixel})`);
+const poolPost = new URL(await p.locator('.share__button--x').getAttribute('href')).searchParams.get('url') ?? '';
+ok(/\/s\/pool\/128\?v=[0-9a-z]+$/.test(poolPost), `the pool post links to the pool's card (${poolPost})`);
 await p.keyboard.press('Escape');
 await p.waitForTimeout(300);
 

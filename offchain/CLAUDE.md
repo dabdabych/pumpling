@@ -18,7 +18,7 @@ offchain/
 ├── index.ts                    # Barrel exports for the module
 ├── buy.ts                      # Router: bonding curve → pumpfun, otherwise → dex (Jupiter)
 ├── send.ts                     # Sends SPL tokens to a recipient (Token + Token-2022)
-├── logger.ts                   # pino logger
+├── logger.ts                   # pino logger; in production every line is scrubbed of URL credentials (api-key=…)
 │
 ├── pumpfun/                    # Buying on pump.fun (bonding curve)
 │   ├── buy.ts                  # fetchBondingCurveInfo → calculateBuyParams → buildTx → send
@@ -37,6 +37,7 @@ offchain/
 ├── solana/                     # Shared Solana utilities
 │   ├── connection.ts           # Connection singleton, createProvider(keypair)
 │   ├── transaction.ts          # signTransaction(), sendTransaction()
+│   ├── rebroadcast.ts          # a signed purchase resent every 2 s until it lands or expires
 │   ├── priorityFee.ts          # compute budget and priority price per path
 │   ├── rateLimiter.ts          # send rate limiting shared across paths
 │   ├── debits.ts               # readKeeperEffects() — SOL and token deltas of a transaction
@@ -689,6 +690,39 @@ come slower, the duty cycle drops and RPS with it.
   slot; the buyer spends an hour in small portions and can retry, so the ceiling
   stays at 0.0001 SOL and the priority is additionally capped at a percentage of
   the purchase itself.
+
+  Since 2026-09-30 a purchase has a floor of 10,000 micro-lamports per compute
+  unit (`BUY_MIN_PRICE_MICRO_LAMPORTS`, env `PRIORITY_MIN_MICRO_LAMPORTS_BUY`),
+  and the estimate is the higher of the network median and Helius
+  `getPriorityFeeEstimate` with `recommended: true` for the same accounts.
+  Helius sends a transaction over its staked connections only when it pays at
+  least that recommended price, and 10,000 is what it answered for pump.fun
+  accounts on 2026-09-30. At the compute limits above the floor costs 1,400
+  lamports on the curve, 2,000 on PumpSwap and about 2,100 on Jupiter, well
+  inside the 100,000 per attempt that `BUY_TX_FEE` reserves. Delivery and
+  refunds keep the old floor of 1,000.
+
+- **Keeping a purchase on the wire** — `solana/rebroadcast.ts` and
+  `scheduler/batch.ts`. In the demo round of 2026-09-29 two purchases of 27
+  never reached a block: each was sent once at the minimum price and the node
+  did not pass it on before its blockhash expired. Three changes, all built
+  around one rule: a new signature is signed only when the old one can no
+  longer land.
+  - The same signed bytes go out again every 2 seconds, with `maxRetries: 0`,
+    until the transaction is confirmed or `confirmTransaction` reports the
+    blockhash expired (the retry guide on solana.com and Helius's sending
+    guide both describe this). Resending cannot buy twice: one signature
+    executes at most once. Resends take their turn in `sendTxLimiter`.
+  - After an expiry the purchase is signed again at once, not left for the
+    retry phase, but only after `signatureVerdict` has confirmed the chain is
+    past the old `lastValidBlockHeight` and the signature is absent. Landed
+    means done; unknown means wait, and the retry phase does not sign it
+    either. At most `MAX_EXPIRY_RESIGNS` (2) times per purchase.
+  - Every signature is written to the batch file BEFORE it is sent
+    (`sentAttempts`, through the `onSigned` hook every buy path calls). The
+    spent-SOL accounting (`purchaseTokens`, `refundLedger`) reads all of them,
+    and crash recovery (`resume.ts`) counts a purchase whose last attempt may
+    still have landed as spent, so a restart does not buy it again.
 
 - **RPC rate limiter** — `solana/rateLimiter.ts`, with the shared `sendTxLimiter`
   instance in `solana/connection.ts`. The rate is set by `SEND_TX_RATE_LIMIT`

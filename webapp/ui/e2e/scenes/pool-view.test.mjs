@@ -104,14 +104,65 @@ t('a second pass with no deadline still reads as running, not as zero', () => {
   assert.equal(view.timer.ticking, false);
 });
 
-t('nothing left to buy: the countdown stops instead of ticking at nothing', () => {
+t('everything bought early: the countdown runs on, to the close', () => {
   const view = buildPoolView(snapshot(), NOW, feed({ phase: 'finished', completed: 29 }));
 
-  assert.equal(view.timer.value, 'All done');
-  assert.equal(view.timer.ticking, false);
+  // The pool closes at the end of its window and not before, so half an
+  // hour of window left is half an hour on the clock, not "shortly".
   assert.equal(view.title.plate, 'done');
-  // Half an hour of window is left and it is not offered as a countdown.
-  assert.doesNotMatch(view.timer.value, /:/);
+  assert.equal(view.timer.label, 'Pool wraps up in');
+  assert.equal(view.timer.value, '00:30:00');
+  assert.equal(view.timer.ticking, true);
+  assert.equal(view.timer.note, 'nothing more to buy');
+});
+
+t('everything bought and the window over: wrapping up, not a zero clock', () => {
+  const view = buildPoolView(snapshot({ buysEndAtMs: NOW - 5_000 }), NOW, feed({ phase: 'finished', completed: 29 }));
+
+  assert.equal(view.timer.value, 'Wrapping up');
+  assert.equal(view.timer.ticking, false);
+});
+
+t('the window over and the buyer still at it: finishing, not 00:00:00', () => {
+  // The last purchase can be on its way for up to two minutes past the end
+  // of the window, and the pool now waits for it.
+  const view = buildPoolView(snapshot({ buysEndAtMs: NOW - 40_000 }), NOW, feed({ phase: 'buying' }));
+
+  assert.equal(view.timer.value, 'Finishing');
+  assert.equal(view.timer.ticking, false);
+  assert.doesNotMatch(view.timer.value, /00:00:00/);
+  assert.equal(view.phase, 'buying');
+});
+
+t('a second pass past its own deadline: finishing, not 00:00:00', () => {
+  const view = buildPoolView(
+    snapshot({ buysEndAtMs: NOW - 10 * MINUTE }),
+    NOW,
+    feed({ phase: 'fallback', fallbackEndsAtMs: NOW - 20_000 })
+  );
+
+  assert.equal(view.timer.value, 'Finishing');
+  assert.equal(view.timer.ticking, false);
+});
+
+t('nothing bought at all: says so, and that the SOL goes back', () => {
+  const view = buildPoolView(snapshot(), NOW, feed({ phase: 'finished', finished: true, completed: 0, boughtSol: 0, planned: 0 }));
+
+  assert.equal(view.title.lead, 'Nothing could be');
+  assert.equal(view.title.plate, 'bought');
+  assert.match(view.lede, /None of the coins in this pool could be bought\. The SOL goes back/);
+  // The SOL is on its way back now; the pool itself closes with its window.
+  assert.equal(view.timer.label, 'Pool wraps up in');
+  assert.equal(view.timer.value, '00:30:00');
+  assert.equal(view.timer.note, 'the SOL is on its way back');
+});
+
+t('something bought: done, without claiming every planned buy was made', () => {
+  const view = buildPoolView(snapshot(), NOW, feed({ phase: 'finished', finished: true, completed: 12 }));
+
+  assert.equal(view.title.plate, 'done');
+  assert.doesNotMatch(view.lede, /Every buy this pool planned/);
+  assert.match(view.lede, /whatever could not be spent goes back/);
 });
 
 t('the bar keeps showing what was actually bought, in every one of them', () => {

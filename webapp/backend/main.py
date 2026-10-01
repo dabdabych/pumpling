@@ -11,6 +11,8 @@ from presentation.lottery.lottery_router import router as lottery_router
 from presentation.events.events_router import router as events_router
 from presentation.rpc.rpc_router import router as rpc_router
 from presentation.chat.chat_router import router as chat_router, ws_router as chat_ws_router
+from presentation.share.share_router import router as share_router
+from shared.log_redaction import install_log_redaction
 from shared.rate_limit import rate_limit_middleware
 from create_tables import create_tables
 from migrations_runner import run_migrations
@@ -49,6 +51,7 @@ app.include_router(events_router)
 app.include_router(rpc_router)
 app.include_router(chat_router)
 app.include_router(chat_ws_router)
+app.include_router(share_router)
 
 def configure_logging() -> None:
     root_logger = logging.getLogger()
@@ -61,6 +64,13 @@ def configure_logging() -> None:
 
     logging.getLogger("presentation.lottery.lottery_router").setLevel(logging.INFO)
     logging.getLogger("domain.lottery.services.lottery_service").setLevel(logging.INFO)
+
+    # The RPC endpoints carry their API key in the query string, and an error
+    # from a call to one can quote it. Uvicorn's errors ("uvicorn.error", the
+    # tracebacks of failed requests) go to the handler of the "uvicorn" logger,
+    # which does not propagate to the root, so that one gets the filter too.
+    install_log_redaction(root_logger)
+    install_log_redaction(logging.getLogger("uvicorn"))
 
 logger = logging.getLogger(__name__)
 

@@ -33,6 +33,7 @@ import asyncio
 import os
 import threading
 import time
+from collections import deque
 import secrets
 import base64
 import logging
@@ -715,10 +716,39 @@ def _rpc_get_account_data(endpoint: str, account: str) -> bytes:
     return base64.b64decode(encoded)
 
 
+_DAS_CALLS: deque[float] = deque()
+_DAS_LOCK = threading.Lock()
+_das_last_alarm = 0.0
+
+
+def _take_das_budget() -> bool:
+    """Whether one more paid DAS lookup fits in this minute, from everybody together.
+
+    `getAsset` costs 10 credits of the plan the buyer runs on, and a signed-in
+    visitor can ask for a new coin with every check. Past the ceiling a coin's
+    details come from pump.fun and DexScreener alone, which cost nothing.
+    """
+    global _das_last_alarm
+    limit = get_settings().helius_das_limit_per_minute
+    if limit <= 0:
+        return True
+    now = time.monotonic()
+    with _DAS_LOCK:
+        while _DAS_CALLS and now - _DAS_CALLS[0] >= 60:
+            _DAS_CALLS.popleft()
+        if len(_DAS_CALLS) < limit:
+            _DAS_CALLS.append(now)
+            return True
+        if now - _das_last_alarm >= 60:
+            _das_last_alarm = now
+            logger.warning("Helius DAS lookups are at their ceiling of %s a minute; using the free sources only", limit)
+        return False
+
+
 def _fetch_helius_token_metadata(mint_address: str) -> dict[str, str | None]:
     settings = get_settings()
     api_key = settings.helius_api_key.strip()
-    if not api_key:
+    if not api_key or not _take_das_budget():
         return {"token_name": None, "token_symbol": None, "token_image_url": None}
 
     base_url = settings.helius_das_base_url.rstrip("/")
@@ -767,11 +797,21 @@ def _fetch_helius_token_metadata(mint_address: str) -> dict[str, str | None]:
     }
 
 
+#: pump.fun's own record of a coin. `/coins/{mint}` started answering 404 for
+#: every coin, live ones included, and nothing noticed: a 404 was read as "not a
+#: pump.fun coin" and not logged, so every small coin lost the source that has
+#: its picture from the moment it is created. The same record is now at
+#: `/coins-v2/{mint}` (checked 2026-09-29 from the mainnet server: name, symbol,
+#: image_uri). The API is pump.fun's and has no documentation, so it can move
+#: again; that is why a 404 is logged below.
+PUMPFUN_COIN_URL = "https://frontend-api-v3.pump.fun/coins-v2/{mint}"
+
+
 def _fetch_pumpfun_token_metadata(mint_address: str) -> dict[str, str | None]:
     if not mint_address.endswith("pump"):
         return {"token_name": None, "token_symbol": None, "token_image_url": None}
 
-    url = f"https://frontend-api-v3.pump.fun/coins/{mint_address}?sync=true"
+    url = PUMPFUN_COIN_URL.format(mint=mint_address)
     req = urllib_request.Request(
         url=url,
         method="GET",
@@ -783,8 +823,9 @@ def _fetch_pumpfun_token_metadata(mint_address: str) -> dict[str, str | None]:
             raw = response.read().decode("utf-8")
             data = json.loads(raw or "{}")
     except urllib_error.HTTPError as exc:
-        if exc.code != 404:
-            logger.warning("pump.fun metadata fetch failed (mint=%s, status=%s)", mint_address, exc.code)
+        # A pump-suffixed mint pump.fun has never heard of is rare. Every coin
+        # answering 404 at once is the path moving, as it did once already.
+        logger.warning("pump.fun metadata fetch failed (mint=%s, status=%s)", mint_address, exc.code)
         return {"token_name": None, "token_symbol": None, "token_image_url": None}
     except Exception as exc:
         logger.warning("pump.fun metadata fetch failed (mint=%s, error=%s)", mint_address, exc)
@@ -835,16 +876,32 @@ def _fetch_dexscreener_token_metadata(mint_address: str) -> dict[str, str | None
 
 
 def _fetch_token_metadata(mint_address: str) -> dict[str, str | None]:
+    """A coin's name, ticker and picture, each from the first source that has it.
+
+    The sources used to be tried until one answered with anything, and that
+    answer was taken whole. A source that knew the name but not the picture
+    ended the search, so a picture another source had was never asked for, and
+    the background retry went down the same path and stopped at the same place.
+    Now the search goes on until all three are known or the sources run out.
+
+    The free sources go first. Helius DAS costs 10 credits a lookup, so it is
+    asked only for what pump.fun and DexScreener did not have, usually a
+    picture of a coin that was not launched on pump.fun.
+    """
     fetchers = (
         _fetch_pumpfun_token_metadata,
-        _fetch_helius_token_metadata,
         _fetch_dexscreener_token_metadata,
+        _fetch_helius_token_metadata,
     )
+    merged: dict[str, str | None] = {"token_name": None, "token_symbol": None, "token_image_url": None}
     for fetcher in fetchers:
         metadata = fetcher(mint_address)
-        if metadata.get("token_name") or metadata.get("token_symbol") or metadata.get("token_image_url"):
-            return metadata
-    return {"token_name": None, "token_symbol": None, "token_image_url": None}
+        for key in merged:
+            if not merged[key] and metadata.get(key):
+                merged[key] = metadata[key]
+        if all(merged.values()):
+            break
+    return merged
 
 
 def _to_float(value: object) -> float:
@@ -1605,7 +1662,7 @@ async def get_current_lottery(
                     draw_seconds=_expected_draw_seconds(),
                     next_pool_at=_next_pool_at(
                         lottery.proceeding_purchases_started_at,
-                        getattr(lottery, "closed_at", None),
+                        lottery.closed_at,
                     ),
                     max_total=lottery.max_total,
                     total_pool_sol=total_pool_by_lottery_id.get(lottery.id, 0.0),
@@ -1635,7 +1692,7 @@ async def get_current_lottery(
                     draw_seconds=_expected_draw_seconds(),
                     next_pool_at=_next_pool_at(
                         lottery.proceeding_purchases_started_at,
-                        getattr(lottery, "closed_at", None),
+                        lottery.closed_at,
                     ),
                     max_total=lottery.max_total,
                     total_pool_sol=total_pool_by_lottery_id.get(lottery.id, 0.0),
@@ -2138,6 +2195,54 @@ def _verification_from_events(db: Session, lottery_pda: str) -> dict[str, object
         "vrf_algorithm_hash": _hex(initialized.get("vrf_algorithm_hash")),
     }
 
+#: The round's account as read for the verification page, per round. The page
+#: is public and needs no sign-in, and every read is a call on the plan the
+#: buyer runs on, so a round is read at most once in this window.
+VERIFICATION_ACCOUNT_CACHE_SECONDS = 15.0
+_VERIFICATION_ACCOUNT_CACHE: dict[int, tuple[float, dict[str, object]]] = {}
+_VERIFICATION_ACCOUNT_LOCK = threading.Lock()
+_FINISHED_ROUND_STATUSES = {"closed", "completed", "initialize_abandoned"}
+
+
+def _verification_account(lottery_id: int, lottery_pda: str, status: object, settings) -> dict[str, object]:
+    """The round's account from the chain, or {} when there is none to read.
+
+    A finished round has no account left (`close_lottery` returns its rent), so
+    for one the chain is not asked at all and the page falls back to the
+    events, as it did after reading nothing. That leaves the one or two rounds
+    in progress, each read at most once in VERIFICATION_ACCOUNT_CACHE_SECONDS:
+    asking for every round number in turn costs nothing.
+    """
+    if str(getattr(status, "value", status)).lower() in _FINISHED_ROUND_STATUSES:
+        return {}
+    now = time.monotonic()
+    with _VERIFICATION_ACCOUNT_LOCK:
+        cached = _VERIFICATION_ACCOUNT_CACHE.get(lottery_id)
+        if cached and now - cached[0] < VERIFICATION_ACCOUNT_CACHE_SECONDS:
+            return dict(cached[1])
+
+    onchain: dict[str, object] = {}
+    try:
+        client = Client(settings.solana_http_endpoint.strip())
+        response = client.get_account_info(Pubkey.from_string(lottery_pda))
+        value = getattr(response, "value", None)
+        if value is not None and getattr(value, "data", None):
+            onchain = _parse_lottery_account(bytes(value.data))
+    except Exception:  # noqa: BLE001
+        # The network is unreachable, so we return what the database knows. A
+        # verifier will go to the network themselves anyway, they have the pool
+        # address. A failure is not cached: the next request tries again.
+        logger.warning("verification: on-chain read failed (lottery_id=%s)", lottery_id)
+        return {}
+
+    with _VERIFICATION_ACCOUNT_LOCK:
+        _VERIFICATION_ACCOUNT_CACHE[lottery_id] = (time.monotonic(), onchain)
+        if len(_VERIFICATION_ACCOUNT_CACHE) > 64:
+            for key, _ in sorted(_VERIFICATION_ACCOUNT_CACHE.items(), key=lambda item: item[1][0])[:16]:
+                _VERIFICATION_ACCOUNT_CACHE.pop(key, None)
+    return dict(onchain)
+
+
 @router.get("/{lottery_id}/verification", response_model=LotteryVerificationResponse)
 def get_lottery_verification(lottery_id: int, db: Session = Depends(get_db)):
     """
@@ -2213,17 +2318,7 @@ def get_lottery_verification(lottery_id: int, db: Session = Depends(get_db)):
 
     onchain: dict[str, object] = {}
     if lottery_pda:
-        try:
-            client = Client(settings.solana_http_endpoint.strip())
-            response = client.get_account_info(Pubkey.from_string(lottery_pda))
-            value = getattr(response, "value", None)
-            if value is not None and getattr(value, "data", None):
-                onchain = _parse_lottery_account(bytes(value.data))
-        except Exception:  # noqa: BLE001
-            # The network is unreachable, so we return what the database knows.
-            # A verifier will go to the network themselves anyway, they have the
-            # pool address.
-            logger.warning("verification: on-chain read failed (lottery_id=%s)", lottery_id)
+        onchain = _verification_account(int(lottery_id), lottery_pda, lottery.status, settings)
 
     # A finished round has no account left: `close_lottery` returns its rent, so
     # the commitment, the request seed and the algorithm fingerprint go with it.

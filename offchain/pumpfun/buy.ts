@@ -27,7 +27,8 @@ import {
 } from "../solana/config";
 import { PUMPFUN_IDL } from "./idl";
 import { extractPumpErrorName } from "./errors";
-import { getSignedTransactionSignature, PostSendError, signTransaction } from "../solana/transaction";
+import { BuyHooks, getSignedTransactionSignature, PostSendError, signTransaction } from "../solana/transaction";
+import { sendAndConfirmWithRebroadcast } from "../solana/rebroadcast";
 import { budgetInstructions, COMPUTE_UNITS } from "../solana/priorityFee";
 import { logger as rootLogger, Logger } from "../logger";
 
@@ -812,7 +813,8 @@ export async function buyPumpfun(
     solAmount: number,
     keeper: Keypair,
     slippageBps: number,
-    log?: Logger
+    log?: Logger,
+    hooks?: BuyHooks
 ): Promise<string> {
     const l = log || rootLogger;
 
@@ -838,20 +840,22 @@ export async function buyPumpfun(
     }
 
     // Stage 3 — post-send: the tx goes out (no fallback allowed)
-    let signature: string | undefined;
+    const signature = getSignedTransactionSignature(signed);
+    if (!signature) {
+        throw new Error("Signed pump.fun transaction has no signature");
+    }
+    // Written down before it goes out: from the first send on it may land.
+    hooks?.onSigned?.({ signature, lastValidBlockHeight: signed.context.lastValidBlockHeight });
     try {
-        signature = await connection.sendRawTransaction(signed.serialize(), {
-            skipPreflight: true,
-        });
-
         // We wait on the blockhash the transaction was signed with. A fresh one
         // taken after sending would give a deadline about 150 slots longer than
         // the real one, and an expired transaction would sit in the wait longer
         // than it should — with a time-limited retry window that is attempts
-        // thrown away.
-        const confirmation = await connection.confirmTransaction(
-            { signature, ...signed.context },
-            "confirmed"
+        // thrown away. The same bytes go out again every couple of seconds
+        // until then (see solana/rebroadcast.ts).
+        const confirmation = await sendAndConfirmWithRebroadcast(
+            signed.serialize(),
+            { signature, ...signed.context }
         );
 
         if (confirmation.value.err) {
@@ -873,7 +877,7 @@ export async function buyPumpfun(
         // the transaction, and without the signature the retry could not ask.
         throw new PostSendError(
             `Transaction send/confirm failed: ${msg}`,
-            signature ?? getSignedTransactionSignature(signed),
+            signature,
             error,
             signed.context.lastValidBlockHeight
         );

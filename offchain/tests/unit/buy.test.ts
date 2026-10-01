@@ -66,7 +66,8 @@ describe("buy", () => {
                 TEST_AMOUNT,
                 TEST_KEEPER,
                 TEST_SLIPPAGE,
-                expect.anything()
+                expect.anything(),
+            undefined
             );
             expect(mockBuyDex).not.toHaveBeenCalled();
             expect(result).toEqual({
@@ -88,7 +89,8 @@ describe("buy", () => {
                 TEST_AMOUNT,
                 TEST_KEEPER,
                 TEST_SLIPPAGE,
-                expect.anything()
+                expect.anything(),
+            undefined
             );
             expect(result).toEqual({
                 signature: "dex-signature",
@@ -109,7 +111,8 @@ describe("buy", () => {
 
             expect(mockBuyPumpfun).toHaveBeenCalled();
             expect(mockBuyDex).toHaveBeenCalledWith(
-                TEST_MINT, TEST_AMOUNT, TEST_KEEPER, TEST_SLIPPAGE, expect.anything()
+                TEST_MINT, TEST_AMOUNT, TEST_KEEPER, TEST_SLIPPAGE, expect.anything(),
+            undefined
             );
             expect(result).toEqual({ signature: "dex-fallback-signature", venue: "dex", fallback: true });
         });
@@ -215,7 +218,8 @@ describe("buy", () => {
 
             expect(mockBuyDex).toHaveBeenCalled();
             expect(mockBuyPumpswap).toHaveBeenCalledWith(
-                TEST_MINT, TEST_AMOUNT, TEST_KEEPER, TEST_SLIPPAGE, expect.anything()
+                TEST_MINT, TEST_AMOUNT, TEST_KEEPER, TEST_SLIPPAGE, expect.anything(),
+            undefined
             );
             expect(result).toEqual({ signature: "pumpswap-signature", venue: "pumpswap", fallback: true });
         });
@@ -278,7 +282,8 @@ describe("buy", () => {
                 TEST_AMOUNT,
                 TEST_KEEPER,
                 500, // DEFAULT_SLIPPAGE_BPS
-                expect.anything()
+                expect.anything(),
+            undefined
             );
         });
     });
@@ -359,5 +364,34 @@ describe("errors are labelled with the venue", () => {
 
         const err = await buy(TEST_MINT, TEST_AMOUNT, TEST_KEEPER, TEST_SLIPPAGE).catch((e) => e);
         expect(getErrorVenue(err)).toBe("pumpswap");
+    });
+
+    // The attempt is written down before it goes out, whichever path buys:
+    // the batch passes its recorder through here (see BuyHooks).
+    describe("the hooks reach whichever path buys", () => {
+        const hooks = { onSigned: jest.fn() };
+
+        it("the curve", async () => {
+            mockIsBondingCurveActive.mockResolvedValue(true);
+            mockBuyPumpfun.mockResolvedValue("sig");
+            await buy(TEST_MINT, TEST_AMOUNT, TEST_KEEPER, TEST_SLIPPAGE, undefined, hooks);
+            expect(mockBuyPumpfun.mock.calls[0][5]).toBe(hooks);
+        });
+
+        it("the DEX, as the curve's fallback too", async () => {
+            mockIsBondingCurveActive.mockResolvedValue(true);
+            mockBuyPumpfun.mockRejectedValue(new Error("Token graduated (bonding curve complete)"));
+            mockBuyDex.mockResolvedValue("sig");
+            await buy(TEST_MINT, TEST_AMOUNT, TEST_KEEPER, TEST_SLIPPAGE, undefined, hooks);
+            expect(mockBuyDex.mock.calls[0][5]).toBe(hooks);
+        });
+
+        it("PumpSwap, when Jupiter has no route", async () => {
+            mockIsBondingCurveActive.mockResolvedValue(false);
+            mockBuyDex.mockRejectedValue(new NoRouteError("Jupiter has no route"));
+            mockBuyPumpswap.mockResolvedValue("sig");
+            await buy(TEST_MINT, TEST_AMOUNT, TEST_KEEPER, TEST_SLIPPAGE, undefined, hooks);
+            expect(mockBuyPumpswap.mock.calls[0][5]).toBe(hooks);
+        });
     });
 });

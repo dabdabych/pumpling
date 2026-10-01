@@ -19,7 +19,9 @@
  *
  * 1. **Do not buy twice.** How much was already spent is visible in the batch
  *    files, from the completed purchases. We buy only the remainder, and only
- *    if it is meaningful.
+ *    if it is meaningful. A purchase that was on the wire when the process died
+ *    has its transaction written down (see `BuyHooks`); the chain is asked
+ *    about it first, and one that landed, or may still, counts as spent.
  * 2. **Do not send twice.** Deliveries stuck in `in_progress` go back into the
  *    queue: before a repeat their signature is checked on the network (see
  *    `sendRounds`), so one that arrived does not go out a second time.
@@ -30,7 +32,8 @@ import * as path from "path";
 import { Keypair, PublicKey } from "@solana/web3.js";
 
 import { logger as rootLogger, Logger } from "../logger";
-import { BatchState } from "../scheduler/types";
+import { BatchState, PurchaseRecord } from "../scheduler/types";
+import { SignatureOutcome, signatureOutcome } from "../solana/signatureOutcome";
 import { readBatchFile } from "./batchFile";
 import { BuyPlanItem, runBuyAndSend } from "./orchestrator";
 import { OrchestratorStateManager } from "./state";
@@ -55,6 +58,8 @@ export interface ResumeDeps {
     sleepFn?: (ms: number) => Promise<void>;
     /** Overrides reading a batch file, for tests. */
     readBatch?: (filePath: string) => BatchState | null;
+    /** Overrides asking the chain about a signature, for tests. */
+    outcome?: (signature: string, lastValidBlockHeight?: number) => Promise<SignatureOutcome>;
     now?: () => number;
 }
 
@@ -99,14 +104,80 @@ export function defaultReadBatch(filePath: string): BatchState | null {
     return readBatchFile(filePath);
 }
 
-/** How much SOL actually went out on this batch: counted from completed purchases. */
-export function spentInBatch(batch: BatchState | null): number {
+/** The last transaction a purchase put on the wire, if it put any. */
+export function lastAttempt(purchase: PurchaseRecord): { signature: string; lastValidBlockHeight?: number } | null {
+    const attempts = purchase.sentAttempts ?? [];
+    if (attempts.length > 0) {
+        const last = attempts[attempts.length - 1];
+        return { signature: last.signature, lastValidBlockHeight: last.lastValidBlockHeight };
+    }
+    if (purchase.pendingSignature) {
+        return { signature: purchase.pendingSignature, lastValidBlockHeight: purchase.pendingLastValidBlockHeight };
+    }
+    return null;
+}
+
+/**
+ * How much SOL went out on this batch: the completed purchases, and those
+ * whose last transaction may have landed (`mayHaveLanded`, see
+ * `purchasesThatMayHaveLanded`).
+ */
+export function spentInBatch(batch: BatchState | null, mayHaveLanded: ReadonlySet<string> = new Set()): number {
     if (!batch) {
         return 0;
     }
     return (batch.purchases ?? [])
-        .filter((purchase) => purchase.status === "completed")
+        .filter((purchase) => {
+            if (purchase.status === "completed") {
+                return true;
+            }
+            const last = lastAttempt(purchase);
+            return last !== null && mayHaveLanded.has(last.signature);
+        })
         .reduce((sum, purchase) => sum + (purchase.solAmount ?? 0), 0);
+}
+
+/**
+ * The purchases that were on the wire when the process died, and may have
+ * bought.
+ *
+ * A batch writes each transaction down before it sends it, so a purchase
+ * caught between sending and its confirmation has a signature and no result.
+ * Counting only completed purchases as spent bought such a purchase again, and
+ * if the first had landed the coin was bought twice. So the chain is asked:
+ * one that landed is spent, and so is one whose fate it cannot tell yet,
+ * because buying again is the one mistake that cannot be undone. If it never
+ * lands its SOL was never spent, and the refund, which reads what the keeper
+ * really paid, returns it.
+ */
+export async function purchasesThatMayHaveLanded(
+    state: LotteryState,
+    readBatch: (filePath: string) => BatchState | null = defaultReadBatch,
+    outcome: (signature: string, lastValidBlockHeight?: number) => Promise<SignatureOutcome> = signatureOutcome
+): Promise<Set<string>> {
+    const mayHaveLanded = new Set<string>();
+    for (const token of state.tokenBuys ?? []) {
+        if (token.status === "completed" || token.status === "failed") {
+            continue;
+        }
+        const files = token.batchStateFiles ?? (token.batchStateFile ? [token.batchStateFile] : []);
+        for (const file of files) {
+            for (const purchase of readBatch(file)?.purchases ?? []) {
+                if (purchase.status === "completed") {
+                    continue;
+                }
+                const last = lastAttempt(purchase);
+                if (!last) {
+                    continue;
+                }
+                const verdict = await outcome(last.signature, last.lastValidBlockHeight);
+                if (verdict === "landed" || verdict === "unknown") {
+                    mayHaveLanded.add(last.signature);
+                }
+            }
+        }
+    }
+    return mayHaveLanded;
 }
 
 export interface ResumePlan {
@@ -127,7 +198,8 @@ export interface ResumePlan {
  */
 export function planResume(
     stateManager: OrchestratorStateManager,
-    readBatch: (filePath: string) => BatchState | null = defaultReadBatch
+    readBatch: (filePath: string) => BatchState | null = defaultReadBatch,
+    mayHaveLanded: ReadonlySet<string> = new Set()
 ): ResumePlan {
     const state = stateManager.getState();
     const buys: BuyPlanItem[] = [];
@@ -139,7 +211,7 @@ export function planResume(
         }
 
         const files = token.batchStateFiles ?? (token.batchStateFile ? [token.batchStateFile] : []);
-        const spent = files.reduce((sum, file) => sum + spentInBatch(readBatch(file)), 0);
+        const spent = files.reduce((sum, file) => sum + spentInBatch(readBatch(file), mayHaveLanded), 0);
         const remaining = Math.round((token.adjustedSolAmount - spent) * 1e9) / 1e9;
 
         if (spent > 0) {
@@ -205,7 +277,9 @@ export async function resumeLottery(
 
     const stateManager = OrchestratorStateManager.load(stateFilePath);
     const state = stateManager.getState();
-    const plan = planResume(stateManager, deps.readBatch ?? defaultReadBatch);
+    const readBatch = deps.readBatch ?? defaultReadBatch;
+    const mayHaveLanded = await purchasesThatMayHaveLanded(state, readBatch, deps.outcome);
+    const plan = planResume(stateManager, readBatch, mayHaveLanded);
     const windowMinutes = remainingWindowMinutes(state, now());
 
     log.warn(
@@ -215,6 +289,7 @@ export async function resumeLottery(
             tokensToBuy: plan.buys.length,
             tokensSettled: plan.settled.length,
             revivedSends: plan.revivedSends,
+            inFlightCountedAsSpent: mayHaveLanded.size,
             windowMinutes,
         },
         `Resuming lottery ${state.lotteryId}: ${plan.buys.length} buys left, ${plan.revivedSends} sends back in the queue`

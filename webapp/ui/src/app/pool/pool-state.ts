@@ -272,6 +272,15 @@ export function formatLongCountdown(ms: number | null): string {
  * The one caveat is amounts below a cent. Rounding them to "0" would be a lie
  * that there is no money at all, so for those we write "<0.01".
  */
+/**
+ * What stands in for a coin's picture when there is none: the first two letters
+ * or digits of its ticker. The coin list and the share card both use it, and the
+ * server's card follows the same rule (`webapp/backend/shared/share_card.py`).
+ */
+export function coinInitials(ticker: string): string {
+  return ticker.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || '?';
+}
+
 export function formatSol(value: number): string {
   if (!Number.isFinite(value)) {
     return '0';

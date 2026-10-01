@@ -56,7 +56,7 @@ const STORY_STEP_DURATION_S = 0.7;
 // ===================== qres scroll-story data (designer redesign) =====================
 const QRES_TRUTH_LINE = [
   'any Solana memecoin',
-  'a new pool every 3 hours',
+  'a new pool every 2 hours',
   'one hour of public buys',
   'every buy on-chain',
   '3% fee'
@@ -1346,7 +1346,7 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
       const shareBars = q('[data-how-share]');
       const shackle = q('[data-how-shackle]');
       /** The fraction of the scale the phase node sits at. The same as `nodes` in story-how. */
-      const nodeAt = [0, 1 / 3, 2 / 3, 5 / 6, 1];
+      const nodeAt = [0, 1 / 4, 1 / 2, 3 / 4, 1];
 
       // ------------------------------------------------ Quick start
       const quickStartSection = q('[data-qres-quick-start]');

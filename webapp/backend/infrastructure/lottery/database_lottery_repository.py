@@ -196,6 +196,7 @@ class DatabaseLotteryRepository(LotteryRepository):
             second_phase_started_at=lottery_model.second_phase_started_at,
             proceeding_purchases_started_at=lottery_model.proceeding_purchases_started_at,
             close_reason=getattr(lottery_model, "close_reason", None),
+            closed_at=getattr(lottery_model, "closed_at", None),
             initialize_abandoned_at=getattr(lottery_model, "initialize_abandoned_at", None),
             initialize_abandoned_error=getattr(lottery_model, "initialize_abandoned_error", None),
             is_offchain_vrf=bool(getattr(lottery_model, "is_offchain_vrf", False)),
