@@ -28,6 +28,7 @@ import { BurnPercent, MEMO_PROGRAM_ID, burnMemoText } from './burn';
 import { lamportsToSol } from './lamports';
 import { DEPOSIT_COMPUTE_UNITS, PriorityLevel, RECOMMENDED_LEVEL, estimateFromSamples, priceFor } from './priority-fee';
 import { PoolAccounts, PoolMarket } from './pool-state';
+import { CoinScreening, toCoinScreening } from '../shared/coin-screening/coin-screening';
 
 export interface CheckedCoin {
   mint: string;
@@ -40,6 +41,8 @@ export interface CheckedCoin {
   market: CoinMarket | null;
   /** Whether the buyer can burn this coin: the burn choice is offered only then. */
   canBurn: boolean;
+  /** The red-flag check in the pool open now, as the check answered it. The pool's own list is fresher. */
+  screening: CoinScreening | null;
 }
 
 export interface CoinMarket {
@@ -208,7 +211,8 @@ export class CommitService {
       logoUrl: /^https?:\/\//i.test(response.token_image_url || '') ? response.token_image_url!.trim() : null,
       venue: market === 'dex' ? coinVenue(response) : null,
       market: coinMarket(response),
-      canBurn: response.can_burn === true
+      canBurn: response.can_burn === true,
+      screening: toCoinScreening(response.screening)
     };
     this.checkedCoins.set(cacheKey, coin);
     this.checkedCoins.set(`${market}:${canonical}`, coin);

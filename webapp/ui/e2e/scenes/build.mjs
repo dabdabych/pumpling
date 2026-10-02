@@ -18,6 +18,8 @@ const sources = [
   [join(here, '..', '..', 'src', 'app', 'pool', 'token-amount.ts'), join(here, 'token-amount.mjs')],
   [join(here, '..', '..', 'src', 'app', 'pool', 'feed-rows.ts'), join(here, 'feed-rows.mjs')],
   [join(here, '..', '..', 'src', 'app', 'shared', 'verify-round', 'burn-view.ts'), join(here, 'burn-view.mjs')],
+  // The red-flag check's words: what the mark and its card say, and when.
+  [join(here, '..', '..', 'src', 'app', 'shared', 'coin-screening', 'coin-screening.ts'), join(here, 'coin-screening.mjs')],
 ];
 
 for (const [source, out] of sources) {

@@ -3,6 +3,7 @@ import { HypeCountdownResponse } from '../api-client/models/hype-countdown-respo
 import { LotteryListResponse } from '../api-client/models/lottery-list-response';
 import { LotteryWinnerResultResponse } from '../api-client/models/lottery-winner-result-response';
 import { LotteryEntryResponse } from '../api-client/models/lottery-entry-response';
+import { CoinScreening, toCoinScreening } from '../shared/coin-screening/coin-screening';
 
 /**
  * The pool state for the interface, from the `/lottery/current` answer and the
@@ -52,6 +53,8 @@ export interface PoolCoin {
   drawnSol: number | null;
   /** The share of this coin's tokens its backers asked to burn, SOL-weighted, in basis points. 0 is none. */
   burnBps: number;
+  /** The red-flag check at the first commit to it in this pool; null until there is an answer, or if there is none. */
+  screening: CoinScreening | null;
 }
 
 export interface PoolAccounts {
@@ -330,7 +333,8 @@ function buildCoins(
         commits: Math.max(0, Math.floor(toFiniteNumber(entry?.bet_count) ?? 0)),
         poolShare: totalSol > 0 ? sol / totalSol : 0,
         drawnSol: drawn ? (drawn.get(mint) ?? 0) : null,
-        burnBps: Math.min(10_000, Math.max(0, toFiniteNumber(entry?.burn_bps_avg) ?? 0))
+        burnBps: Math.min(10_000, Math.max(0, toFiniteNumber(entry?.burn_bps_avg) ?? 0)),
+        screening: toCoinScreening(entry?.screening)
       };
     })
     .filter((coin) => coin.mint.length > 0);

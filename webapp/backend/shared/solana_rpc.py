@@ -31,6 +31,8 @@ from that transaction included.
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 from typing import Any, Optional
 from urllib.parse import urlsplit
@@ -195,6 +197,25 @@ class SolanaJsonRpc:
 
         result = await self._call("getTransaction", [str(signature), options])
         return result if isinstance(result, dict) else None
+
+    async def get_account(self, address: Any) -> Optional[tuple[str, bytes]]:
+        """The account's owner program and its data, or None when there is no such account.
+
+        The raw bytes rather than `jsonParsed`: a node's names for Token-2022
+        extensions have changed between versions, the layout of the account has not.
+        """
+        result = await self._call("getAccountInfo", [str(address), {"encoding": "base64"}])
+        value = result.get("value") if isinstance(result, dict) else None
+        if not isinstance(value, dict):
+            return None
+        data = value.get("data")
+        if not isinstance(data, list) or not data or not isinstance(data[0], str):
+            return None
+        try:
+            raw = base64.b64decode(data[0])
+        except (ValueError, binascii.Error):
+            return None
+        return str(value.get("owner") or ""), raw
 
 
 def signature_failed(row: dict) -> bool:

@@ -291,6 +291,73 @@ def burn_blocker(owner: Pubkey, data: bytes) -> str | None:
     return None
 
 
+# --- What the mint itself lets its issuer do ----------------------------------
+#
+# The red flags a coin carries in its own account, read without any data
+# provider (`shared/coin_screening.py`). Each is a power over the people who
+# hold the coin, and none is needed by a memecoin. pump.fun leaves both
+# authorities empty and puts nothing but metadata in a Token-2022 mint. In a
+# sample of 127 live coins on 2026-10-02, 115 of the 116 Token-2022 mints
+# carried only MetadataPointer and TokenMetadata, and none of the 125 readable
+# mints had an authority. The 116th was PUMP, pump.fun's own token, with a
+# transfer hook, which is why a transfer hook is not a flag here.
+#
+# Offsets from `MintLayout` in @solana/spl-token: mintAuthorityOption u32 at 0,
+# the authority at 4, freezeAuthorityOption u32 at 46, the authority at 50.
+# Extension numbers from its `ExtensionType`: DefaultAccountState 6 (one byte,
+# Frozen = 2), NonTransferable 9 (no value), PermanentDelegate 12 (a key, all
+# zeros for none); Pausable 26 as above, its authority then the `paused` flag.
+
+_MINT_AUTHORITY_OPTION_OFFSET = 0
+_FREEZE_AUTHORITY_OPTION_OFFSET = 46
+_FREEZE_AUTHORITY_OFFSET = 50
+_EXT_DEFAULT_ACCOUNT_STATE = 6
+_EXT_NON_TRANSFERABLE = 9
+_EXT_PERMANENT_DELEGATE = 12
+_ACCOUNT_STATE_FROZEN = 2
+_NO_KEY = bytes(32)
+
+
+def mint_red_flags(owner: Pubkey, data: bytes) -> list[str] | None:
+    """The issuer's powers this mint carries, as reason codes; None if it is not a mint.
+
+    Pure: it reads the mint account's owner and bytes, nothing else. The codes
+    are the ones `shared/coin_screening.py` and the site know.
+    """
+    if owner not in (TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID) or len(data) < _MINT_ACCOUNT_MIN_SIZE:
+        return None
+    if not data[_MINT_IS_INITIALIZED_OFFSET]:
+        return None
+    flags: list[str] = []
+    if int.from_bytes(data[_FREEZE_AUTHORITY_OPTION_OFFSET:_FREEZE_AUTHORITY_OFFSET], "little") == 1:
+        flags.append("freeze_authority")
+    if int.from_bytes(data[_MINT_AUTHORITY_OPTION_OFFSET:_MINT_AUTHORITY_OPTION_OFFSET + 4], "little") == 1:
+        flags.append("mint_authority")
+    if owner == TOKEN_PROGRAM_ID or len(data) <= _BASE_ACCOUNT_LENGTH:
+        return flags
+    if data[_BASE_ACCOUNT_LENGTH] != _ACCOUNT_TYPE_MINT:
+        return None
+    index = _BASE_ACCOUNT_LENGTH + 1
+    while index + 4 <= len(data):
+        ext_type = int.from_bytes(data[index:index + 2], "little")
+        length = int.from_bytes(data[index + 2:index + 4], "little")
+        if ext_type == 0:
+            break  # the rest is padding
+        value = data[index + 4:index + 4 + length]
+        if len(value) < length:
+            break  # unreadable from here on: keep what was read
+        if ext_type == _EXT_PERMANENT_DELEGATE and value[:32] not in (b"", _NO_KEY):
+            flags.append("permanent_delegate")
+        elif ext_type == _EXT_NON_TRANSFERABLE:
+            flags.append("non_transferable")
+        elif ext_type == _EXT_DEFAULT_ACCOUNT_STATE and value[:1] == bytes([_ACCOUNT_STATE_FROZEN]):
+            flags.append("frozen_by_default")
+        elif ext_type == _EXT_PAUSABLE and (value[:32] not in (b"", _NO_KEY) or (len(value) > _PAUSED_OFFSET and value[_PAUSED_OFFSET] != 0)):
+            flags.append("pausable")
+        index += 4 + length
+    return flags
+
+
 def can_burn(mint_str: str, rpc_url: str = "https://api.mainnet-beta.solana.com") -> bool | None:
     """Whether the buyer can burn this coin. One RPC call.
 

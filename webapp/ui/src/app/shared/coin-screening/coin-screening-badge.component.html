@@ -1,0 +1,37 @@
+<app-info-popover [label]="label" [cardLabel]="cardLabel" (openChange)="onOpenChange($event)">
+  <span popoverTrigger class="mark" aria-hidden="true">
+    <svg viewBox="0 0 16 16"><circle cx="6.9" cy="6.9" r="3.9" /><path d="M9.8 9.8 13 13" /></svg>
+  </span>
+
+  <h3 class="card__title">
+    <span class="card__mark" aria-hidden="true">
+      <svg viewBox="0 0 16 16"><circle cx="6.9" cy="6.9" r="3.9" /><path d="M9.8 9.8 13 13" /></svg>
+    </span>
+    <span class="card__name">{{ title }}</span>
+    @if (flags; as count) {
+      <span class="card__flags">{{ count }}</span>
+    }
+  </h3>
+
+  <dl class="card__rows">
+    @for (row of rows; track $index) {
+      <div class="card__row" [class.card__row--flagged]="row.flagged" [class.card__row--unknown]="row.unknown">
+        <dt>@if (row.flagged) {<span class="sr-only">Red flag: </span>}{{ row.label }}</dt>
+        <dd>{{ row.value }}</dd>
+      </div>
+    }
+  </dl>
+
+  <div class="card__foot">
+    <time class="card__when" [attr.datetime]="checkedIso" [attr.title]="checkedExact">{{ checked }}</time>
+    @if (source.href) {
+      <a class="card__source" [href]="source.href" target="_blank" rel="noopener noreferrer">
+        {{ source.label }}
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5h5v5M9.5 2.5 3 9" /></svg>
+        <span class="sr-only">(opens in a new tab)</span>
+      </a>
+    } @else {
+      <span class="card__source card__source--plain">{{ source.label }}</span>
+    }
+  </div>
+</app-info-popover>

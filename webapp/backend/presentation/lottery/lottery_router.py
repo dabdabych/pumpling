@@ -17,17 +17,18 @@ from infrastructure.database.models.user_model import UserModel
 from infrastructure.database.models.token_metadata_model import TokenMetadataModel
 from infrastructure.database.models.lottery_model import LotteryModel
 from infrastructure.database.models.smart_contract_event_model import SmartContractEventModel
+from infrastructure.database.models.coin_screening_model import CoinScreeningModel
 from application.lottery.schemas import LotteryListResponse, LotteryEntryResponse, PricePointResponse, CoinResponse, CreateLotteryRequest, LotteryResponse, PagedLotteryResponse, ProblemDetails, CreateBetRequest, BetParticipationResponse, VrfPreviewResponse, MintAllowTokenRequest, MintAllowTokenResponse, Phase2AccountsResponse, RunPurchasesPayload, RunPurchasesResponse, OffchainVrfRequest, ActiveLotterySummaryResponse, LotteryWinnerResultResponse, LotteryArchiveListResponse, LotteryArchiveItemResponse, LotteryArchiveEntryResponse, LotteryCycleControlResponse, LotteryCycleControlsResponse, HypeCountdownResponse
 from application.lottery.schemas import PurchaseFeedResponse, PurchaseFeedCoinResponse, PurchaseFeedItemResponse
 from application.lottery.schemas import PurchaseFeedCoinBurnResponse, PurchaseFeedDeliveryResponse, PurchaseFeedBurnResponse, PurchaseFeedRefundResponse
-from application.lottery.schemas import CoinChartResponse, CoinChartPointResponse
+from application.lottery.schemas import CoinChartResponse, CoinChartPointResponse, CoinScreeningResponse
 from application.lottery.schemas import MyCommitsResponse, MyCommitRoundResponse, MyCommitCoinResponse
 from application.lottery.schemas import LotteryVerificationResponse, VerificationBurnResponse, VerificationBurnBetResponse, VerificationBurnTxResponse
 from application.lottery.vrf_engine import VrfEngine
 from domain.lottery.entities.lottery import Lottery, LotteryStatus, LotteryType
 from domain.lottery.entities.allowed_mint import NetworkType
 from domain.auth.entities.user import UserRole
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 import asyncio
 import os
@@ -320,6 +321,72 @@ def _cached_purchase_feed(lottery_id: int) -> dict[str, object] | None:
             for key, _ in oldest:
                 _PURCHASE_FEED_CACHE.pop(key, None)
     return payload
+
+
+def _screening_response(row: CoinScreeningModel | None) -> CoinScreeningResponse | None:
+    """A check the site can show, or None: pending and unavailable ones show nothing."""
+    if row is None or row.status not in ("clean", "flagged") or row.checked_at is None:
+        return None
+    return CoinScreeningResponse(
+        status=row.status,
+        reasons=list(row.reasons or []),
+        missing=list(row.missing or []),
+        source=row.source,
+        levels={str(rule): str(value) for rule, value in (row.levels or {}).items()},
+        on_curve=row.on_curve,
+        checked_at=row.checked_at,
+    )
+
+
+def _pool_screenings(db: Session, lottery_id: int) -> dict[str, CoinScreeningResponse]:
+    """Every coin's red-flag check in a pool that has an answer, by mint. One query.
+
+    An extra on the pool, never a condition of it: if it cannot be read, the
+    pool goes out without it, and the transaction is rolled back so the rest of
+    the answer still reads.
+    """
+    try:
+        rows = db.query(CoinScreeningModel).filter(
+            CoinScreeningModel.lottery_id == lottery_id,
+            CoinScreeningModel.status.in_(("clean", "flagged")),
+        ).all()
+    except Exception:
+        db.rollback()
+        logger.warning("coin screenings unreadable (lottery_id=%s)", lottery_id, exc_info=True)
+        return {}
+    shown: dict[str, CoinScreeningResponse] = {}
+    for row in rows:
+        # One odd row costs its own mark, never the pool.
+        try:
+            response = _screening_response(row)
+        except Exception:
+            logger.warning("coin screening unshowable (lottery_id=%s, mint=%s)", lottery_id, row.mint, exc_info=True)
+            continue
+        if response is not None:
+            shown[row.mint] = response
+    return shown
+
+
+def _open_pool_screening(db: Session, mint: str) -> CoinScreeningResponse | None:
+    """The coin's check in the pool taking commits now, for the commit dialog."""
+    row = db.query(CoinScreeningModel).join(
+        LotteryModel, LotteryModel.id == CoinScreeningModel.lottery_id,
+    ).filter(
+        CoinScreeningModel.mint == mint,
+        CoinScreeningModel.status.in_(("clean", "flagged")),
+        LotteryModel.status == LotteryStatus.CREATED,
+    ).order_by(CoinScreeningModel.lottery_id.desc()).first()
+    return _screening_response(row)
+
+
+def _screening_for_dialog(db: Session, mint: str) -> CoinScreeningResponse | None:
+    """The check never decides a commit: if it cannot be read, the dialog just shows nothing."""
+    try:
+        return _open_pool_screening(db, mint)
+    except Exception:
+        db.rollback()
+        logger.warning("coin screening unreadable (mint=%s)", mint, exc_info=True)
+        return None
 
 
 def _average_burn_bps(burn_weight: object, total_sol: object) -> float:
@@ -719,35 +786,54 @@ def _rpc_get_account_data(endpoint: str, account: str) -> bytes:
 _DAS_CALLS: deque[float] = deque()
 _DAS_LOCK = threading.Lock()
 _das_last_alarm = 0.0
+#: Lookups made on the UTC day in `_DAS_DAY["day"]`.
+_DAS_DAY: dict[str, object] = {"day": None, "count": 0, "said": False}
+
+
+def _utc_today() -> date:
+    return datetime.now(timezone.utc).date()
 
 
 def _take_das_budget() -> bool:
-    """Whether one more paid DAS lookup fits in this minute, from everybody together.
+    """Whether one more paid DAS lookup fits, from everybody together: in this
+    minute, and on this UTC day when a daily ceiling is set.
 
-    `getAsset` costs 10 credits of the plan the buyer runs on, and a signed-in
-    visitor can ask for a new coin with every check. Past the ceiling a coin's
-    details come from pump.fun and DexScreener alone, which cost nothing.
+    `getAsset` costs 10 credits of a paid plan, and any signed-in visitor can
+    ask for a coin nobody has looked up yet with every check: there are
+    millions of real mints to ask about. Past either ceiling a coin's details
+    come from pump.fun and DexScreener alone, which cost nothing. The counters
+    live in this process, and the API runs as one.
     """
     global _das_last_alarm
-    limit = get_settings().helius_das_limit_per_minute
-    if limit <= 0:
-        return True
+    settings = get_settings()
+    per_minute = settings.helius_das_limit_per_minute
+    per_day = settings.helius_das_daily_limit
     now = time.monotonic()
+    today = _utc_today()
     with _DAS_LOCK:
-        while _DAS_CALLS and now - _DAS_CALLS[0] >= 60:
-            _DAS_CALLS.popleft()
-        if len(_DAS_CALLS) < limit:
+        if _DAS_DAY["day"] != today:
+            _DAS_DAY.update(day=today, count=0, said=False)
+        if per_day > 0 and int(_DAS_DAY["count"]) >= per_day:
+            if not _DAS_DAY["said"]:
+                _DAS_DAY["said"] = True
+                logger.warning("Helius DAS lookups are at their ceiling of %s a day; using the free sources only until 00:00 UTC", per_day)
+            return False
+        if per_minute > 0:
+            while _DAS_CALLS and now - _DAS_CALLS[0] >= 60:
+                _DAS_CALLS.popleft()
+            if len(_DAS_CALLS) >= per_minute:
+                if now - _das_last_alarm >= 60:
+                    _das_last_alarm = now
+                    logger.warning("Helius DAS lookups are at their ceiling of %s a minute; using the free sources only", per_minute)
+                return False
             _DAS_CALLS.append(now)
-            return True
-        if now - _das_last_alarm >= 60:
-            _das_last_alarm = now
-            logger.warning("Helius DAS lookups are at their ceiling of %s a minute; using the free sources only", limit)
-        return False
+        _DAS_DAY["count"] = int(_DAS_DAY["count"]) + 1
+        return True
 
 
 def _fetch_helius_token_metadata(mint_address: str) -> dict[str, str | None]:
     settings = get_settings()
-    api_key = settings.helius_api_key.strip()
+    api_key = settings.helius_das_api_key.strip()
     if not api_key or not _take_das_budget():
         return {"token_name": None, "token_symbol": None, "token_image_url": None}
 
@@ -1744,6 +1830,7 @@ async def get_current_lottery(
             ).order_by(
                 func.sum(BetParticipationModel.sol_amount).desc()
             ).all()
+            screenings = _pool_screenings(db, lottery_id) if bet_stats else {}
 
             for rank, (meme_coin_address, total_bet, bet_count, burn_weight) in enumerate(bet_stats, 1):
                 coin_name, coin_symbol, coin_logo = _get_coin_metadata(db, str(meme_coin_address))
@@ -1767,6 +1854,7 @@ async def get_current_lottery(
                     total_solana_bet=float(total_bet),
                     bet_count=bet_count,
                     burn_bps_avg=_average_burn_bps(burn_weight, total_bet),
+                    screening=screenings.get(str(meme_coin_address)),
                 )
                 response_entries.append(response_entry)
 
@@ -3079,6 +3167,7 @@ async def check_mint(
             dex_liquidity_pool_count=dex_pool_count,
             dex_liquidity_check_unverified=dex_check_unverified,
             network_type=network_type.value,
+            screening=_screening_for_dialog(db, canonical_mint),
             **token_metadata,
             **market,
         )

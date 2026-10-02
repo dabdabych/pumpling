@@ -343,8 +343,8 @@ class TestThePictureIsFoundWhereItIs:
         router = self.router()
         router._DAS_CALLS.clear()
         monkeypatch.setattr(router, "get_settings", lambda: SimpleNamespace(
-            helius_api_key="paid-key", helius_das_base_url="https://mainnet.helius-rpc.com",
-            helius_das_limit_per_minute=3, external_lookup_timeout_seconds=1.0,
+            helius_api_key="paid-key", helius_das_api_key="paid-key", helius_das_base_url="https://mainnet.helius-rpc.com",
+            helius_das_limit_per_minute=3, helius_das_daily_limit=0, external_lookup_timeout_seconds=1.0,
         ))
         sent = []
 
@@ -369,6 +369,69 @@ class TestThePictureIsFoundWhereItIs:
         # Three paid lookups in the minute, then nothing is sent at all.
         assert len(sent) == 3
         assert [bool(a["token_name"]) for a in answers] == [True, True, True, False, False]
+
+    def das(self, monkeypatch, *, rpc_key="", das_key="das-key", per_minute=0, per_day=0, today=None):
+        """`_fetch_helius_token_metadata` against a fake Helius; returns the URLs it sent."""
+        from datetime import date
+        from types import SimpleNamespace
+
+        router = self.router()
+        router._DAS_CALLS.clear()
+        router._DAS_DAY.update(day=None, count=0, said=False)
+        monkeypatch.setattr(router, "get_settings", lambda: SimpleNamespace(
+            helius_api_key=rpc_key, helius_das_api_key=das_key, helius_das_base_url="https://mainnet.helius-rpc.com",
+            helius_das_limit_per_minute=per_minute, helius_das_daily_limit=per_day, external_lookup_timeout_seconds=1.0,
+        ))
+        day = {"value": today or date(2026, 10, 2)}
+        monkeypatch.setattr(router, "_utc_today", lambda: day["value"])
+        sent = []
+
+        class Answer:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b'{"result": {"content": {"metadata": {"name": "Mochi", "symbol": "MOCHI"}, "links": {"image": "https://ipfs.io/ipfs/mochi"}}}}'
+
+        def urlopen(request, timeout=None, context=None):
+            sent.append(request.full_url)
+            return Answer()
+
+        monkeypatch.setattr(router.urllib_request, "urlopen", urlopen)
+        return router, sent, day
+
+    def test_das_is_paid_with_its_own_key(self, monkeypatch):
+        router, sent, _day = self.das(monkeypatch, rpc_key="rpc-key", das_key="das-key")
+        router._fetch_helius_token_metadata("Mint1")
+        assert len(sent) == 1 and "api-key=das-key" in sent[0] and "rpc-key" not in sent[0]
+
+    def test_a_daily_ceiling_stops_paid_lookups_until_the_next_utc_day(self, monkeypatch):
+        from datetime import date
+
+        router, sent, day = self.das(monkeypatch, per_minute=0, per_day=2)
+        answers = [router._fetch_helius_token_metadata(f"Mint{i}") for i in range(4)]
+        assert len(sent) == 2
+        assert [bool(a["token_image_url"]) for a in answers] == [True, True, False, False]
+
+        day["value"] = date(2026, 10, 3)
+        router._fetch_helius_token_metadata("Mint9")
+        assert len(sent) == 3, "a new UTC day starts a new allowance"
+
+    def test_both_ceilings_hold_together(self, monkeypatch):
+        router, sent, _day = self.das(monkeypatch, per_minute=2, per_day=10)
+        for i in range(5):
+            router._fetch_helius_token_metadata(f"Mint{i}")
+        # The minute stops it at two; a refused lookup does not eat the day's allowance.
+        assert len(sent) == 2
+        assert router._DAS_DAY["count"] == 2
+
+    def test_no_key_sends_nothing_and_spends_nothing(self, monkeypatch):
+        router, sent, _day = self.das(monkeypatch, das_key="", per_day=5)
+        assert router._fetch_helius_token_metadata("Mint1")["token_image_url"] is None
+        assert sent == [] and router._DAS_DAY["count"] == 0
 
     def test_the_default_ceiling_bounds_what_das_can_cost(self):
         from shared.settings import get_settings

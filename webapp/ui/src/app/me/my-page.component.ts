@@ -5,7 +5,7 @@ import { RouterLink } from '@angular/router';
 import { environment } from '../../environments/environment';
 import { AuthDialogService } from '../auth/auth-dialog.service';
 import { SiteHeaderComponent } from '../shared/site-header/site-header.component';
-import { FlameComponent } from '../shared/flame/flame.component';
+import { BurnChipComponent } from '../pool/burn-chip/burn-chip.component';
 import { burnChipText } from '../pool/burn';
 import { MyCommits, MyCommitsService, MyRound } from './my-commits.service';
 
@@ -24,7 +24,7 @@ import { MyCommits, MyCommitsService, MyRound } from './my-commits.service';
 @Component({
   selector: 'app-my-page',
   standalone: true,
-  imports: [DecimalPipe, RouterLink, SiteHeaderComponent, FlameComponent],
+  imports: [DecimalPipe, RouterLink, SiteHeaderComponent, BurnChipComponent],
   templateUrl: './my-page.component.html',
   styleUrls: ['./my-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush

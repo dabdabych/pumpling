@@ -10,6 +10,8 @@ import { distinctUntilChanged, map } from 'rxjs/operators';
 import { LegalDialogComponent } from '../../shared/legal/legal-dialog.component';
 import { SiteHeaderComponent } from '../../shared/site-header/site-header.component';
 import { FlameComponent } from '../../shared/flame/flame.component';
+import { CoinScreeningBadgeComponent } from '../../shared/coin-screening/coin-screening-badge.component';
+import { BurnChipComponent } from '../burn-chip/burn-chip.component';
 import { burnChipText } from '../burn';
 import { buildFeedRows, FeedRow, recipientsShort, recipientsText } from '../feed-rows';
 import { CommitDialogComponent, CommitDialogData } from '../commit-dialog/commit-dialog.component';
@@ -87,7 +89,7 @@ const TRACK = [
 @Component({
   selector: 'app-pool-page',
   standalone: true,
-  imports: [AsyncPipe, DecimalPipe, PercentPipe, RouterLink, SiteHeaderComponent, FlameComponent],
+  imports: [AsyncPipe, DecimalPipe, PercentPipe, RouterLink, SiteHeaderComponent, FlameComponent, CoinScreeningBadgeComponent, BurnChipComponent],
   templateUrl: './pool-page.component.html',
   styleUrls: ['./pool-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -161,6 +163,8 @@ export class PoolPageComponent implements OnInit, OnDestroy {
   highlightMint: string | null = null;
   /** The coin under the cursor and its chart: the tooltip only lives under a mouse. */
   hoveredMint: string | null = null;
+  /** The coin whose red-flag card is up: its row keeps the price card down, or the two would stack. */
+  popoverOpenMint: string | null = null;
   /** The tooltip had to go above the row: there was no space below. */
   hoveredAbove = false;
   hoveredChart: CoinChart | null = null;
@@ -449,6 +453,15 @@ export class PoolPageComponent implements OnInit, OnDestroy {
       this.hoveredLoading = false;
       this.cdr.markForCheck();
     }, 220);
+  }
+
+  onPopoverOpen(coin: PoolCoin, open: boolean): void {
+    if (open) {
+      this.popoverOpenMint = coin.mint;
+    } else if (this.popoverOpenMint === coin.mint) {
+      this.popoverOpenMint = null;
+    }
+    this.cdr.markForCheck();
   }
 
   onCoinLeave(coin: PoolCoin): void {

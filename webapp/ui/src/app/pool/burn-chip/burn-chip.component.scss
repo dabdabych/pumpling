@@ -1,0 +1,64 @@
+/* A wide chip: its finger target grows above and below, never into the next
+   thing on the line (`InfoPopoverComponent`). */
+:host {
+  --popover-hit-x: 0px;
+  --popover-hit-y: 6px;
+  display: inline-flex;
+  flex: none;
+  vertical-align: middle;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  color: var(--qres-black);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.card__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.card__lead,
+.card__note,
+.card__live {
+  margin: 0;
+}
+
+.card__lead {
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.card__note {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: rgba(2, 2, 2, 0.72);
+}
+
+.card__live {
+  padding-top: 8px;
+  border-top: 2px solid rgba(2, 2, 2, 0.08);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: rgba(2, 2, 2, 0.62);
+}

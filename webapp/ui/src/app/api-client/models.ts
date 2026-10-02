@@ -11,6 +11,7 @@ export type { ChatResponse } from './models/chat-response';
 export type { CoinChartPointResponse } from './models/coin-chart-point-response';
 export type { CoinChartResponse } from './models/coin-chart-response';
 export type { CoinResponse } from './models/coin-response';
+export type { CoinScreeningResponse } from './models/coin-screening-response';
 export type { CreateBetRequest } from './models/create-bet-request';
 export type { CreateLotteryRequest } from './models/create-lottery-request';
 export type { EmailConfirmationRequest } from './models/email-confirmation-request';

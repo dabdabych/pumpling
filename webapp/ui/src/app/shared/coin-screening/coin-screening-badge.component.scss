@@ -1,0 +1,212 @@
+/* The red of a red flag is the site's own falling-price red. It appears only in
+   the card, on the lines that are flags and on their count: the mark on the row
+   is the same plain magnifier for every coin, framed like every chip on the site. */
+$flag-red: #b0341d;
+
+:host {
+  display: inline-flex;
+  flex: none;
+  vertical-align: middle;
+}
+
+/* ------------------------------------------------------------- the mark */
+
+.mark {
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+}
+
+.mark svg,
+.card__mark svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+/* ------------------------------------------------------------- the card */
+
+.card__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.card__mark {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+}
+
+.card__mark svg {
+  width: 11px;
+  height: 11px;
+}
+
+.card__name {
+  min-width: 0;
+}
+
+/* The count of flags, at the far end of the title: the one summary the card
+   gives, and only when there is something to count. */
+.card__flags {
+  flex: none;
+  margin-left: auto;
+  padding: 3px 6px;
+  background: $flag-red;
+  color: var(--qres-white);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* What was read, one rule a line: the name on the left, the range on the right. */
+.card__rows {
+  display: grid;
+  margin: 0;
+}
+
+.card__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-top: 1px solid rgba(2, 2, 2, 0.08);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.card__row:first-child {
+  border-top: 0;
+}
+
+.card__row dt {
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.72);
+}
+
+.card__row dd {
+  flex: none;
+  margin: 0;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.card__row--unknown dd {
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.5);
+}
+
+/* A red flag: the line in red, with a square in front of its name. */
+.card__row--flagged dt,
+.card__row--flagged dd {
+  color: $flag-red;
+}
+
+.card__row--flagged dt {
+  position: relative;
+  padding-left: 12px;
+  font-weight: 800;
+}
+
+.card__row--flagged dt::before {
+  content: "";
+  position: absolute;
+  top: 0.42em;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  background: $flag-red;
+}
+
+.card__foot {
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 2px solid rgba(2, 2, 2, 0.08);
+}
+
+.card__when {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: rgba(2, 2, 2, 0.62);
+}
+
+.card__source {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  color: var(--qres-black);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.card__source--plain {
+  text-decoration: none;
+}
+
+.card__source svg {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (hover: hover) {
+  a.card__source:hover {
+    text-decoration-color: var(--qres-purple);
+  }
+}
+
+a.card__source:focus-visible {
+  outline: 2px solid var(--qres-purple);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,5 +1,5 @@
 from pydantic import AfterValidator, BaseModel, Field
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional
 from decimal import Decimal
 from datetime import datetime
 
@@ -29,6 +29,31 @@ class CoinResponse(BaseModel):
     logo_url: ImageUrl = None
 
 
+class CoinScreeningResponse(BaseModel):
+    """A coin's red-flag check in this pool, once it has ended clean or flagged.
+
+    Checked once, at the first commit to the coin in the pool
+    (`shared/coin_screening.py`). A coin with no check, or one that could not
+    be made, has none of this: the site then shows nothing.
+    """
+
+    status: Literal["clean", "flagged"]
+    #: Why it was flagged, as codes the site words: `shared/coin_screening.REASONS`.
+    reasons: List[str] = Field(default_factory=list)
+    #: Holder rules the source had no data for (`bundle`, `insiders`, `top10`).
+    missing: List[str] = Field(default_factory=list)
+    #: Where the holder data came from: `tracced`, `solana_tracker`, or `chain`
+    #: when the mint account alone settled it.
+    source: Optional[str] = None
+    #: What was read, rule by rule: `low`, `medium`, `high` or `unknown` for
+    #: `dev`, `bundle`, `bundled_launch`, `top10` and `insiders`, by the cuts in
+    #: `shared/coin_screening.CUTS`. Empty for a check made before they were kept.
+    levels: Dict[str, str] = Field(default_factory=dict)
+    #: Whether the coin traded on a live pump.fun curve at the check.
+    on_curve: Optional[bool] = None
+    checked_at: datetime
+
+
 class LotteryEntryResponse(BaseModel):
     rank: int
     lottery_id: int
@@ -39,6 +64,8 @@ class LotteryEntryResponse(BaseModel):
     #: The coin's burn share so far, SOL-weighted over its commits, in basis
     #: points. While the pool is open it moves with every commit.
     burn_bps_avg: float = 0.0
+    #: The red-flag check, once it has an answer.
+    screening: Optional[CoinScreeningResponse] = None
 
 
 class LotteryWinnerResultResponse(BaseModel):
@@ -461,6 +488,8 @@ class MintAllowTokenResponse(BaseModel):
     price_change_24h: Optional[float] = None
     dex_id: Optional[str] = None
     pair_url: Optional[str] = None
+    #: The coin's red-flag check in the pool open now, if it has one.
+    screening: Optional[CoinScreeningResponse] = None
 
 
 class Phase2AccountsResponse(BaseModel):

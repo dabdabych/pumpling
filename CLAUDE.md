@@ -48,6 +48,7 @@ the docs and any new code. Do not spend a refactor on it without asking.
 - `backfill_worker` — catches up on events that were missed
 - `bet_finalizer_worker` — confirms commit transactions and marks orphaned ones
 - `lottery_phase_worker` — drives round phases and starts the buyer after the draw
+- `coin_screening_worker` — checks each coin for obvious red flags once, at its first commit in a pool
 - `telegram_error_handler` — error alert channel
 
 Flow: `Angular → FastAPI → workers → the buyer → Solana`. Randomness comes from
@@ -60,7 +61,7 @@ round, so there is no service in between any more.
 
 Everything runs through docker compose. Services: `postgres, backend, ui,
 events-worker, backfill-worker, bet-finalizer-worker, lottery-phase-worker,
-buyer, loki, grafana, certbot-renew`.
+coin-screening-worker, buyer, loki, grafana, certbot-renew`.
 
 ```bash
 ./deploy.sh                       # the whole stack

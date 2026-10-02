@@ -86,9 +86,72 @@ export function burnSummary(percent: BurnPercent): string {
  * percent; anything above zero shows at least 1%, so a burn never reads as none.
  */
 export function burnChipText(bps: number | null | undefined): string | null {
+  const percent = burnChipPercent(bps);
+  return percent === null ? null : `${percent}% BURN`;
+}
+
+/** The chip's whole percent, or null for no burn. */
+export function burnChipPercent(bps: number | null | undefined): number | null {
   if (typeof bps !== 'number' || !Number.isFinite(bps) || bps <= 0) {
     return null;
   }
-  const percent = Math.min(100, Math.max(1, Math.round(bps / 100)));
-  return `${percent}% BURN`;
+  return Math.min(100, Math.max(1, Math.round(bps / 100)));
+}
+
+/** What the card under a burn chip says. */
+export interface BurnCard {
+  title: string;
+  lead: string;
+  note: string;
+  /** While the pool takes commits, the coin's share still moves. */
+  live: string | null;
+}
+
+/**
+ * The card a burn chip opens.
+ *
+ * On a coin's row the chip is the coin's burn so far: the SOL-weighted average
+ * of what its backers asked for, Σ(sol × bps) / Σ sol, which is exactly the share
+ * of the coin's purchase the buyer burns (`offchain/orchestrator/shares.ts`:
+ * burned = B × Σ(s × bps) / (S × 10000)). The card says so, and says that each
+ * backer burns only their own share: read alone, "50% burn" sounds like half of
+ * everybody's tokens go.
+ *
+ * On my page (`mine`) the chip is my own choice, weighted the same way over my
+ * commits to the coin.
+ */
+export function burnCard(bps: number | null | undefined, ticker: string, options: { mine?: boolean; live?: boolean } = {}): BurnCard | null {
+  const percent = burnChipPercent(bps);
+  if (percent === null) {
+    return null;
+  }
+  const coin = ticker ? `$${ticker}` : 'tokens';
+  const all = percent === 100;
+  const title = `${percent}% burn`;
+  if (options.mine) {
+    return {
+      title,
+      lead: all
+        ? `All the ${coin} bought for you is burned on chain during the buy.`
+        : `${percent}% of the ${coin} bought for you is burned on chain during the buy.`,
+      note: all ? 'You chose it when you committed. Nothing comes to your wallet.' : 'You chose it when you committed. The rest comes to your wallet.',
+      live: null
+    };
+  }
+  return {
+    title,
+    lead: all
+      ? `All the ${coin} this pool buys is burned on chain during the buy.`
+      : `${percent}% of the ${coin} this pool buys is burned on chain during the buy.`,
+    note: all
+      ? 'Every backer chose to burn their whole share. Nothing goes to wallets.'
+      : 'Each backer chose how much of their own share to burn. The rest goes to their wallets.',
+    live: options.live ? 'It changes with every commit until the pool closes.' : null
+  };
+}
+
+/** The chip's accessible name: its own words first, then what pressing it does. */
+export function burnChipLabel(bps: number | null | undefined): string | null {
+  const percent = burnChipPercent(bps);
+  return percent === null ? null : `${percent}% burn. What it means`;
 }

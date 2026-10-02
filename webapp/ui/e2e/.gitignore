@@ -6,3 +6,4 @@ scenes/burn.mjs
 scenes/token-amount.mjs
 scenes/feed-rows.mjs
 scenes/burn-view.mjs
+scenes/coin-screening.mjs

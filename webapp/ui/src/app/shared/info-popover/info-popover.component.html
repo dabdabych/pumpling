@@ -1,0 +1,39 @@
+<button #trigger
+        type="button"
+        class="trigger"
+        [class.trigger--open]="open"
+        cdkOverlayOrigin
+        #origin="cdkOverlayOrigin"
+        [attr.aria-label]="label"
+        aria-haspopup="dialog"
+        [attr.aria-expanded]="open"
+        [attr.aria-controls]="open ? id : null"
+        (pointerenter)="onTriggerEnter($event)"
+        (pointerleave)="onTriggerLeave($event)"
+        (click)="onTriggerClick($event)"
+        (keydown)="onTriggerKeydown($event)">
+  <ng-content select="[popoverTrigger]" />
+</button>
+
+<ng-template cdkConnectedOverlay
+             [cdkConnectedOverlayOrigin]="origin"
+             [cdkConnectedOverlayOpen]="open"
+             [cdkConnectedOverlayPositions]="positions"
+             [cdkConnectedOverlayViewportMargin]="16"
+             [cdkConnectedOverlayScrollStrategy]="scrollStrategy"
+             cdkConnectedOverlayPanelClass="info-popover-pane"
+             (overlayOutsideClick)="onOutsideClick($event)"
+             (overlayKeydown)="onOverlayKeydown($event)"
+             (attach)="onAttach()"
+             (detach)="onDetach()">
+  <section #card
+           class="card"
+           [id]="id"
+           role="dialog"
+           [attr.aria-label]="cardLabel"
+           tabindex="-1"
+           (pointerenter)="onCardEnter($event)"
+           (pointerleave)="onCardLeave($event)">
+    <ng-content />
+  </section>
+</ng-template>

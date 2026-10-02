@@ -653,8 +653,15 @@ $coin-columns-compact: 2rem minmax(6.5rem, 1.1fr) 7rem minmax(10.5rem, 1.3fr) 8.
 }
 
 .coin-row__ticker {
+  /* A ticker can be fifteen letters. It gives way with an ellipsis rather than
+     running under the address chip or out of the row. */
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   font-size: 16px;
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .coin-row__tickerline {
@@ -691,21 +698,9 @@ $coin-columns-compact: 2rem minmax(6.5rem, 1.1fr) 7rem minmax(10.5rem, 1.3fr) 8.
 
 /* The coin's burn share. The same shape as "you · 10 SOL" beside it, on white:
    it is a fact about the coin, not a call to anything. */
+/* The burn chip draws itself (`pool/burn-chip`); the row only keeps it whole. */
 .coin-row__burn {
-  display: inline-flex;
   flex: none;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 7px;
-  border: 2px solid var(--qres-black);
-  background: var(--qres-white);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  text-transform: uppercase;
-  color: var(--qres-black);
-  white-space: nowrap;
 }
 
 .coin-row__name {
@@ -752,6 +747,25 @@ $coin-columns-compact: 2rem minmax(6.5rem, 1.1fr) 7rem minmax(10.5rem, 1.3fr) 8.
 }
 
 @media (min-width: $coin-table-from) {
+  .coin-row__mint {
+    justify-self: start;
+  }
+}
+
+/* A phone: the address chip takes a line of its own under the coin. Beside it,
+   the coin's column was 40px wide at 320px and 100px at 390px: a long ticker,
+   the burn mark and the address chip lay on top of each other, and at 320px
+   the row ran 37px off the screen (measured 2026-10-02). */
+@media (max-width: 559.98px) {
+  .coin-row {
+    grid-template-areas:
+      "rank coin coin"
+      "rank mint mint"
+      "rank sol sol"
+      "rank drawn commits"
+      "rank add card";
+  }
+
   .coin-row__mint {
     justify-self: start;
   }

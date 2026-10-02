@@ -10,6 +10,7 @@ from infrastructure.database.models.allowed_mint_model import AllowedMintModel  
 from infrastructure.database.models.wallet_auth_nonce_model import WalletAuthNonceModel  # Keep model imports so tables are registered.
 from infrastructure.database.models.token_metadata_model import TokenMetadataModel  # Keep model imports so tables are registered.
 from infrastructure.database.models.lottery_cycle_control_model import LotteryCycleControlModel  # Keep model imports so tables are registered.
+from infrastructure.database.models.coin_screening_model import CoinScreeningModel  # Keep model imports so tables are registered.
 from infrastructure.database.models.user_wallet_model import UserWalletModel  # Keep model imports so tables are registered.
 from infrastructure.database.models.chat_model import ChatAttachmentModel, ChatMessageModel, ChatModel  # Keep model imports so tables are registered.
 

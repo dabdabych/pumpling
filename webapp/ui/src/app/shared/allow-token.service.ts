@@ -3,6 +3,7 @@ import { HttpClient, HttpContext } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { SUPPRESS_GLOBAL_ERROR_DIALOG } from './http-context-tokens';
+import type { CoinScreeningResponse } from '../api-client/models/coin-screening-response';
 
 export interface AllowTokenRequest {
   mint_address: string;
@@ -29,6 +30,8 @@ export interface AllowTokenResponse {
   price_change_24h?: number;
   dex_id?: string;
   pair_url?: string;
+  /** The coin's red-flag check in the pool open now, if it has one. */
+  screening?: CoinScreeningResponse | null;
   algorithm?: string;
   signer_pubkey?: string;
   lottery_address?: string;

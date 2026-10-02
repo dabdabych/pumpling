@@ -42,6 +42,8 @@ Variables: `BASE` is the frontend address (default `http://localhost:3200`),
 | `header-mark` | the mascot in the header survives dialogs and navigation |
 | `mobile-fit` | nothing spills off the screen on a phone, buttons stay thumb sized |
 | `quick-touch` | Quick start under a finger, moved by real touch flings and drags: nothing while the list flies past, then 01 to 05 one at a time once it is at rest, on a phone and in the pinned story; the Solana mark sits after the words at every width |
+| `coin-screening` | the coin check's mark, the same on every coin, and its card: mouse, keyboard and finger, inside the window and off its mark, nothing in a coin row on top of anything else from 320px |
+| `burn-chip` | the card under a burn chip, on a coin's row and on my page: mouse, keyboard and finger, the mark and the chip on one line each getting their own taps |
 | `coin-table-fit` | from 900 to 1920px every coin row stays inside the list, with the widest content a row can hold |
 
 A suite exits non-zero when it fails, so it works in CI.

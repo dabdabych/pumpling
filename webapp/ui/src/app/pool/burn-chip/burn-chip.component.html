@@ -1,0 +1,12 @@
+@if (card; as card) {
+  <app-info-popover [label]="label" [cardLabel]="card.title" (openChange)="openChange.emit($event)">
+    <span popoverTrigger class="chip"><app-flame [size]="12" />{{ chip }}</span>
+
+    <h3 class="card__title"><app-flame [size]="16" />{{ card.title }}</h3>
+    <p class="card__lead">{{ card.lead }}</p>
+    <p class="card__note">{{ card.note }}</p>
+    @if (card.live; as live) {
+      <p class="card__live">{{ live }}</p>
+    }
+  </app-info-popover>
+}

@@ -14,6 +14,8 @@ import { IAppState } from '../../store/state/app.state';
 import { CheckedCoin, CommitError, CommitService, SentCommit, walletWindowMissingText } from '../commit.service';
 import { BURN_CHOICES, BurnPercent, burnKeepLabel, burnSentence, burnSummary } from '../burn';
 import { FlameComponent } from '../../shared/flame/flame.component';
+import { CoinScreeningBadgeComponent } from '../../shared/coin-screening/coin-screening-badge.component';
+import { CoinScreening } from '../../shared/coin-screening/coin-screening';
 import { PRIORITY_LEVELS, PriorityLevel, RECOMMENDED_LEVEL, feeLabel, isPriorityLevel, priceFor } from '../priority-fee';
 import { WalletService, isWalletFlowInterruption } from '../../shared/wallet.service';
 import { linkedWalletAddress } from '../../shared/wallet-link';
@@ -69,7 +71,7 @@ const PICK_LIMIT = 5;
 @Component({
   selector: 'app-commit-dialog',
   standalone: true,
-  imports: [DecimalPipe, FormsModule, FlameComponent],
+  imports: [DecimalPipe, FormsModule, FlameComponent, CoinScreeningBadgeComponent],
   templateUrl: './commit-dialog.component.html',
   styleUrls: ['./commit-dialog.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -271,6 +273,20 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
 
   get readyCoin(): CheckedCoin | null {
     return this.coin.kind === 'ready' ? this.coin.coin : null;
+  }
+
+  /**
+   * The coin's red-flag check in this pool. The pool's own list first: it is
+   * polled, while the check's answer is kept for the session and would miss a
+   * check that ended after the coin was first looked up.
+   */
+  get readyScreening(): CoinScreening | null {
+    const coin = this.readyCoin;
+    if (!coin) {
+      return null;
+    }
+    const inPool = this.snapshot?.coins.find((item) => item.mint === coin.mint);
+    return inPool?.screening ?? coin.screening ?? null;
   }
 
   get amountText(): string {

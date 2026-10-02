@@ -40,6 +40,11 @@ class AppSettings:
     offchain_api_timeout_seconds: float
     helius_das_base_url: str
     helius_api_key: str
+    #: The key DAS lookups (coin names and pictures) are paid with, and only
+    #: they. The RPC proxy takes `helius_api_key` as its first node, so a server
+    #: that should pay for pictures and nothing else sets this one alone. Empty
+    #: means `helius_api_key`.
+    helius_das_api_key: str
     dexscreener_user_agent: str
     wallet_auth_domain: str
     wallet_auth_uri: str
@@ -81,6 +86,9 @@ class AppSettings:
     #: Helius DAS lookups (`getAsset`, 10 credits each) a minute, from everybody
     #: together. Past it a coin's details come from the free sources only.
     helius_das_limit_per_minute: int
+    #: The same lookups a UTC day; 0 is no daily ceiling. With it, the worst a
+    #: day can cost is known in advance: lookups x 10 credits.
+    helius_das_daily_limit: int
     #: How long to wait for the Solana RPC in the proxy. Separate from the
     #: buyer's timeout: the buyer works for an hour, while a wallet request must
     #: either go through or fail.
@@ -392,6 +400,7 @@ def get_settings() -> AppSettings:
         offchain_api_timeout_seconds=_env_float("OFFCHAIN_API_TIMEOUT_SECONDS", 60.0),
         helius_das_base_url=_env_str("HELIUS_DAS_BASE_URL", "https://mainnet.helius-rpc.com"),
         helius_api_key=_env_str("HELIUS_API_KEY"),
+        helius_das_api_key=_env_str("HELIUS_DAS_API_KEY") or _env_str("HELIUS_API_KEY"),
         dexscreener_user_agent=_env_str(
             "DEXSCREENER_USER_AGENT",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
@@ -443,6 +452,7 @@ def get_settings() -> AppSettings:
         rpc_proxy_rate_limit_per_minute=_env_int_non_negative("RPC_PROXY_RATE_LIMIT_PER_MINUTE", 240),
         rpc_proxy_global_limit_per_minute=_env_int_non_negative("RPC_PROXY_GLOBAL_LIMIT_PER_MINUTE", 1200),
         helius_das_limit_per_minute=_env_int_non_negative("HELIUS_DAS_LIMIT_PER_MINUTE", 30),
+        helius_das_daily_limit=_env_int_non_negative("HELIUS_DAS_DAILY_LIMIT", 0),
         rpc_proxy_max_batch_size=_env_int_non_negative("RPC_PROXY_MAX_BATCH_SIZE", 10),
         rpc_proxy_timeout_seconds=_env_float("RPC_PROXY_TIMEOUT_SECONDS", 15.0),
         rpc_proxy_public_fallback_url=_env_str(

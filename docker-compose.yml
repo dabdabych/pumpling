@@ -45,9 +45,13 @@ services:
       - LOTTERY_HYPE_COUNTDOWN_SECONDS=${LOTTERY_HYPE_COUNTDOWN_SECONDS:-0}
       - HELIUS_DAS_BASE_URL=${HELIUS_DAS_BASE_URL:-https://mainnet.helius-rpc.com}
       - HELIUS_API_KEY=${HELIUS_API_KEY:-}
+      # Pays for coin names and pictures (DAS) only, never for the RPC proxy.
+      # Empty = HELIUS_API_KEY.
+      - HELIUS_DAS_API_KEY=${HELIUS_DAS_API_KEY:-}
       - RPC_PROXY_RATE_LIMIT_PER_MINUTE=${RPC_PROXY_RATE_LIMIT_PER_MINUTE:-}
       - RPC_PROXY_GLOBAL_LIMIT_PER_MINUTE=${RPC_PROXY_GLOBAL_LIMIT_PER_MINUTE:-}
       - HELIUS_DAS_LIMIT_PER_MINUTE=${HELIUS_DAS_LIMIT_PER_MINUTE:-}
+      - HELIUS_DAS_DAILY_LIMIT=${HELIUS_DAS_DAILY_LIMIT:-}
       - WALLET_AUTH_DOMAIN=${WALLET_AUTH_DOMAIN:-${APP_DOMAIN:-pumpling.xyz}}
       - WALLET_AUTH_URI=${WALLET_AUTH_URI:-https://${APP_DOMAIN:-pumpling.xyz}}
       - SMTP_ENABLED=${SMTP_ENABLED:-true}
@@ -222,6 +226,44 @@ services:
     command: ["python", "-m", "lottery_phase_worker"]
     restart: unless-stopped
     # Logs go to Loki: the "round stuck" and "worker silent" alerts run on them.
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://localhost:3100/loki/api/v1/push"
+        loki-batch-size: "100"
+        loki-retries: "2"
+
+  # Checks each coin for obvious red flags once, at the first commit to it in a
+  # pool (webapp/backend/shared/coin_screening.py); the site shows the result
+  # next to the ticker. Holders come from tracced, then Solana Tracker; with
+  # neither key it still flags what the mint itself shows.
+  coin-screening-worker:
+    image: lottery-api:0.0.1
+    container_name: lottery-coin-screening-worker
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://crypto_lottery:Online123$@postgres:5432/crypto_lottery}
+      - SOLANA_HTTP_ENDPOINT=${SOLANA_HTTP_ENDPOINT:-https://api.mainnet-beta.solana.com/}
+      - COIN_SCREENING_RPC_URL=${COIN_SCREENING_RPC_URL:-}
+      - TRACCED_API_KEY=${TRACCED_API_KEY:-}
+      - SOLANA_TRACKER_API_KEY=${SOLANA_TRACKER_API_KEY:-}
+      - SOLANA_TRACKER_DAILY_LIMIT=${SOLANA_TRACKER_DAILY_LIMIT:-75}
+      - COIN_SCREENING_LOG_LEVEL=${COIN_SCREENING_LOG_LEVEL:-INFO}
+      - TELEGRAM_ERROR_BOT_TOKEN=${TELEGRAM_ERROR_BOT_TOKEN:-}
+      - TELEGRAM_ERROR_CHAT_ID=${TELEGRAM_ERROR_CHAT_ID:-}
+      - TELEGRAM_API_BASE_URL=${TELEGRAM_API_BASE_URL:-https://api.telegram.org}
+      - PYTHONPATH=/app:/app/webapp/backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./workers:/app
+      - ./webapp/backend:/app/webapp/backend
+    command: ["python", "-m", "coin_screening_worker"]
+    healthcheck:
+      disable: true
+    restart: unless-stopped
     logging:
       driver: loki
       options:

@@ -42,6 +42,8 @@ async function open(options) {
     catch (e) { if (a === 2) throw e; }
   }
   await p.waitForFunction(() => !document.getElementById('qres-app-loader'), null, { timeout: 40000 });
+  // Against a remote server the page's own chunk can still be on its way.
+  await p.waitForSelector('[data-qres-quick-item]', { state: 'attached', timeout: 30000 });
   await p.waitForTimeout(1200);
   // Every frame from now on: which rows show their hover look, and where the
   // Solana mark sits against the words.

@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BURN_CHOICES, MEMO_PROGRAM_ID, burnChipText, burnKeepLabel, burnMemoText, burnSentence, burnSummary, isBurnPercent } from './burn.mjs';
+import { BURN_CHOICES, MEMO_PROGRAM_ID, burnCard, burnChipLabel, burnChipText, burnKeepLabel, burnMemoText, burnSentence, burnSummary, isBurnPercent } from './burn.mjs';
 import { compactTokens, exactTokens, tokenValue } from './token-amount.mjs';
 import { buildFeedRows, recipientsShort, recipientsText, MAX_FEED_ROWS } from './feed-rows.mjs';
 import { buildBurnView, fuseLeft, percentText } from './burn-view.mjs';
@@ -58,6 +58,61 @@ t('the coin chip rounds to whole percent and never says 0 for a burn', () => {
   assert.equal(burnChipText(12), '1% BURN');
   assert.equal(burnChipText(10_000), '100% BURN');
   assert.equal(burnChipText(20_000), '100% BURN');
+});
+
+t('the card under a coin\'s chip says how much of the coin is burned, and whose', () => {
+  const card = burnCard(5000, 'MOCHI', { live: true });
+  assert.deepEqual(card, {
+    title: '50% burn',
+    lead: '50% of the $MOCHI this pool buys is burned on chain during the buy.',
+    note: 'Each backer chose how much of their own share to burn. The rest goes to their wallets.',
+    live: 'It changes with every commit until the pool closes.'
+  });
+  assert.equal(burnCard(5000, 'MOCHI', { live: false }).live, null, 'a pool that no longer takes commits: the share is fixed');
+  assert.deepEqual(burnCard(10_000, 'ZAPZ'), {
+    title: '100% burn',
+    lead: 'All the $ZAPZ this pool buys is burned on chain during the buy.',
+    note: 'Every backer chose to burn their whole share. Nothing goes to wallets.',
+    live: null
+  });
+  assert.equal(burnCard(0, 'MOCHI'), null);
+  assert.equal(burnCard(null, 'MOCHI'), null);
+  assert.equal(burnCard(3333.33, '').lead, '33% of the tokens this pool buys is burned on chain during the buy.');
+  // The card's number is the chip's.
+  for (const bps of [12, 2500, 3333.33, 5000, 9999, 10_000]) {
+    assert.ok(burnCard(bps, 'X').title.toUpperCase() === burnChipText(bps), String(bps));
+  }
+});
+
+t('the card under my own chip speaks of my tokens only', () => {
+  assert.deepEqual(burnCard(2500, 'MOCHI', { mine: true, live: true }), {
+    title: '25% burn',
+    lead: '25% of the $MOCHI bought for you is burned on chain during the buy.',
+    note: 'You chose it when you committed. The rest comes to your wallet.',
+    live: null
+  });
+  assert.equal(burnCard(10_000, 'MOCHI', { mine: true }).note, 'You chose it when you committed. Nothing comes to your wallet.');
+});
+
+t('the chip\'s name for a screen reader starts with its own words', () => {
+  assert.equal(burnChipLabel(5000), '50% burn. What it means');
+  assert.ok(burnChipLabel(5000).toUpperCase().startsWith(burnChipText(5000)));
+  assert.equal(burnChipLabel(0), null);
+});
+
+t('the coin\'s percent is the share the buyer burns (the payload contract)', () => {
+  // offchain/orchestrator/shares.ts: burned = B × Σ(s × bps) / (S × 10000). The
+  // backend's burn_bps_avg is Σ(sol × bps) / Σ sol. Same numbers from the file
+  // both sides test against: the card's percent is what leaves the coin's buy.
+  const contract = JSON.parse(readFileSync(join(here, '..', '..', '..', '..', 'offchain', 'tests', 'unit', 'fixtures', 'payload-contract.json'), 'utf8'));
+  const stake = contract.shares.reduce((sum, share) => sum + BigInt(share.stake), 0n);
+  const burn = contract.shares.reduce((sum, share) => sum + BigInt(share.burn), 0n);
+  const burnedShare = Number(burn) / (Number(stake) * 10_000);
+  const sol = contract.bets.reduce((sum, bet) => sum + bet.sol, 0);
+  const avgBps = contract.bets.reduce((sum, bet) => sum + bet.sol * bet.burn_bps, 0) / sol;
+  assert.ok(Math.abs(avgBps / 10_000 - burnedShare) < 1e-9, `${avgBps} bps vs ${burnedShare}`);
+  assert.equal(burnChipText(avgBps), '38% BURN');
+  assert.equal(burnCard(avgBps, 'X').lead, '38% of the $X this pool buys is burned on chain during the buy.');
 });
 
 t('the compute limit covers the worst deposit and the memo, with room for a wallet', () => {

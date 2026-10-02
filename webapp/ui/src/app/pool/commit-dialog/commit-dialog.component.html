@@ -70,8 +70,14 @@
             <span class="commit-coin__logo commit-coin__logo--fallback" aria-hidden="true">{{ found.ticker.slice(0, 2) }}</span>
           }
           <span class="commit-coin__names">
-            <b>${{ found.ticker }}</b>
-            <span>{{ found.name }}</span>
+            <span class="commit-coin__tickerline">
+              <b>${{ found.ticker }}</b>
+              <!-- The coin's red-flag check in this pool, when it has one. -->
+              @if (readyScreening; as screening) {
+                <app-coin-screening-badge [screening]="screening" [ticker]="found.ticker" />
+              }
+            </span>
+            <span class="commit-coin__name">{{ found.name }}</span>
           </span>
           <span class="chip chip--ok">Found</span>
         </div>

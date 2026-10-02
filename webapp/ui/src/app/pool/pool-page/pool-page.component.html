@@ -228,10 +228,17 @@
                 <span class="coin-row__names">
                   <span class="coin-row__tickerline">
                     <b class="coin-row__ticker">${{ coin.ticker }}</b>
-                    <!-- The coin's burn share so far: while the pool is open it
-                         moves with every commit. Only when there is one. -->
-                    @if (burnChip(coin); as chip) {
-                      <span class="coin-row__burn"><app-flame [size]="12" />{{ chip }}</span>
+                    <!-- The red-flag check at the first commit to this coin in the
+                         pool: a mark, and the card that explains it on hover, a
+                         tap or Enter. Nothing until there is an answer. -->
+                    @if (coin.screening; as screening) {
+                      <app-coin-screening-badge [screening]="screening" [ticker]="coin.ticker" (openChange)="onPopoverOpen(coin, $event)" />
+                    }
+                    <!-- The coin's burn share so far, and a card that says what it
+                         means: while the pool is open it moves with every commit.
+                         Only when there is one. -->
+                    @if (burnChip(coin)) {
+                      <app-burn-chip class="coin-row__burn" [bps]="coin.burnBps" [ticker]="coin.ticker" [live]="model.snapshot.phase === 'open'" (openChange)="onPopoverOpen(coin, $event)" />
                     }
                     <!-- Your own commit is visible right in the row: otherwise a
                          person looks at a shared pool and cannot find themselves. -->
@@ -293,7 +300,7 @@
 
               <!-- What the price is doing right now: the tooltip appears on
                    hover and the data loads once per coin. -->
-              @if (hoveredMint === coin.mint) {
+              @if (hoveredMint === coin.mint && popoverOpenMint !== coin.mint) {
                 <div class="coin-chart" [class.coin-chart--above]="hoveredAbove" role="status">
                   @if (hoveredChart?.available) {
                     <div class="coin-chart__head">

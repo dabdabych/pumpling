@@ -175,7 +175,15 @@
   font-size: 16px;
 }
 
-.commit-coin__names span {
+.commit-coin__tickerline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.commit-coin__name {
   overflow: hidden;
   font-size: 13px;
   color: rgba(2, 2, 2, 0.62);

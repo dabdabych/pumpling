@@ -251,3 +251,49 @@ class TestThePublicNodeGoesLast:
 
         assert len(urls) == 2
         assert urls[1] == "https://api.mainnet-beta.solana.com"
+
+
+class TestTheDasKeyStaysOutOfTheProxy:
+    """A key that pays for coin pictures must not become the proxy's node.
+
+    `HELIUS_API_KEY` is the proxy's first upstream: on a devnet server it is
+    rewritten to `devnet.helius-rpc.com/?api-key=...`, and every visitor's
+    wallet call goes through it. The stand needs a paid key for pictures and
+    nothing else, so that key has its own variable, read by the DAS lookups only.
+    """
+
+    def settings_from(self, monkeypatch, **env):
+        from shared import settings as settings_module
+
+        # Set, not deleted: the settings fill anything missing from a local
+        # `.env`, and a developer's real keys must not leak into the test.
+        for name in ("HELIUS_API_KEY", "HELIUS_DAS_API_KEY", "HELIUS_DAS_DAILY_LIMIT", "RPC_PROXY_PUBLIC_FALLBACK_URL"):
+            monkeypatch.setenv(name, "")
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
+        settings_module.get_settings.cache_clear()
+        try:
+            return settings_module.get_settings()
+        finally:
+            settings_module.get_settings.cache_clear()
+
+    def test_a_das_only_key_never_reaches_the_proxy(self, monkeypatch):
+        settings = self.settings_from(
+            monkeypatch, NETWORK="devnet", HELIUS_DAS_API_KEY="das-only-key",
+            SOLANA_HTTP_ENDPOINT="https://api.devnet.solana.com",
+        )
+        assert settings.helius_das_api_key == "das-only-key"
+        assert settings.helius_api_key == ""
+        monkeypatch.setattr(proxy, "get_settings", lambda: settings)
+        urls = proxy._upstream_urls()
+        assert urls and all("das-only-key" not in url and "helius" not in url for url in urls), urls
+
+    def test_without_its_own_key_das_pays_with_the_main_one(self, monkeypatch):
+        # Production sets only HELIUS_API_KEY, and keeps working as before.
+        settings = self.settings_from(monkeypatch, HELIUS_API_KEY="main-key")
+        assert settings.helius_das_api_key == "main-key"
+        assert settings.helius_das_daily_limit == 0, "no daily ceiling unless one is set"
+
+    def test_a_daily_ceiling_is_read_from_the_environment(self, monkeypatch):
+        settings = self.settings_from(monkeypatch, HELIUS_DAS_DAILY_LIMIT="100")
+        assert settings.helius_das_daily_limit == 100

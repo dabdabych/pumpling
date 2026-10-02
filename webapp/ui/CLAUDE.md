@@ -119,6 +119,38 @@ several at once and out of order. Check them with touch gestures
 (`Input.synthesizeScrollGesture`), not `scrollTo`, which has no momentum. The
 suite is `quick-touch`.
 
+## Red flags on a coin
+
+A mark after the ticker in the pool table and in the commit dialog,
+`shared/coin-screening/coin-screening-badge.component`: a magnifier, black on
+white, the same on every coin that has an answer, nothing at all on one that has
+none. The row carries no verdict: a tick read as "passed" on a coin with a red
+flag, and a red mark condemned a coin in public on a site its launcher pays to
+promote. The card shows what was read the way pump.fun shows its numbers: dev,
+bundlers, bundled at launch, top 10 and insiders as ranges (`under 5%`,
+`5–20%`), the mint's powers, the flags in red and counted in the corner, then
+when it was checked and by whom, with a link to tracced or Solana Tracker. It
+never sums the coin up in words. The first card put "No red flags" over a
+sentence about the coin, which read as if we vouched for it, and on Krackpot,
+still on its curve, it said the liquidity was in place, which nobody can pull
+from a curve anyway: liquidity has a line only when it was pulled.
+
+The card is `shared/info-popover`, which the burn chip uses too. It comes up on
+a mouse resting on the trigger, a tap, or Enter (the focus then goes into it);
+it lives in the CDK overlay, keeps 16px off the screen's edges and never covers
+its trigger. Its place across is worked out by the component: the overlay's own
+push ignores a position's offset and moved the card off a 320px screen. A
+trigger's finger target is bigger than what is drawn (`--popover-hit-x/y`): the
+20px mark on every side, the wide burn chip only above and below, so the two
+side by side never take each other's taps. The words are pure in
+`coin-screening.ts`, and the backend's test checks that every reason code has
+its line there. They never say safe, scam or verified.
+
+On a phone the coin row puts the address chip on a line of its own (below
+560px) and a long ticker ends in an ellipsis: beside the chip the coin's column
+was 40px wide at 320px, and the ticker, the burn mark and the chip lay on top
+of each other. The suite is `coin-screening`.
+
 ## The burn
 
 A participant can have part of what is bought for them burned instead of
@@ -134,7 +166,15 @@ rows and the verification window's burn section are all pure modules
 which also checks that the memo the site signs is exactly the text the backend
 parses (`webapp/backend/tests/fixtures/burn_memo_logs.json`). The flame is one
 component, `shared/flame`. The browser suites are `burn-dialog` (including the
-memo in the signed transaction), `burn-feed` and `burn-verify`.
+memo in the signed transaction), `burn-feed`, `burn-verify` and `burn-chip`.
+
+The chip, "50% BURN" on a coin's row and on my page, is `pool/burn-chip` and
+opens a card like the coin check's (`burnCard` in `pool/burn.ts`). On a row the
+number is the coin's SOL-weighted average, Σ(sol × bps) / Σ sol, which is
+exactly the share of the coin's buy the buyer burns; the card says so, and that
+each backer burns only their own share, because "50% BURN" read alone sounds
+like half of everybody's tokens. While the pool takes commits it adds that the
+number still moves. On my page it speaks of my tokens only.
 
 Hover styles go under `@media (hover: hover)` and skip the chosen option: on a
 phone a tap leaves `:hover` on, and the old priority rule outranked `.is-active`

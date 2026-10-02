@@ -19,7 +19,7 @@ webapp/backend/
 │                           #   admin_wallets, blocked_bet_mints, coin_chart,
 │                           #   weights_commitment, purchases_payload,
 │                           #   orao_vrf (the draw's derivations), …
-├── migrations/             # SQL migrations (041 the last), applied in order, never rewritten
+├── migrations/             # SQL migrations (043 the last), applied in order, never rewritten
 ├── migrations_runner.py    # runs the migrations
 ├── create_tables.py        # initialises the schema
 ├── mint_validator.py       # validates coin mint addresses before a commit
@@ -47,6 +47,18 @@ spend the plan without a sign-in are bounded the same way: Helius DAS lookups
 have a shared ceiling and come after the free sources, `check-mint` and `bet`
 have shared ceilings in `shared/rate_limit.RULES`, and the verification page
 reads the chain only for a round in progress, once per 15 seconds.
+
+**Two Helius keys, two jobs.** `HELIUS_API_KEY` is the proxy's first node; on a
+devnet server it is rewritten to `devnet.helius-rpc.com` with that key, so
+every visitor's wallet call is paid with it. `HELIUS_DAS_API_KEY` is read by the
+DAS lookups (coin names and pictures) and by nothing else; empty, they use
+`HELIUS_API_KEY`. A server that should pay for pictures and nothing more, the
+devnet stand, sets the second alone. DAS has two ceilings for everybody
+together: `HELIUS_DAS_LIMIT_PER_MINUTE` (30) and `HELIUS_DAS_DAILY_LIMIT` (none
+unless set), so the most a day can cost is the daily number x 10 credits. Any
+signed-in visitor can make the API look up a coin nobody has looked up yet, and
+real mints run into the millions: a daily ceiling is what stops that from
+being a way to spend the plan.
 
 **Any call that reads a transaction asks for `maxSupportedTransactionVersion:
 1`.** Version 1 transactions are live on mainnet, devnet and testnet, and a node
@@ -93,6 +105,44 @@ pump.fun's Pinata gateway, by content id. The rewrite sits in the response
 types (`ImageUrl` in `application/lottery/schemas.py`), so every answer that
 carries a picture goes through it and what is stored stays what the sources
 said. The share card fetches through each gateway in turn, Filebase second.
+
+## Red flags on a coin
+
+A pool is an announced buy that cannot be called off, which makes it perfect
+exit liquidity for whoever holds a lot of the coin. Each coin is checked once,
+at its first confirmed commit in a pool. The site shows what was read in a card
+behind a mark next to the ticker, the same mark on every coin, with the obvious
+cases in red inside. The pool still buys a flagged coin.
+
+`coin_screening_worker` queues the coins and runs the checks
+(`shared/coin_screening_store.py`); the rule is in `shared/coin_screening.py`,
+with the reasoning in its docstring. A flag on its own: the creator over 20%,
+bundlers still over 20%, a bundled launch over half the supply with bundlers
+still over 5%, linked wallets over 15%, the top ten over 40% while the coin is
+on its pump.fun curve, liquidity pulled once it is off the curve, or a power
+over holders written into the mint (freeze, mint more, a permanent delegate,
+non-transferable, frozen by default, pausable; `mint_validator.mint_red_flags`,
+read from the chain with no provider). Whether a coin is on its curve is read
+from the bonding-curve account (`read_curve`). The first version needed the top
+ten over 40% behind any cluster and called Krackpot clean on 2026-10-02 while
+pump.fun showed its bundlers in red. Calibrated on 127 live coins that day: 18
+flags, 1 of them among the 20 coins over $100k older than a day.
+
+The check keeps the level it read for each holder rule (`levels`) and whether
+the coin was on its curve (`on_curve`, migration 043), and the site shows those
+readings rather than a verdict.
+
+Holders come from tracced (`TRACCED_API_KEY`, bound to the server's address),
+then Solana Tracker's Data API (`SOLANA_TRACKER_API_KEY`). tracced is a layer
+over the same Solana Tracker endpoint, so the levels use tracced's cuts and
+either path gives a coin the same answer (checked on six coins on 2026-10-02,
+ages included). Solana Tracker's free plan is 2,500 requests a month and one
+check is one request, so as the fallback it gets at most
+`SOLANA_TRACKER_DAILY_LIMIT` calls a day (75), and none for the rest of the day
+after a 429. With neither key the mint's own flags still work. A check that gets no answer is tried again with growing
+pauses and gives up after three hours as `unavailable`, which the site shows as
+nothing. Results go out as `screening` on `/lottery/current` entries and on
+`/check-mint` for the pool open now (migrations 042 and 043, `coin_screenings`).
 
 ## The burn choice
 

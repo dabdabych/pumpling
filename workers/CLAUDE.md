@@ -12,6 +12,7 @@ backend.
 | `backfill_worker` | backfill-worker | Catches up on events that were missed |
 | `bet_finalizer_worker` | bet-finalizer-worker | Confirms commit transactions, marks orphaned ones |
 | `lottery_phase_worker` | lottery-phase-worker | Drives round phases, starts the buyer after the draw |
+| `coin_screening_worker` | coin-screening-worker | Checks each coin for obvious red flags once, at its first commit in a pool |
 | `telegram_error_handler` | — | Alert channel: sends worker errors to Telegram |
 
 Support files: `events.py` (shared event logic) and `idl/lottery.json` (the
