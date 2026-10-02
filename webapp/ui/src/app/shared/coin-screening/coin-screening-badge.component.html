@@ -1,16 +1,13 @@
 <app-info-popover [label]="label" [cardLabel]="cardLabel" (openChange)="onOpenChange($event)">
   <span popoverTrigger class="mark" aria-hidden="true">
-    <svg viewBox="0 0 16 16"><circle cx="6.9" cy="6.9" r="3.9" /><path d="M9.8 9.8 13 13" /></svg>
+    <svg viewBox="0 0 16 16"><path d="M3.7 8.3 6.6 11.2 12.4 5" /></svg>
   </span>
 
   <h3 class="card__title">
     <span class="card__mark" aria-hidden="true">
-      <svg viewBox="0 0 16 16"><circle cx="6.9" cy="6.9" r="3.9" /><path d="M9.8 9.8 13 13" /></svg>
+      <svg viewBox="0 0 16 16"><path d="M3.7 8.3 6.6 11.2 12.4 5" /></svg>
     </span>
     <span class="card__name">{{ title }}</span>
-    @if (flags; as count) {
-      <span class="card__flags">{{ count }}</span>
-    }
   </h3>
 
   <dl class="card__rows">

@@ -122,18 +122,19 @@ suite is `quick-touch`.
 ## Red flags on a coin
 
 A mark after the ticker in the pool table and in the commit dialog,
-`shared/coin-screening/coin-screening-badge.component`: a magnifier, black on
-white, the same on every coin that has an answer, nothing at all on one that has
-none. The row carries no verdict: a tick read as "passed" on a coin with a red
-flag, and a red mark condemned a coin in public on a site its launcher pays to
-promote. The card shows what was read the way pump.fun shows its numbers: dev,
-bundlers, bundled at launch, top 10 and insiders as ranges (`under 5%`,
-`5–20%`), the mint's powers, the flags in red and counted in the corner, then
-when it was checked and by whom, with a link to tracced or Solana Tracker. It
-never sums the coin up in words. The first card put "No red flags" over a
-sentence about the coin, which read as if we vouched for it, and on Krackpot,
-still on its curve, it said the liquidity was in place, which nobody can pull
-from a curve anyway: liquidity has a line only when it was pulled.
+`shared/coin-screening/coin-screening-badge.component`: a black tick on a white
+square, the same on every coin that has an answer, nothing at all on one that
+has none. The row carries no verdict, and the card no count of flags: a red
+mark, and then a "1 RED FLAG" in the card, scared people off a coin its
+launcher pays to promote (Georgiy, 2026-10-02). The card shows what was read
+the way pump.fun shows its numbers: dev, bundlers, bundled at launch, top 10
+and insiders as ranges (`under 5%`, `5–20%`), the mint's powers, the flags as
+red lines, then when it was checked and by whom, with a link to tracced or
+Solana Tracker. It never sums the coin up in words. The first card put "No red
+flags" over a sentence about the coin, which read as if we vouched for it, and
+on Krackpot, still on its curve, it said the liquidity was in place, which
+nobody can pull from a curve anyway: liquidity has a line only when it was
+pulled.
 
 The card is `shared/info-popover`, which the burn chip uses too. It comes up on
 a mouse resting on the trigger, a tap, or Enter (the focus then goes into it);

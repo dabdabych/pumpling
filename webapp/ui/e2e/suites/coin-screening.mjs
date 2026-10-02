@@ -2,7 +2,7 @@
 //
 // The backend checks each coin once, at its first commit in a pool, and
 // answers clean or flagged with what it read. The mark comes up only for an
-// answer and is the same for every coin, a magnifier: the row carries no
+// answer and is the same for every coin, a black tick on a white square: the row carries no
 // verdict. The card shows the readings as ranges, the flags in red and counted,
 // when it was checked and by whom, on a mouse resting on the mark, a tap, or
 // Enter. Checked here with real input: the mouse, the keyboard and a finger.
@@ -123,6 +123,7 @@ const rowTrouble = (p) => p.evaluate(() => {
   const [plain, toadLook, zapzLook] = [await look('MOCHI'), await look('TOAD'), await look('ZAPZ')];
   ok(JSON.stringify(plain) === JSON.stringify(toadLook) && JSON.stringify(plain) === JSON.stringify(zapzLook), `the mark is the same on a clean coin and on flagged ones (${JSON.stringify(plain).slice(0, 90)}…)`);
   ok(plain.bg === 'rgb(252, 252, 252)' && plain.color === 'rgb(2, 2, 2)', `black on white, no green and no red on the row (${plain.bg} / ${plain.color})`);
+  ok(/M3\.7 8\.3 6\.6 11\.2 12\.4 5/.test(plain.svg), 'and the mark is a tick');
   const labels = [await mark(p, 'MOCHI').getAttribute('aria-label'), await mark(p, 'TOAD').getAttribute('aria-label')];
   ok(labels[0] === 'Coin check on $MOCHI. Show the check' && labels[1] === 'Coin check on $TOADSIGNALXXXXX. Show the check', `a screen reader hears the same for every coin (${labels.join(' / ')})`);
 
@@ -137,7 +138,10 @@ const rowTrouble = (p) => p.evaluate(() => {
   await p.mouse.move(box.x + 10, box.y + 10);
   await card(p).waitFor({ timeout: 3000 }).catch(() => {});
   const text = (await card(p).innerText().catch(() => '')).replace(/\s+/g, ' ');
-  ok(/^Coin check 1 red flag /i.test(text) && /Dev under 5%/.test(text) && /Bundlers 5–20%/.test(text) && /Bundled at launch over 50%/.test(text) && /Top 10 under 20%/.test(text),
+  // What the eye reads: the screen-reader words ("Red flag:" before a red line) taken out.
+  const seen = await card(p).evaluate((el) => { const copy = el.cloneNode(true); copy.querySelectorAll('.sr-only').forEach((n) => n.remove()); return copy.textContent.replace(/\s+/g, ' ').trim(); });
+  ok(!/red flag/i.test(seen) && await card(p).locator('.card__flags').count() === 0, `no "red flag" words on the card, only the red line (${seen.slice(0, 60)}…)`);
+  ok(/^Coin check Dev under 5%/.test(text) && /Dev under 5%/.test(text) && /Bundlers 5–20%/.test(text) && /Bundled at launch over 50%/.test(text) && /Top 10 under 20%/.test(text),
     `the card shows what was read, as ranges (${text.slice(0, 120)}…)`);
   const red = await card(p).locator('.card__row--flagged').evaluateAll((rows) => rows.map((row) => [row.innerText.replace(/\s+/g, ' '), getComputedStyle(row.querySelector('dd')).color]));
   ok(red.length === 1 && /Bundled at launch over 50%/.test(red[0][0]) && red[0][1] === 'rgb(176, 52, 29)', `the flag is the one line in red (${JSON.stringify(red)})`);
@@ -162,7 +166,7 @@ const rowTrouble = (p) => p.evaluate(() => {
   await p.waitForTimeout(300);
   const g = await (async () => { await mark(p, 'ZAPZ').hover(); await card(p).waitFor({ timeout: 3000 }); return geometry(p); })();
   const chainText = (await card(p).innerText()).replace(/\s+/g, ' ');
-  ok(/^Coin check 2 red flags /i.test(chainText) && /Freeze authority active/.test(chainText) && /Mint authority active/.test(chainText) && /Read from the coin.s own account/.test(chainText) && await card(p).locator('a').count() === 0,
+  ok(/^Coin check Red flag: Freeze authority active/.test(chainText) && /Freeze authority active/.test(chainText) && /Mint authority active/.test(chainText) && /Read from the coin.s own account/.test(chainText) && await card(p).locator('a').count() === 0,
     `a flag from the mint itself says so, with no outside link (${chainText.slice(0, 120)})`);
   ok(!!g && !g.coversMark && g.left >= 16 && g.right >= 16, `the card sits beside its mark, inside the window (${JSON.stringify(g)})`);
   await p.mouse.move(5, 5);

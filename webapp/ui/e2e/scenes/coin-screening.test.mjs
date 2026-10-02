@@ -13,9 +13,7 @@ import {
   cardLabel,
   checkedAgo,
   checkedLine,
-  flagCount,
   screeningRows,
-  flagsLabel,
   sourceOf,
   toCoinScreening
 } from './coin-screening.mjs';
@@ -63,7 +61,6 @@ t('Krackpot at its first commit: a bundled launch is the flag, the rest are plai
     'Top 10: under 20%',
     'Insiders: under 5%'
   ]);
-  assert.equal(flagsLabel(screening), '1 red flag');
 });
 
 t('a clean card reads like pump.fun\'s numbers, with no verdict and no liquidity line', () => {
@@ -76,7 +73,6 @@ t('a clean card reads like pump.fun\'s numbers, with no verdict and no liquidity
     'Insiders: under 5%',
     'Mint & freeze: revoked'
   ]);
-  assert.equal(flagsLabel(screening), null, 'a clean coin has no count');
   assert.ok(screeningRows(screening).every((row) => !row.flagged));
 });
 
@@ -90,7 +86,6 @@ t('the ranges are the backend\'s cuts', () => {
     '!Top 10: over 40%',
     '!Insiders: over 15%'
   ]);
-  assert.equal(flagsLabel(high), '4 red flags');
   const medium = toCoinScreening({ status: 'clean', levels: { dev: 'medium', bundle: 'medium', bundled_launch: 'medium', top10: 'medium', insiders: 'medium' }, checked_at: AT });
   assert.deepEqual(lines(medium).slice(0, 5), ['Dev: 5–20%', 'Bundlers: 5–20%', 'Bundled at launch: 20–50%', 'Top 10: 20–40%', 'Insiders: 5–15%']);
 });
@@ -116,7 +111,6 @@ t('the mint\'s powers, one line each, in the words traders use', () => {
     '!New accounts: frozen',
     '!Transfers: can be paused'
   ]);
-  assert.equal(flagsLabel(screening), '6 red flags');
 });
 
 t('liquidity has a line only when it was pulled', () => {
@@ -131,10 +125,8 @@ t('liquidity has a line only when it was pulled', () => {
   }
 });
 
-t('unknown codes are left out of the count and the card', () => {
+t('unknown codes are left out of the card', () => {
   const screening = toCoinScreening({ status: 'flagged', reasons: ['creator_over_20', 'something_new'], levels: { ...QUIET, dev: 'high' }, checked_at: AT });
-  assert.equal(flagCount(screening), 1);
-  assert.equal(flagsLabel(screening), '1 red flag');
   assert.equal(lines(screening).filter((line) => line.startsWith('!')).length, 1);
 });
 

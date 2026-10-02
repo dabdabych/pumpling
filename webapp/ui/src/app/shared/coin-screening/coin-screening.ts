@@ -10,10 +10,10 @@
  * still on its curve it said its liquidity was in place, which nobody can pull
  * from a curve anyway.
  *
- * The mark on the row is the same for every coin checked, a magnifier: a tick
- * says "passed" and a red mark condemns the coin in public, and either way the
- * row would carry a verdict. Whoever wants the readings opens the card; the
- * flags are counted there.
+ * The mark on the row is the same for every coin checked, a black tick on a
+ * white square: it says the coin was checked. A red mark, or a count of red
+ * flags in the card, scared people off a coin its launcher paid to promote.
+ * Whoever wants the readings opens the card, where the flags are the red lines.
  *
  * A coin with no answer has nothing here and the site shows nothing, exactly as
  * before the check existed. The words never say "safe", "scam" or "verified":
@@ -165,20 +165,7 @@ export function screeningRows(screening: CoinScreening): ScreeningRow[] {
   return rows;
 }
 
-export function flagCount(screening: CoinScreening): number {
-  return screening.reasons.filter((code) => code in REASON_ROW).length;
-}
-
 export const SCREENING_TITLE = 'Coin check';
-
-/** The count in the card's corner, "2 red flags", or null when nothing was flagged. */
-export function flagsLabel(screening: CoinScreening): string | null {
-  const count = flagCount(screening);
-  if (screening.status !== 'flagged' || count === 0) {
-    return null;
-  }
-  return count === 1 ? '1 red flag' : `${count} red flags`;
-}
 
 function coinName(ticker: string): string {
   return ticker ? `$${ticker}` : 'this coin';

@@ -140,54 +140,17 @@ simulated chain, late purchases included. Every wallet got its share to the raw
 unit. The same harness run with the formula we had before breaks the promise in
 359 of them, which is how we know the test can fail.
 
-## Red flags on a coin
+## Coin checks
 
-A pool is an announced buy that nobody can call off. For whoever holds a large
-part of a coin, that is a ready exit: they sell into our buying. People who back
-a coin here should see that risk before they commit, without having to dig for
-it.
+A pool is a public buy that cannot be called off, so it is an easy exit for
+anyone holding a large part of a coin. Each coin is checked once, at its first
+commit in a pool, for the obvious signs of that. The readings sit in a small
+card behind a tick next to the ticker, and the pool still buys the coin.
 
-So each coin is checked once, at its first commit in a pool. A small magnifier
-after the ticker opens what the check read: the creator's share, the bundlers,
-how much of the supply went to bundled wallets at launch, wallets linked to the
-creator, the top 10 holders, and what the mint lets its issuer do. Each reading
-is shown as a range, the way pump.fun shows its numbers. A red line is a red
-flag.
-
-| Reading | A red flag when |
-|---|---|
-| Creator | holds over 20% of the supply |
-| Bundlers | still hold over 20% |
-| Bundled at launch | over 50% went to bundled wallets, and they still hold over 5% |
-| Linked wallets | hold over 15% |
-| Top 10 | hold over 40% while the coin is on its pump.fun curve |
-| Liquidity | was pulled after the coin left the curve |
-| Mint | lets the issuer freeze tokens, mint more, take them, or block transfers |
-
-The magnifier looks the same on every coin. A tick would read as "safe" and a
-red sign as a verdict, and we do not want to give either. The pool still buys a
-flagged coin. It is the backers' money, so the call stays with them.
-
-The holder data comes from [tracced](https://tracced.xyz), another team building
-at the Colosseum Crypto World's Fair. We liked how they read a coin's holders,
-so we ask them first, and the levels behind the ranges are theirs. When tracced
-does not answer, the same data comes straight from the
-[Solana Tracker](https://www.solanatracker.io) Data API. The mint's powers need
-no provider at all: we read them from the mint account on chain.
-
-The first version of the rule missed a coin. pump.fun showed its bundlers in
-red while we showed nothing: 79 bundled wallets had bought 78.5% of the supply
-at launch and were selling it into the buyers. A bundled launch on its own
-proves little, since over half the supply went to bundled wallets on 62 of the
-127 live coins we sampled. It counts now while the bundlers still hold a share.
-On that sample the rule flags 18 coins. Of the 20 worth over $100k and older
-than a day, it flags one.
-
-What it will not catch is a careful launcher who spreads the supply across
-fresh wallets. We screen for the obvious and do not play cat and mouse. The
-rule and the reasoning behind each number are in
-`webapp/backend/shared/coin_screening.py`, and `workers/coin_screening_worker.py`
-runs the checks.
+Holder data comes from [tracced](https://tracced.xyz), another team at the
+Colosseum Crypto World's Fair whose approach we liked, with the
+[Solana Tracker](https://www.solanatracker.io) Data API behind it. The rule is
+in `webapp/backend/shared/coin_screening.py`.
 
 ## The program on mainnet
 

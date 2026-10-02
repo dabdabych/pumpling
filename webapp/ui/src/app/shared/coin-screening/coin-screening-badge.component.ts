@@ -7,14 +7,13 @@ import {
   badgeLabel,
   cardLabel,
   checkedLine,
-  flagsLabel,
   screeningRows,
   sourceOf
 } from './coin-screening';
 
 /**
- * The coin check after a ticker: a magnifier, the same on every coin checked,
- * and the card with what the check read. How the card opens, where it goes and
+ * The coin check after a ticker: a black tick on a white square, the same on
+ * every coin checked, and the card with what the check read. How the card opens, where it goes and
  * how it closes is `InfoPopoverComponent`'s.
  */
 @Component({
@@ -42,10 +41,6 @@ export class CoinScreeningBadgeComponent {
 
   get cardLabel(): string {
     return cardLabel(this.ticker);
-  }
-
-  get flags(): string | null {
-    return flagsLabel(this.screening);
   }
 
   get rows(): ScreeningRow[] {
