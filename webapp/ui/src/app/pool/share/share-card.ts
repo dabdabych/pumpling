@@ -6,9 +6,12 @@ import { PoolPhase, PoolSnapshot, coinInitials, formatSol } from '../pool-state'
  *
  * Drawn on a canvas in the browser, with no server and no external service. The
  * image goes to a file or to the clipboard, from where it is pasted straight into
- * a post. The coin logo comes from somebody else's domain, so it is only drawn if
- * the server served it with CORS: otherwise the canvas is tainted and the image
- * cannot be exported. If it did not, we draw the initials, as in the coin list.
+ * a post. The coin logo comes from somebody else's domain, and a canvas only takes
+ * a picture whose server allows it (CORS): otherwise the canvas is tainted and the
+ * image cannot be exported. DexScreener's CDN sends no such header, so the picture
+ * is first asked for from our own server (`/share/coin-logo/<mint>`, which fetches
+ * it and serves it from our origin), then from where it lives, and only then do
+ * we draw the initials, as in the coin list.
  *
  * The texts live in a separate pure function: they are checked by a test rather
  * than by eye on a picture.
@@ -191,7 +194,19 @@ export function shareCardFileName(data: ShareCardData): string {
 }
 
 /** Draw the card. The canvas size is set here too. */
-export async function drawShareCard(canvas: HTMLCanvasElement, data: ShareCardData): Promise<void> {
+/**
+ * Where the card looks for the coin's picture, in order: our own server, then the
+ * picture's own address. Nothing for a coin without one.
+ */
+export function shareCardLogoSources(apiUrl: string, data: Pick<ShareCardData, 'logoUrl' | 'mint'>): string[] {
+  if (!data.logoUrl) {
+    return [];
+  }
+  const own = data.mint ? `${apiUrl.replace(/\/+$/, '')}/share/coin-logo/${encodeURIComponent(data.mint)}` : null;
+  return own ? [own, data.logoUrl] : [data.logoUrl];
+}
+
+export async function drawShareCard(canvas: HTMLCanvasElement, data: ShareCardData, logoSources: string[] = data.logoUrl ? [data.logoUrl] : []): Promise<void> {
   const ctx = canvas.getContext('2d');
   if (!ctx) {
     throw new Error('canvas is not available');
@@ -201,7 +216,7 @@ export async function drawShareCard(canvas: HTMLCanvasElement, data: ShareCardDa
 
   await ensureFonts();
   const copy = shareCardCopy(data);
-  const [mascot, logo] = await Promise.all([loadImage('assets/images/pumpling-mascot.png'), loadImage(data.logoUrl, true)]);
+  const [mascot, logo] = await Promise.all([loadImage('assets/images/pumpling-mascot.png'), loadFirstImage(logoSources)]);
 
   ctx.clearRect(0, 0, SHARE_CARD_WIDTH, SHARE_CARD_HEIGHT);
   ctx.fillStyle = COLORS.paper;
@@ -493,6 +508,17 @@ async function ensureFonts(): Promise<void> {
   } catch {
     // Without Inter the card draws in a system font, which is better than nothing.
   }
+}
+
+/** The first of these addresses that gives a picture the canvas may use. */
+async function loadFirstImage(sources: string[]): Promise<HTMLImageElement | null> {
+  for (const source of sources) {
+    const image = await loadImage(source, true);
+    if (image) {
+      return image;
+    }
+  }
+  return null;
 }
 
 function loadImage(src: string | null, crossOrigin = false): Promise<HTMLImageElement | null> {

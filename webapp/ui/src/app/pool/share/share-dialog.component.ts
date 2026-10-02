@@ -1,8 +1,10 @@
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Inject, OnDestroy, ViewChild } from '@angular/core';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
+import { environment } from '../../../environments/environment';
 
 import {
   drawShareCard,
+  shareCardLogoSources,
   ShareCardData,
   shareCardBlob,
   shareCardCopy,
@@ -84,7 +86,7 @@ export class ShareDialogComponent implements AfterViewInit, OnDestroy {
 
   async ngAfterViewInit(): Promise<void> {
     try {
-      await drawShareCard(this.canvasRef.nativeElement, this.data);
+      await drawShareCard(this.canvasRef.nativeElement, this.data, shareCardLogoSources(environment.apiUrl, this.data));
       this.ready = true;
     } catch {
       this.failed = true;

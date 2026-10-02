@@ -2,6 +2,7 @@
 import { launch } from '../lib/browser.mjs';
 import { execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { SCENARIOS, mockCurrent, MINTS } from '../lib/pool-mock.mjs';
 const BASE = process.env.BASE || 'http://localhost:3200';
 const S = process.env.S || '/private/tmp/claude-501/-Users-georgiy-qres/5d0d11e6-15d5-4eae-9eac-a9cc508dc8e9/scratchpad';
@@ -11,6 +12,7 @@ const ok = (c, m) => { if (!c) fails++; console.log(`${c ? 'OK  ' : 'FAIL'} ${m}
 
 const ctx = await b.newContext({ viewport: { width: 1440, height: 950 }, permissions: ['clipboard-read', 'clipboard-write'] });
 await mockCurrent(ctx, () => SCENARIOS.open());
+await ctx.route('**/share/coin-logo/**', (route) => route.fulfill({ status: 404, headers: { 'access-control-allow-origin': '*' }, body: '' }));
 const p = await ctx.newPage();
 const errors = []; p.on('pageerror', (e) => errors.push(e.message));
 for (let a = 0; a < 3; a++) { try { await p.goto(BASE + '/pool', { waitUntil: 'domcontentloaded', timeout: 45000 }); break; } catch (e) { if (a === 2) throw e; } }
@@ -93,6 +95,66 @@ ok(await p2.evaluate(() => document.documentElement.scrollWidth - document.docum
 await p2.screenshot({ path: `${S}/pw/shots/share-phone.png` });
 execSync(`sips -s format jpeg -s formatOptions 65 -Z 700 ${S}/pw/shots/share-phone.png --out ${S}/pw/shots/share-phone.jpg >/dev/null`);
 await phone.close();
+
+// A picture whose server sends no CORS header, as DexScreener's CDN does not:
+// the coin list (a plain <img>) shows it, and the card used to fall back to the
+// initials, because a canvas may not take it (stand, 2026-10-02, $WIFWWW). The
+// card now asks our own server for it first (`/share/coin-logo/<mint>`).
+// A real server on another port, so the browser checks CORS for real: a picture
+// answered through Playwright's route.fulfill passed the check either way, which
+// would have let this test pass on the old code too.
+const RED_PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAgUlEQVR4nNXOQREAIAzAsFINyMG/CsQgYg+uUZB196FM4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iRO4iTO34GpB82EAazrhjvbAAAAAElFTkSuQmCC', 'base64');
+const pictures = createServer((req, res) => {
+  const headers = { 'content-type': 'image/png', 'cache-control': 'no-store' };
+  if (req.url.startsWith('/with-cors')) headers['access-control-allow-origin'] = '*';
+  res.writeHead(200, headers);
+  res.end(RED_PNG);
+});
+await new Promise((resolve) => pictures.listen(0, '127.0.0.1', resolve));
+const PICTURES = `http://127.0.0.1:${pictures.address().port}`;
+const red = (pixel) => Math.abs(pixel[0] - 220) < 12 && pixel[1] < 40 && Math.abs(pixel[2] - 60) < 14;
+async function cardWithPicture({ ownServer, pictureCors }) {
+  const scenario = () => {
+    const body = SCENARIOS.open();
+    body.entries[0].coin.logo_url = `${PICTURES}/${pictureCors ? 'with-cors' : 'no-cors'}/mochi.png`;
+    return body;
+  };
+  const context = await b.newContext({ viewport: { width: 1440, height: 950 } });
+  await mockCurrent(context, scenario);
+  const asked = [];
+  await context.route('**/share/coin-logo/**', (route) => {
+    asked.push(route.request().url());
+    return ownServer
+      ? route.fulfill({ status: 200, contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: RED_PNG })
+      : route.fulfill({ status: 404, headers: { 'access-control-allow-origin': '*' }, body: '' });
+  });
+  const page = await context.newPage();
+  page.on('pageerror', (e) => errors.push(e.message));
+  for (let a = 0; a < 3; a++) { try { await page.goto(BASE + '/pool', { waitUntil: 'domcontentloaded', timeout: 45000 }); break; } catch (e) { if (a === 2) throw e; } }
+  await page.waitForFunction(() => !document.getElementById('qres-app-loader'), null, { timeout: 40000 });
+  await page.locator('.coin-row__card').first().click();
+  await page.waitForSelector('.share__preview.is-ready', { timeout: 15000 });
+  const pixel = await badgePixel(page);
+  const exported = await page.locator('.share__canvas').evaluate((el) => { try { return el.toDataURL('image/png').length; } catch { return 0; } });
+  await context.close();
+  return { pixel, exported, asked };
+}
+
+{
+  const { pixel, exported, asked } = await cardWithPicture({ ownServer: true, pictureCors: false });
+  ok(asked.length === 1 && asked[0].endsWith(`/share/coin-logo/${MINTS.mochi}`), `the card asks our server for the coin's picture (${asked.join(', ') || 'not asked'})`);
+  ok(red(pixel), `a picture without CORS reaches the card through it, not the initials (${pixel})`);
+  ok(exported > 20000, 'and the card still exports');
+}
+{
+  const { pixel, exported } = await cardWithPicture({ ownServer: false, pictureCors: true });
+  ok(red(pixel) && exported > 20000, `when our server has nothing, a picture with CORS is taken from where it lives (${pixel})`);
+}
+{
+  const { pixel } = await cardWithPicture({ ownServer: false, pictureCors: false });
+  ok(pixel.join() === '143,255,175', `and when neither works, the initials as before (${pixel})`);
+}
+pictures.close();
 
 ok(errors.length === 0, `no page errors ${errors.join(' | ')}`);
 console.log(fails ? `${fails} FAILED` : 'SHARE CARD ALL PASSED');

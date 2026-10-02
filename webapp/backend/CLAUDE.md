@@ -95,6 +95,14 @@ checked after resolving and connected to directly, redirects re-checked, size,
 pixel and time limits, and a small pool of its own threads so a slow server
 cannot tie up the API.
 
+The card in the share dialog is drawn on a canvas in the browser, and a canvas
+only takes a picture whose server allows it (CORS). DexScreener's CDN does not,
+so a coin whose picture came from there showed its initials on that card while
+the coin list showed the picture (2026-10-02). `/share/coin-logo/<mint>` serves
+the stored picture from our own origin, fetched the same untrusted way; it takes
+a mint, never an address, so it is no open proxy. The dialog asks it first,
+then the picture's own address, then draws the initials.
+
 ## Coin pictures on IPFS
 
 ipfs.io stopped serving files over HTTP on 2026-09-21, and most pump.fun

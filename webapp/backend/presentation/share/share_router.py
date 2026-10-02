@@ -20,6 +20,7 @@ taken for a crawler gets a page that sends them on at once.
 from __future__ import annotations
 
 import html
+import io
 import json
 import re
 import threading
@@ -132,6 +133,59 @@ def _image_response(source: Optional[CardSource]) -> Response:
     if source is None:
         return Response(status_code=404, headers={"Cache-Control": "no-cache"})
     return Response(content=_png(source), media_type="image/png", headers={"Cache-Control": "public, max-age=300"})
+
+
+# --------------------------------------------------------- the coin's picture
+
+_LOGO_PNG_MAX = 128
+_logo_png: "OrderedDict[str, bytes]" = OrderedDict()
+_logo_png_lock = threading.Lock()
+
+
+@router.api_route("/coin-logo/{mint}", methods=["GET", "HEAD"], include_in_schema=False)
+def coin_logo(mint: str, db: Session = Depends(get_db)) -> Response:
+    """The coin's picture, served from our own address, for the card the browser draws.
+
+    The share dialog draws its card on a canvas, and a canvas only takes a
+    picture whose server allows it (CORS); otherwise the card cannot be saved.
+    DexScreener's CDN sends no such header, so a coin whose picture came from
+    there showed it in the coin list, a plain <img>, and its initials on the
+    card (stand, 2026-10-02, $WIFWWW). From here it is our own origin.
+
+    Only a coin we keep a picture for: the address comes from our table, never
+    from the request, so this is no open proxy. The download is
+    `shared/remote_image.py`'s, public addresses only, size and time limits,
+    remembered for an hour, IPFS through each gateway in turn.
+    """
+    missing = Response(status_code=404, headers={"Cache-Control": "public, max-age=60"})
+    if not MINT_PATTERN.match(mint):
+        return missing
+    from presentation.lottery.lottery_router import _get_coin_metadata
+
+    _name, _symbol, logo_url = _get_coin_metadata(db, mint)
+    logo_url = (logo_url or "").strip()
+    if not logo_url:
+        return missing
+    with _logo_png_lock:
+        png = _logo_png.get(logo_url)
+        if png is not None:
+            _logo_png.move_to_end(logo_url)
+    if png is None:
+        image = None
+        for url in image_url_candidates(logo_url):
+            image = fetch_image(url)
+            if image is not None:
+                break
+        if image is None:
+            return missing
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        png = buffer.getvalue()
+        with _logo_png_lock:
+            _logo_png[logo_url] = png
+            while len(_logo_png) > _LOGO_PNG_MAX:
+                _logo_png.popitem(last=False)
+    return Response(content=png, media_type="image/png", headers={"Cache-Control": "public, max-age=3600"})
 
 
 # ------------------------------------------------------------------ the page
