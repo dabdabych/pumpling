@@ -6,7 +6,6 @@ here goes missing on the page.
 """
 from __future__ import annotations
 
-import asyncio
 
 import pytest
 
@@ -52,7 +51,8 @@ def stubs(monkeypatch):
 
 def _get(monkeypatch, payload):
     monkeypatch.setattr(router, "_cached_purchase_feed", lambda lottery_id: payload)
-    return asyncio.run(router.get_lottery_purchases(7, db=None))
+    # A plain function now, run in FastAPI's thread pool (tests/test_event_loop_free.py).
+    return router.get_lottery_purchases(7, db=None)
 
 
 def test_deliveries_and_burns_come_through_with_the_coin_they_belong_to(monkeypatch):

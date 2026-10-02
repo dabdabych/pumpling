@@ -2,6 +2,7 @@ from enum import Enum
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -268,21 +269,34 @@ def _persist_token_metadata(
     if not cleaned_name and not cleaned_symbol and not cleaned_logo_url:
         return None
 
+    def fill(row: TokenMetadataModel) -> None:
+        if cleaned_name:
+            row.name = cleaned_name
+        if cleaned_symbol:
+            row.symbol = cleaned_symbol
+        if cleaned_logo_url:
+            row.logo_url = cleaned_logo_url
+        row.updated_at = datetime.now(timezone.utc)
+
     row = db.query(TokenMetadataModel).filter(TokenMetadataModel.mint == canonical_mint).first()
     if row is None:
         row = TokenMetadataModel(mint=canonical_mint)
         db.add(row)
-
-    if cleaned_name:
-        row.name = cleaned_name
-    if cleaned_symbol:
-        row.symbol = cleaned_symbol
-    if cleaned_logo_url:
-        row.logo_url = cleaned_logo_url
-    row.updated_at = datetime.now(timezone.utc)
+    fill(row)
 
     if commit:
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # Another request stored this coin between our read and our write
+            # (two searches for the same new coin, or the background fill):
+            # theirs stays, ours goes over it.
+            db.rollback()
+            row = db.query(TokenMetadataModel).filter(TokenMetadataModel.mint == canonical_mint).first()
+            if row is None:
+                raise
+            fill(row)
+            db.commit()
     return row
 
 
@@ -1056,18 +1070,23 @@ def _fetch_dex_pools_for_mint_once(mint_address: str) -> list[dict[str, object]]
 #: market card ask the same question, and the provider rate limits us.
 DEX_POOLS_CACHE_SECONDS = 60.0
 _DEX_POOLS_CACHE: dict[str, tuple[float, list[dict[str, object]]]] = {}
+_DEX_POOLS_LOCK = threading.Lock()
 
 
 def _cached_dex_pools(mint_address: str) -> list[dict[str, object]]:
+    """DexScreener's pools for a coin, held for a while. Read from the API's
+    thread pool, so the cache is locked; the fetch itself is not."""
     now = time.monotonic()
-    cached = _DEX_POOLS_CACHE.get(mint_address)
+    with _DEX_POOLS_LOCK:
+        cached = _DEX_POOLS_CACHE.get(mint_address)
     if cached and now - cached[0] < DEX_POOLS_CACHE_SECONDS:
         return cached[1]
     pools = _fetch_dex_pools_for_mint(mint_address)
-    _DEX_POOLS_CACHE[mint_address] = (now, pools)
-    if len(_DEX_POOLS_CACHE) > 256:
-        for key, _ in sorted(_DEX_POOLS_CACHE.items(), key=lambda item: item[1][0])[:64]:
-            _DEX_POOLS_CACHE.pop(key, None)
+    with _DEX_POOLS_LOCK:
+        _DEX_POOLS_CACHE[mint_address] = (now, pools)
+        if len(_DEX_POOLS_CACHE) > 256:
+            for key, _ in sorted(_DEX_POOLS_CACHE.items(), key=lambda item: item[1][0])[:64]:
+                _DEX_POOLS_CACHE.pop(key, None)
     return pools
 
 
@@ -2980,7 +2999,9 @@ async def place_bet(
         if not request.tx_signature or not request.tx_signature.strip():
             raise HTTPException(status_code=400, detail="Transaction signature is required")
 
-        canonical_mint, _, _, _, _, _ = _validate_mint(
+        # Blocking reads of the node and DexScreener: off the event loop.
+        canonical_mint, _, _, _, _, _ = await run_in_threadpool(
+            _validate_mint,
             request.meme_coin_address,
             min_pumpswap_quote_lamports=_sol_to_lamports(request.sol_amount),
         )
@@ -3081,7 +3102,7 @@ async def place_bet(
                 TokenMetadataModel.mint == canonical_mint
             ).first() is not None
             if canonical_mint not in TOKEN_METADATA and not has_persisted_metadata:
-                token_metadata = _fetch_token_metadata(canonical_mint)
+                token_metadata = await run_in_threadpool(_fetch_token_metadata, canonical_mint)
                 if any(token_metadata.values()):
                     _persist_helius_metadata(db, canonical_mint, token_metadata, commit=True)
                     token_metadata_queue.forget(canonical_mint)
@@ -3111,8 +3132,14 @@ async def place_bet(
         raise HTTPException(status_code=500, detail=f"Failed to place bet: {str(e)}")
 
 
+# `def`, not `async def`, here and on the chart and the purchase feed: their
+# work is blocking (urllib to pump.fun, DexScreener, Helius, the node, the
+# buyer), and in an `async def` it ran on the event loop, so every other
+# request to the API waited for it. Measured on the stand on 2026-10-02: five
+# coin searches at once held /ping and /lottery/current for 2.3 s. FastAPI
+# runs a plain `def` in its thread pool, and the loop stays free.
 @router.post("/check-mint", response_model=MintAllowTokenResponse)
-async def check_mint(
+def check_mint(
     request: MintAllowTokenRequest,
     db: Session = Depends(get_db),
     current_user_id: int = Depends(get_current_user),
@@ -3136,14 +3163,19 @@ async def check_mint(
         existing_metadata = db.query(TokenMetadataModel).filter(
             TokenMetadataModel.mint == canonical_mint
         ).first()
+        token_metadata: dict[str, str | None] | None = None
         if existing_metadata and (existing_metadata.name or existing_metadata.symbol or existing_metadata.logo_url):
             token_metadata = {
                 "token_name": existing_metadata.name,
                 "token_symbol": existing_metadata.symbol,
                 "token_image_url": existing_metadata.logo_url,
             }
-        else:
-                token_metadata = _fetch_token_metadata(canonical_mint)
+        # The read is over: hand the connection back before waiting on the
+        # network. Searches now run side by side, and holding one through a
+        # slow source each would empty the pool (5 + 10) for everybody else.
+        db.commit()
+        if token_metadata is None:
+            token_metadata = _fetch_token_metadata(canonical_mint)
 
         if any(token_metadata.values()):
             try:
@@ -3188,7 +3220,7 @@ async def check_mint(
 
 
 @router.get("/coin/{mint}/chart", response_model=CoinChartResponse)
-async def get_coin_chart(mint: str):
+def get_coin_chart(mint: str):
     """The coin's price over the last few minutes, for the hover tooltip.
 
     Public and deliberately cheap: the source's answer sits in a shared cache,
@@ -3237,7 +3269,7 @@ async def get_coin_chart(mint: str):
 
 
 @router.get("/{lottery_id}/purchases", response_model=PurchaseFeedResponse)
-async def get_lottery_purchases(lottery_id: int, db: Session = Depends(get_db)):
+def get_lottery_purchases(lottery_id: int, db: Session = Depends(get_db)):
     """What has been bought for this round and in which transactions.
 
     A public endpoint: everything here is on chain anyway, and for a participant

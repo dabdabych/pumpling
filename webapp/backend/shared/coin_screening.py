@@ -25,8 +25,9 @@ Why these. The first version needed a cluster backed by a top ten over 40%. On
 bundlers at 30% and its top ten at 28%, both in red: 79 bundled wallets had
 bought 78.5% of the supply at launch and were selling it into the buyers.
 Bundlers over 20% is the top level of tracced's own cut, and pump.fun showed
-Krackpot's 30% in red, so it flags on its own now. A bundled launch alone is not: it was over half the supply on 62
-of 127 live coins, GOIF, UDR and AROS among them. With bundlers still holding a
+Krackpot's 30% in red, so it flags on its own now. A bundled launch alone is
+not: it was over half the supply on 62 of 127 live coins, GOIF, UDR and AROS
+among them. With bundlers still holding a
 share, it is the Krackpot pattern, and it stays visible after they have sold
 most of it.
 
