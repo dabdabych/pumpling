@@ -89,6 +89,13 @@ def offline(monkeypatch):
 
     monkeypatch.setattr(router, "Client", DeadClient)
 
+    # The round's address is read through the raw JSON-RPC path as well.
+    def dead_rpc(*_args, **_kwargs):
+        raise RuntimeError("no network in tests")
+
+    monkeypatch.setattr(router, "_rpc_get_account_data", dead_rpc)
+    router._ACCOUNT_SUMMARY_CACHE.clear()
+
 
 class FakeEventRow:
     def __init__(self, data):

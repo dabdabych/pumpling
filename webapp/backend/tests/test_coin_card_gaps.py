@@ -27,7 +27,6 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from shared import coin_chart as chart_module  # noqa: E402
-from shared import token_metadata_queue as queue_module  # noqa: E402
 from shared.coin_chart import STALE_TTL_SECONDS, coin_chart  # noqa: E402
 from shared.settings import get_settings  # noqa: E402
 
@@ -156,75 +155,6 @@ class TestTheChartIsNotLostToOneSlowAnswer:
         assert settings.chart_lookup_timeout_seconds >= 9
 
 
-class TestThePictureIsAskedForAgain:
-    """The queue's own rules, which are what make "again" not mean "constantly"."""
-
-    @pytest.fixture(autouse=True)
-    def clean_queue(self):
-        with queue_module._wakeup:
-            queue_module._queued.clear()
-            queue_module._attempted.clear()
-            queue_module._attempts.clear()
-            queue_module._queue.clear()
-        yield
-        with queue_module._wakeup:
-            queue_module._queued.clear()
-            queue_module._attempted.clear()
-            queue_module._attempts.clear()
-            queue_module._queue.clear()
-
-    def test_an_incomplete_answer_is_tried_again_later(self, monkeypatch):
-        # The filler reports "not done" when the picture is still missing.
-        monkeypatch.setattr(queue_module, "_filler", lambda mint: False)
-
-        queue_module.request_fill(MINT)
-        for _ in range(100):
-            if queue_module._attempts.get(MINT):
-                break
-            time.sleep(0.02)
-
-        assert queue_module._attempts.get(MINT) == 1
-        assert MINT in queue_module._attempted
-
-    def test_not_again_straight_away(self, monkeypatch):
-        monkeypatch.setattr(queue_module, "_filler", lambda mint: False)
-        with queue_module._wakeup:
-            from datetime import datetime, timezone
-
-            queue_module._attempted[MINT] = datetime.now(timezone.utc)
-
-        queue_module.request_fill(MINT)
-
-        assert queue_module.pending_count() == 0, "half an hour has to pass first"
-
-    def test_and_not_for_ever(self, monkeypatch):
-        monkeypatch.setattr(queue_module, "_filler", lambda mint: False)
-        with queue_module._wakeup:
-            queue_module._attempts[MINT] = queue_module.MAX_ATTEMPTS
-
-        queue_module.request_fill(MINT)
-
-        assert queue_module.pending_count() == 0, "a coin with no image at all is given up on"
-
-    def test_a_complete_answer_clears_the_score(self, monkeypatch):
-        monkeypatch.setattr(queue_module, "_filler", lambda mint: True)
-        with queue_module._wakeup:
-            queue_module._attempts[MINT] = 3
-
-        queue_module.request_fill(MINT)
-        for _ in range(100):
-            if MINT not in queue_module._attempts:
-                break
-            time.sleep(0.02)
-
-        assert MINT not in queue_module._attempts
-        assert MINT not in queue_module._attempted
-
-    def test_the_cap_is_a_few_hours_of_trying_not_a_few_minutes(self):
-        hours = queue_module.MAX_ATTEMPTS * queue_module.RETRY_AFTER_SECONDS / 3600
-        assert 2 <= hours <= 12
-
-
 class TestThePictureIsFoundWhereItIs:
     """Where a small coin's picture comes from, and why it was never found.
 
@@ -258,7 +188,7 @@ class TestThePictureIsFoundWhereItIs:
             asked.append(request.full_url)
             return Answer()
 
-        monkeypatch.setattr(router.urllib_request, "urlopen", urlopen)
+        monkeypatch.setattr(router.fast_http, "urlopen", urlopen)
         metadata = router._fetch_pumpfun_token_metadata(MINT)
 
         assert asked == [f"https://frontend-api-v3.pump.fun/coins-v2/{MINT}"]
@@ -273,7 +203,7 @@ class TestThePictureIsFoundWhereItIs:
         def urlopen(request, timeout=None, context=None):
             raise urllib_error.HTTPError(request.full_url, 404, "Not Found", {}, io.BytesIO(b"{}"))
 
-        monkeypatch.setattr(router.urllib_request, "urlopen", urlopen)
+        monkeypatch.setattr(router.fast_http, "urlopen", urlopen)
         with caplog.at_level("WARNING"):
             metadata = router._fetch_pumpfun_token_metadata(MINT)
 
@@ -285,6 +215,7 @@ class TestThePictureIsFoundWhereItIs:
         empty = {"token_name": None, "token_symbol": None, "token_image_url": None}
         monkeypatch.setattr(router, "_fetch_pumpfun_token_metadata", lambda mint: {**empty, "token_name": "Convict.fun", "token_symbol": "CONVICT"})
         monkeypatch.setattr(router, "_fetch_helius_token_metadata", lambda mint: dict(empty))
+        monkeypatch.setattr(router, "_fetch_onchain_token_metadata", lambda mint: dict(empty))
         monkeypatch.setattr(router, "_fetch_dexscreener_token_metadata", lambda mint: {**empty, "token_name": "Other", "token_image_url": "https://cdn/convict.png"})
 
         metadata = router._fetch_token_metadata(MINT)
@@ -308,6 +239,7 @@ class TestThePictureIsFoundWhereItIs:
 
         monkeypatch.setattr(router, "_fetch_pumpfun_token_metadata", complete)
         monkeypatch.setattr(router, "_fetch_helius_token_metadata", later("helius"))
+        monkeypatch.setattr(router, "_fetch_onchain_token_metadata", later("chain"))
         monkeypatch.setattr(router, "_fetch_dexscreener_token_metadata", later("dexscreener"))
 
         router._fetch_token_metadata(MINT)
@@ -330,11 +262,13 @@ class TestThePictureIsFoundWhereItIs:
 
         monkeypatch.setattr(router, "_fetch_pumpfun_token_metadata", source("pumpfun", {}))
         monkeypatch.setattr(router, "_fetch_dexscreener_token_metadata", source("dexscreener", {"token_name": "lapa.page", "token_symbol": "lapa"}))
+        monkeypatch.setattr(router, "_fetch_onchain_token_metadata", source("chain", {}))
         monkeypatch.setattr(router, "_fetch_helius_token_metadata", source("helius", {"token_image_url": "https://ipfs.io/ipfs/lapa"}))
 
         metadata = router._fetch_token_metadata(MINT)
 
-        assert calls == ["pumpfun", "dexscreener", "helius"]
+        # The chain, which costs one RPC read, before DAS, which costs ten credits.
+        assert calls == ["pumpfun", "dexscreener", "chain", "helius"]
         assert metadata == {"token_name": "lapa.page", "token_symbol": "lapa", "token_image_url": "https://ipfs.io/ipfs/lapa"}
 
     def test_das_lookups_have_a_ceiling_for_everybody_together(self, monkeypatch):
@@ -362,7 +296,7 @@ class TestThePictureIsFoundWhereItIs:
             sent.append(request.full_url)
             return Answer()
 
-        monkeypatch.setattr(router.urllib_request, "urlopen", urlopen)
+        monkeypatch.setattr(router.fast_http, "urlopen", urlopen)
         answers = [router._fetch_helius_token_metadata(f"Mint{i}") for i in range(5)]
         router._DAS_CALLS.clear()
 
@@ -400,7 +334,7 @@ class TestThePictureIsFoundWhereItIs:
             sent.append(request.full_url)
             return Answer()
 
-        monkeypatch.setattr(router.urllib_request, "urlopen", urlopen)
+        monkeypatch.setattr(router.fast_http, "urlopen", urlopen)
         return router, sent, day
 
     def test_das_is_paid_with_its_own_key(self, monkeypatch):

@@ -2,6 +2,8 @@ import json
 import logging
 from urllib import request, error
 
+from shared import fast_http
+
 from shared.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -35,7 +37,7 @@ class OffchainApiClient:
         settings = get_settings()
         url = f"{settings.offchain_api_base_url.rstrip('/')}/health"
         try:
-            with request.urlopen(url, timeout=self.KEEPER_TIMEOUT_SECONDS) as response:
+            with fast_http.urlopen(url, timeout=self.KEEPER_TIMEOUT_SECONDS) as response:
                 body = json.loads(response.read().decode("utf-8"))
         except Exception as exc:  # noqa: BLE001 - any failure means "cannot say"
             logger.warning("Offchain health check unavailable (url=%s, error=%s)", url, exc)
@@ -64,7 +66,7 @@ class OffchainApiClient:
         logger.info("Offchain execute started (url=%s, lotteryId=%s)", url, payload.get("lotteryId"))
 
         try:
-            with request.urlopen(req, timeout=settings.offchain_api_timeout_seconds) as response:
+            with fast_http.urlopen(req, timeout=settings.offchain_api_timeout_seconds) as response:
                 raw = response.read().decode("utf-8")
         except error.HTTPError as exc:
             response_text = ""
@@ -120,7 +122,7 @@ class OffchainApiClient:
 
         req = request.Request(url=url, method="GET", headers=headers)
         try:
-            with request.urlopen(req, timeout=PURCHASES_TIMEOUT_SECONDS) as response:
+            with fast_http.urlopen(req, timeout=PURCHASES_TIMEOUT_SECONDS) as response:
                 raw = response.read().decode("utf-8")
         except error.HTTPError as exc:
             if exc.code == 404:

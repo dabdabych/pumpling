@@ -31,6 +31,8 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 from urllib import error, request
 
+from shared import fast_http
+
 import certifi
 
 logger = logging.getLogger(__name__)
@@ -243,7 +245,7 @@ def _fetch_ohlcv(pool_address: str, timeout_seconds: float) -> list[list[float]]
         headers={"Accept": "application/json;version=20230302", "User-Agent": "pumpling/1.0"},
     )
     try:
-        with request.urlopen(req, timeout=timeout_seconds, context=_HTTPS_CONTEXT) as response:
+        with fast_http.urlopen(req, timeout=timeout_seconds, context=_HTTPS_CONTEXT) as response:
             payload = json.loads(response.read().decode("utf-8") or "{}")
     except error.HTTPError as exc:
         if exc.code == 429:

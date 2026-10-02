@@ -32,6 +32,7 @@ from domain.auth.entities.user import UserRole
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 import asyncio
+from concurrent.futures import ThreadPoolExecutor, wait
 import os
 import threading
 import time
@@ -59,7 +60,7 @@ from shared.bet_confirmation import (
 from shared.deposit_event_decoder import DepositEvent, decode_deposit_events_from_logs
 from shared.burn_memo import burn_bps_from_logs
 from shared.jwt_handler import JWTHandler
-from shared import token_metadata_queue
+from shared import fast_http
 from shared.coin_chart import coin_chart
 from shared.wallet_owner import LINKED_VIA_DEPOSIT, LINKED_VIA_SIGNATURE, find_wallet_owner_id, link_wallet
 from shared.settings import get_settings
@@ -83,6 +84,9 @@ from mint_validator import (
     has_live_pumpswap_pool,
     is_spl_mint,
     can_burn,
+    metaplex_metadata_address,
+    metaplex_name,
+    token_2022_name,
 )
 
 #: Said to the person, so it names the way out rather than the error code.
@@ -94,7 +98,6 @@ _WRONG_QUOTE_DETAIL = (
 router = APIRouter(prefix="/lottery", tags=["lottery"])
 
 # Unknown mints are loaded in the background, not inside a pool page request.
-token_metadata_queue.configure(lambda mint: _fill_token_metadata_in_background(mint))
 security = HTTPBearer()
 jwt_handler = JWTHandler(get_settings().jwt_secret_key)
 logger = logging.getLogger(__name__)
@@ -427,9 +430,9 @@ def _get_coin_metadata(db: Session, mint: str) -> tuple[str, str, str]:
     """A coin's name, ticker and picture, from whatever is already at hand.
 
     We do not go out for them from here: this path sits in `/lottery/current`,
-    which the pool page polls every few seconds, and a trip to Helius blocks the
-    response for seconds. An unknown mint goes into the background queue and
-    turns up with a name on the next poll.
+    which the pool page polls every few seconds. A coin with a confirmed commit
+    and no picture is looked after by `shared/coin_picture_fill.py`, on its own
+    schedule, whether or not anyone is polling.
     """
     metadata = TOKEN_METADATA.get(mint)
     if metadata:
@@ -437,42 +440,45 @@ def _get_coin_metadata(db: Session, mint: str) -> tuple[str, str, str]:
 
     row = db.query(TokenMetadataModel).filter(TokenMetadataModel.mint == mint).first()
     if row and (row.name or row.symbol or row.logo_url):
-        # A name but no picture. That happens when the metadata was read before
-        # the image was uploaded, and it used to be permanent: the row existed,
-        # so nothing ever asked again and the coin stayed a grey circle for the
-        # whole round. The queue leaves half an hour between attempts and gives
-        # up after a few, so this is "now and then", not a poll.
-        if not row.logo_url:
-            token_metadata_queue.request_fill(mint)
         fallback_name, fallback_symbol, fallback_logo = _build_fallback_coin_metadata(mint)
         return row.name or fallback_name, row.symbol or fallback_symbol, row.logo_url or fallback_logo
 
-    token_metadata_queue.request_fill(mint)
     return _build_fallback_coin_metadata(mint)
 
 
-def _fill_token_metadata_in_background(mint: str) -> bool:
-    """Download the metadata and store it. Called by the background queue thread.
+#: How long a coin search waits for the coin's name and picture. The search has a
+#: person in front of it; a picture that is not there by then is found later,
+#: after a commit, by `shared/coin_picture_fill.py`.
+SEARCH_METADATA_BUDGET_SECONDS = 2.0
+_SEARCH_LOOKUPS = ThreadPoolExecutor(max_workers=8, thread_name_prefix="coin-search-lookup")
 
-    Returns whether there is nothing left to want. A coin that came back with a
-    name and no picture counts as not done: the queue then waits half an hour
-    and tries again, which is how a picture uploaded after the coin joined a
-    round eventually reaches the card.
+
+def _quick_token_metadata(mint: str) -> dict[str, str | None]:
+    """The coin's name, ticker and picture for a search: pump.fun, DexScreener and
+    the chain at once, for two seconds at most, and never the paid DAS lookup.
+
+    A search is made for many coins nobody commits to, so paying for it would
+    pay for curiosity; and a slow source would hold the person at the dialog.
+    What is late is dropped here and asked for again after a commit.
     """
-    fetched_metadata = _fetch_token_metadata(mint)
-    if not any(fetched_metadata.values()):
-        return False
+    sources = (_fetch_pumpfun_token_metadata, _fetch_dexscreener_token_metadata, _fetch_onchain_token_metadata)
+    futures = [_SEARCH_LOOKUPS.submit(source, mint) for source in sources]
+    wait(futures, timeout=SEARCH_METADATA_BUDGET_SECONDS)
+    merged: dict[str, str | None] = {"token_name": None, "token_symbol": None, "token_image_url": None}
+    for future in futures:  # pump.fun first, as in `_fetch_token_metadata`
+        if not future.done() or future.cancelled() or future.exception() is not None:
+            continue
+        metadata = future.result() or {}
+        for key in merged:
+            if not merged[key] and metadata.get(key):
+                merged[key] = metadata[key]
+    return merged
 
-    session = SessionLocal()
-    try:
-        _persist_helius_metadata(session, mint, fetched_metadata, commit=True)
-        return bool(fetched_metadata.get("token_image_url"))
-    except Exception:
-        session.rollback()
-        logger.exception("failed to persist token metadata (mint=%s)", mint)
-        return False
-    finally:
-        session.close()
+
+def fetch_for_picture_fill(mint: str, may_pay: bool) -> dict[str, str | None]:
+    """What `shared/coin_picture_fill.py` asks for a coin after a commit: every
+    source, the paid DAS only on the tries it allows."""
+    return _fetch_token_metadata(mint, paid=may_pay)
 
 
 def _build_archive_close_event_map(
@@ -771,7 +777,7 @@ def _rpc_get_account_data(endpoint: str, account: str) -> bytes:
         headers={"Content-Type": "application/json", "Accept": "application/json"},
     )
     try:
-        with urllib_request.urlopen(req, timeout=get_settings().external_lookup_timeout_seconds, context=_HTTPS_CONTEXT) as response:
+        with fast_http.urlopen(req, timeout=get_settings().external_lookup_timeout_seconds, context=_HTTPS_CONTEXT) as response:
             raw = response.read().decode("utf-8")
     except urllib_error.HTTPError as exc:
         try:
@@ -795,6 +801,60 @@ def _rpc_get_account_data(endpoint: str, account: str) -> bytes:
     if not isinstance(encoded, str):
         raise RuntimeError(f"Invalid account data type for {account}")
     return base64.b64decode(encoded)
+
+
+#: The public node for mainnet reads where the configured node is devnet (the stand).
+_MAINNET_PUBLIC_RPC = "https://api.mainnet-beta.solana.com"
+
+
+def _names_rpc_url() -> str:
+    """A mainnet node: coins live there, and the stand's own node is devnet."""
+    url = (get_settings().solana_http_endpoint or "").strip()
+    return _MAINNET_PUBLIC_RPC if not url or "devnet" in url else url
+
+
+def _rpc_get_account(endpoint: str, account: str) -> tuple[str, bytes] | None:
+    """The account's owner and data; None when there is no such account."""
+    payload = {"jsonrpc": "2.0", "id": 1, "method": "getAccountInfo", "params": [account, {"encoding": "base64", "commitment": "confirmed"}]}
+    req = urllib_request.Request(url=endpoint, method="POST", data=json.dumps(payload).encode("utf-8"),
+                                 headers={"Content-Type": "application/json", "Accept": "application/json"})
+    with fast_http.urlopen(req, timeout=get_settings().external_lookup_timeout_seconds, context=_HTTPS_CONTEXT) as response:
+        parsed = json.loads(response.read().decode("utf-8") or "{}")
+    value = ((parsed.get("result") or {}) if isinstance(parsed, dict) else {}).get("value")
+    if not isinstance(value, dict):
+        return None
+    data = value.get("data")
+    if not isinstance(data, list) or not data or not isinstance(data[0], str):
+        return None
+    return str(value.get("owner") or ""), base64.b64decode(data[0])
+
+
+def _fetch_onchain_token_metadata(mint_address: str) -> dict[str, str | None]:
+    """The coin's name and ticker from the chain itself (`mint_validator`), no picture.
+
+    For a coin minutes old this is often the only source that knows it. One
+    read of the mint account; for an SPL Token mint, one more of its Metaplex
+    metadata account. The uri in the metadata is not followed: a stranger wrote it.
+    """
+    empty: dict[str, str | None] = {"token_name": None, "token_symbol": None, "token_image_url": None}
+    rpc_url = _names_rpc_url()
+    try:
+        account = _rpc_get_account(rpc_url, mint_address)
+        if account is None:
+            return empty
+        owner, data = account
+        named = token_2022_name(Pubkey.from_string(owner), data) if owner else None
+        if named is None:
+            metadata = _rpc_get_account(rpc_url, metaplex_metadata_address(mint_address))
+            if metadata is not None and metadata[0]:
+                named = metaplex_name(Pubkey.from_string(metadata[0]), metadata[1])
+    except Exception as exc:
+        logger.info("on-chain coin name unavailable (mint=%s): %s", mint_address, type(exc).__name__)
+        return empty
+    if not named:
+        return empty
+    name, symbol = named
+    return {"token_name": name or None, "token_symbol": symbol or None, "token_image_url": None}
 
 
 _DAS_CALLS: deque[float] = deque()
@@ -867,7 +927,7 @@ def _fetch_helius_token_metadata(mint_address: str) -> dict[str, str | None]:
     )
 
     try:
-        with urllib_request.urlopen(req, timeout=settings.external_lookup_timeout_seconds, context=_HTTPS_CONTEXT) as response:
+        with fast_http.urlopen(req, timeout=settings.external_lookup_timeout_seconds, context=_HTTPS_CONTEXT) as response:
             raw = response.read().decode("utf-8")
             data = json.loads(raw or "{}")
     except Exception as exc:
@@ -919,7 +979,7 @@ def _fetch_pumpfun_token_metadata(mint_address: str) -> dict[str, str | None]:
     )
 
     try:
-        with urllib_request.urlopen(req, timeout=get_settings().external_lookup_timeout_seconds, context=_HTTPS_CONTEXT) as response:
+        with fast_http.urlopen(req, timeout=get_settings().external_lookup_timeout_seconds, context=_HTTPS_CONTEXT) as response:
             raw = response.read().decode("utf-8")
             data = json.loads(raw or "{}")
     except urllib_error.HTTPError as exc:
@@ -975,7 +1035,7 @@ def _fetch_dexscreener_token_metadata(mint_address: str) -> dict[str, str | None
     return {"token_name": None, "token_symbol": None, "token_image_url": None}
 
 
-def _fetch_token_metadata(mint_address: str) -> dict[str, str | None]:
+def _fetch_token_metadata(mint_address: str, *, paid: bool = True) -> dict[str, str | None]:
     """A coin's name, ticker and picture, each from the first source that has it.
 
     The sources used to be tried until one answered with anything, and that
@@ -986,13 +1046,11 @@ def _fetch_token_metadata(mint_address: str) -> dict[str, str | None]:
 
     The free sources go first. Helius DAS costs 10 credits a lookup, so it is
     asked only for what pump.fun and DexScreener did not have, usually a
-    picture of a coin that was not launched on pump.fun.
+    picture of a coin that was not launched on pump.fun, and only when `paid`.
     """
-    fetchers = (
-        _fetch_pumpfun_token_metadata,
-        _fetch_dexscreener_token_metadata,
-        _fetch_helius_token_metadata,
-    )
+    fetchers = (_fetch_pumpfun_token_metadata, _fetch_dexscreener_token_metadata, _fetch_onchain_token_metadata)
+    if paid:
+        fetchers += (_fetch_helius_token_metadata,)
     merged: dict[str, str | None] = {"token_name": None, "token_symbol": None, "token_image_url": None}
     for fetcher in fetchers:
         metadata = fetcher(mint_address)
@@ -1040,7 +1098,7 @@ def _fetch_dex_pools_for_mint_once(mint_address: str) -> list[dict[str, object]]
             headers=headers,
         )
         try:
-            with urllib_request.urlopen(req, timeout=timeout_seconds, context=_HTTPS_CONTEXT) as response:
+            with fast_http.urlopen(req, timeout=timeout_seconds, context=_HTTPS_CONTEXT) as response:
                 raw = response.read().decode("utf-8")
             parsed = json.loads(raw or "[]")
             if isinstance(parsed, list):
@@ -1250,7 +1308,7 @@ def _is_jupiter_tradable(mint_address: str) -> bool:
     )
     req = urllib_request.Request(url=url, method="GET", headers={"Accept": "application/json"})
     try:
-        with urllib_request.urlopen(req, timeout=get_settings().external_lookup_timeout_seconds, context=_HTTPS_CONTEXT) as response:
+        with fast_http.urlopen(req, timeout=get_settings().external_lookup_timeout_seconds, context=_HTTPS_CONTEXT) as response:
             raw = response.read().decode("utf-8")
     except urllib_error.HTTPError as exc:
         try:
@@ -3102,10 +3160,9 @@ async def place_bet(
                 TokenMetadataModel.mint == canonical_mint
             ).first() is not None
             if canonical_mint not in TOKEN_METADATA and not has_persisted_metadata:
-                token_metadata = await run_in_threadpool(_fetch_token_metadata, canonical_mint)
+                token_metadata = await run_in_threadpool(_quick_token_metadata, canonical_mint)
                 if any(token_metadata.values()):
                     _persist_helius_metadata(db, canonical_mint, token_metadata, commit=True)
-                    token_metadata_queue.forget(canonical_mint)
         except Exception:
             db.rollback()
             logger.exception(
@@ -3175,7 +3232,7 @@ def check_mint(
         # slow source each would empty the pool (5 + 10) for everybody else.
         db.commit()
         if token_metadata is None:
-            token_metadata = _fetch_token_metadata(canonical_mint)
+            token_metadata = _quick_token_metadata(canonical_mint)
 
         if any(token_metadata.values()):
             try:

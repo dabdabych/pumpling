@@ -19,7 +19,7 @@ webapp/backend/
 │                           #   admin_wallets, blocked_bet_mints, coin_chart,
 │                           #   weights_commitment, purchases_payload,
 │                           #   orao_vrf (the draw's derivations), …
-├── migrations/             # SQL migrations (043 the last), applied in order, never rewritten
+├── migrations/             # SQL migrations (044 the last), applied in order, never rewritten
 ├── migrations_runner.py    # runs the migrations
 ├── create_tables.py        # initialises the schema
 ├── mint_validator.py       # validates coin mint addresses before a commit
@@ -105,6 +105,33 @@ pump.fun's Pinata gateway, by content id. The rewrite sits in the response
 types (`ImageUrl` in `application/lottery/schemas.py`), so every answer that
 carries a picture goes through it and what is stored stays what the sources
 said. The share card fetches through each gateway in turn, Filebase second.
+
+## A coin's name and picture
+
+A coin search (`check-mint`) asks pump.fun, DexScreener and the chain at once
+and waits two seconds at most (`_quick_token_metadata`); it never pays for
+Helius DAS. The chain gives the name and ticker of a coin minutes old, which
+DexScreener does not know yet and pump.fun refuses to tell the stand: a
+Token-2022 mint carries them in its TokenMetadata extension, an SPL Token mint
+in its Metaplex account (`mint_validator.token_2022_name`, `metaplex_name`,
+checked on mainnet accounts). Its uri is not followed: a stranger wrote it.
+A picture that is not there yet is not waited for. Once a commit to the coin
+is confirmed, `shared/coin_picture_fill.py`, a thread in the API, looks again
+on a schedule kept in `token_metadata` (migration 044): 1, 2, 5, 10 and 30
+minutes, then 1, 2 and 6 hours, nine tries over about ten hours, DAS on the
+first and fourth only, inside the DAS ceilings. It runs whether or not the
+pool is open. Before, an in-memory queue fed by the pool page's polls tried
+every half hour while the pool was on screen and forgot everything on a
+restart; on the stand's short pools TOILETDOG got one try and never its
+picture, though DexScreener had it an hour later.
+
+Every outside call goes through `shared/fast_http.py`, which gives an address
+1.5 s to accept a connection before trying the next and remembers a dead one
+for two minutes. On 2026-10-02 the stand could not reach 8.6.112.0, one of the
+two addresses Cloudflare gives for DexScreener, pump.fun and Helius, and the
+standard library waited the whole 6 s timeout on it about half the time: ten
+connections to DexScreener took 42.1 s, through `fast_http` 1.6 s. A test
+fails if a new `urlopen` skips it.
 
 ## Red flags on a coin
 

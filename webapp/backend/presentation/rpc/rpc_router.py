@@ -8,6 +8,7 @@ from urllib import request, error
 
 from fastapi import APIRouter, Request, Response, HTTPException
 
+from shared import fast_http
 from shared.rate_limit import client_key
 from shared.settings import get_settings
 
@@ -241,7 +242,7 @@ def _forward_rpc_request(body: bytes, url: str, timeout_seconds: float) -> bytes
             "Accept": "application/json",
         },
     )
-    with request.urlopen(req, timeout=timeout_seconds) as response:
+    with fast_http.urlopen(req, timeout=timeout_seconds) as response:
         return response.read()
 
 

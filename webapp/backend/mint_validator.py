@@ -376,3 +376,72 @@ def can_burn(mint_str: str, rpc_url: str = "https://api.mainnet-beta.solana.com"
     if info is None:
         return None
     return burn_blocker(info.owner, bytes(info.data or b"")) is None
+
+
+# --- A coin's name and ticker, read from the chain -----------------------------
+#
+# Where a coin search gets a name when nobody else has it yet: a pump.fun coin
+# minutes old is unknown to DexScreener, and pump.fun's own API refuses some
+# servers (the stand gets 403). The name is on chain from the first block.
+#
+# Token-2022 mints (most pump.fun coins today) carry it in the mint account
+# itself, in the TokenMetadata extension (19): the update authority and the mint
+# (32 bytes each), then Borsh strings name, symbol and uri. Older SPL Token
+# mints keep it in a Metaplex metadata account, the PDA ["metadata", program,
+# mint]: a key byte, the update authority and the mint, then the same three
+# strings padded with NUL bytes. Both layouts were checked against accounts read
+# from mainnet (`tests/fixtures/screening_mints.json`: PUMP, a Mayhem Mode coin,
+# Fartcoin). The uri is not followed: it is whatever the creator wrote, and the
+# server does not fetch addresses a stranger chose.
+
+TOKEN_METADATA_PROGRAM_ID = Pubkey.from_string("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
+_EXT_TOKEN_METADATA = 19
+_METAPLEX_METADATA_V1 = 4
+
+
+def _borsh_strings(data: bytes, offset: int, count: int) -> list[str] | None:
+    out: list[str] = []
+    for _ in range(count):
+        if offset + 4 > len(data):
+            return None
+        length = int.from_bytes(data[offset:offset + 4], "little")
+        end = offset + 4 + length
+        if end > len(data):
+            return None
+        out.append(data[offset + 4:end].decode("utf-8", errors="replace").replace("\x00", "").strip())
+        offset = end
+    return out
+
+
+def token_2022_name(owner: Pubkey, data: bytes) -> tuple[str, str] | None:
+    """(name, symbol) from a Token-2022 mint's own TokenMetadata, or None."""
+    if owner != TOKEN_2022_PROGRAM_ID or len(data) <= _BASE_ACCOUNT_LENGTH or data[_BASE_ACCOUNT_LENGTH] != _ACCOUNT_TYPE_MINT:
+        return None
+    index = _BASE_ACCOUNT_LENGTH + 1
+    while index + 4 <= len(data):
+        ext_type = int.from_bytes(data[index:index + 2], "little")
+        length = int.from_bytes(data[index + 2:index + 4], "little")
+        if ext_type == 0:
+            return None
+        value = data[index + 4:index + 4 + length]
+        if ext_type == _EXT_TOKEN_METADATA:
+            strings = _borsh_strings(value, 64, 2)
+            return (strings[0], strings[1]) if strings else None
+        index += 4 + length
+    return None
+
+
+def metaplex_metadata_address(mint: str) -> str:
+    address, _bump = Pubkey.find_program_address(
+        [b"metadata", bytes(TOKEN_METADATA_PROGRAM_ID), bytes(Pubkey.from_string(mint))],
+        TOKEN_METADATA_PROGRAM_ID,
+    )
+    return str(address)
+
+
+def metaplex_name(owner: Pubkey, data: bytes) -> tuple[str, str] | None:
+    """(name, symbol) from a Metaplex metadata account, or None."""
+    if owner != TOKEN_METADATA_PROGRAM_ID or not data or data[0] != _METAPLEX_METADATA_V1:
+        return None
+    strings = _borsh_strings(data, 1 + 32 + 32, 2)
+    return (strings[0], strings[1]) if strings else None

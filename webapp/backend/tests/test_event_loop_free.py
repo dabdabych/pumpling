@@ -112,7 +112,7 @@ class TestTheLoopStaysFree:
         from domain.lottery.entities.allowed_mint import NetworkType
 
         monkeypatch.setattr(router, "_validate_mint", slow((MINT, NetworkType.MAINNET, True, True, 1, False)))
-        monkeypatch.setattr(router, "_fetch_token_metadata", lambda mint: {"token_name": "Mochi", "token_symbol": "MOCHI", "token_image_url": None})
+        monkeypatch.setattr(router, "_quick_token_metadata", lambda mint: {"token_name": "Mochi", "token_symbol": "MOCHI", "token_image_url": None})
         monkeypatch.setattr(router, "_coin_can_burn", lambda mint, network: True)
         monkeypatch.setattr(router, "_cached_dex_pools", lambda mint: [])
         monkeypatch.setattr(router, "_dex_market_info", lambda mint, pools: {})
@@ -240,7 +240,7 @@ def test_a_coin_search_holds_no_database_connection_while_it_waits(monkeypatch):
         return call
 
     monkeypatch.setattr(router, "_validate_mint", network((MINT, NetworkType.MAINNET, True, True, 1, False)))
-    monkeypatch.setattr(router, "_fetch_token_metadata", network({"token_name": "Mochi", "token_symbol": "MOCHI", "token_image_url": None}))
+    monkeypatch.setattr(router, "_quick_token_metadata", network({"token_name": "Mochi", "token_symbol": "MOCHI", "token_image_url": None}))
     monkeypatch.setattr(router, "_coin_can_burn", network(True))
     monkeypatch.setattr(router, "_cached_dex_pools", network([]))
     monkeypatch.setattr(router, "_dex_market_info", lambda mint, pools: {})

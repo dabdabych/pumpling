@@ -53,7 +53,7 @@ def answering(body: bytes, monkeypatch):
         return Answer(body)
 
     monkeypatch.setattr(
-        "infrastructure.lottery.offchain_api_client.request.urlopen", urlopen
+        "infrastructure.lottery.offchain_api_client.fast_http.urlopen", urlopen
     )
     return asked
 
@@ -78,7 +78,7 @@ class TestReadingTheBuyersKeeper:
             raise error.URLError("connection refused")
 
         monkeypatch.setattr(
-            "infrastructure.lottery.offchain_api_client.request.urlopen", dead
+            "infrastructure.lottery.offchain_api_client.fast_http.urlopen", dead
         )
 
         # None means "cannot say". The caller lets the round open on this.
