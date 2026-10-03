@@ -61,7 +61,7 @@ class ShareCard:
     coin_sol: float = 0.0
     coin_share: float = 0.0
     pool_sol: float = 0.0
-    cap_sol: float = 111.0
+    cap_sol: float = 77.0
     coins: int = 0
     closes_at: Optional[datetime] = None
 

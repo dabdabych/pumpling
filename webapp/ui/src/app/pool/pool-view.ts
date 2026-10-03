@@ -249,7 +249,7 @@ export function poolCardLine(snapshot: PoolSnapshot, nowMs: number): string {
     case 'loading':
       return '';
     case 'launch':
-      return `First pool opens in ${formatLongCountdown(msUntil(snapshot.launchAtMs, nowMs))}`;
+      return 'The first pool opens soon';
     case 'opening':
       return 'Pool opening';
     case 'open': {
@@ -281,8 +281,14 @@ export function poolCardLine(snapshot: PoolSnapshot, nowMs: number): string {
  * do: the X account is where a pool is announced before it opens. It is not
  * shown while a pool is running — then the card has the round itself to talk
  * about, and a second line would only get in the way.
+ *
+ * Before the first pool the date is known, so the line is the time left to it.
  */
-export function poolCardNote(snapshot: PoolSnapshot): string | null {
+export function poolCardNote(snapshot: PoolSnapshot, nowMs: number): string | null {
+  if (snapshot.phase === 'launch') {
+    const left = formatLongCountdown(msUntil(snapshot.launchAtMs, nowMs));
+    return left ? `Opens in ${left}` : null;
+  }
   return snapshot.phase === 'waiting' || snapshot.phase === 'done'
     ? 'We announce the next pool on our X'
     : null;
@@ -295,7 +301,7 @@ function linear(label: string, pct: number): { label: string; pct: number; fillP
 
 /**
  * The width of the pool bar. It grows faster than the share: half the bar covers
- * 36% of the cap, that is 40 SOL out of 111.
+ * 36% of the cap, that is 28 SOL out of 77.
  *
  * Why. A pool does not fill evenly: the first commits arrive one at a time, and
  * with an honest width the bar barely moves for hours — an empty bar reads as

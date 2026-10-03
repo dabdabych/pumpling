@@ -94,7 +94,7 @@ export const POOL_FEE_BPS = 300;
 /** The program's minimum commit (MIN_AMOUNT_LAMPORTS_DEFAULT). */
 export const MIN_COMMIT_SOL = 0.05;
 /** A fallback cap until the first API answer; the real one arrives in max_total. */
-export const DEFAULT_CAP_SOL = 111;
+export const DEFAULT_CAP_SOL = 77;
 /** A fallback buying window length; the real one arrives in execution_countdown_seconds. */
 // The main buying pass, when the server does not say. It is the buyer's own
 // window (`BUY_WINDOW_MINUTES`), not a guess with a margin: what the first pass
@@ -136,13 +136,17 @@ export function emptyPoolSnapshot(market: PoolMarket, phase: PoolPhase = 'loadin
 }
 
 export function buildPoolSnapshot(body: LotteryListResponse | null | undefined, market: PoolMarket, nowMs: number): PoolSnapshot {
+  // A launch the server has scheduled comes before the last pool that ran. The
+  // server sends one only while no pool of this market is in progress, and
+  // until 2026-10-03 the page looked for it only when no pool had ever run:
+  // production, with its September pools closed, showed "Next pool opens soon"
+  // over a launch a day away.
+  const launchAtMs = parseTime(pickLaunch(body, market)?.launch_at);
+  if (launchAtMs !== null && !pickActive(body, market)) {
+    return { ...emptyPoolSnapshot(market, 'launch'), launchAtMs };
+  }
   const summary = pickSummary(body, market);
   if (!summary) {
-    const launch = pickLaunch(body, market);
-    const launchAtMs = parseTime(launch?.launch_at);
-    if (launchAtMs !== null) {
-      return { ...emptyPoolSnapshot(market, 'launch'), launchAtMs };
-    }
     return emptyPoolSnapshot(market, 'waiting');
   }
 
@@ -293,6 +297,11 @@ export function formatSol(value: number): string {
     return value < 0 ? '>-0.01' : '<0.01';
   }
   return Number(value.toFixed(2)).toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+function pickActive(body: LotteryListResponse | null | undefined, market: PoolMarket): ActiveLotterySummaryResponse | null {
+  const active = Array.isArray(body?.active_lotteries) ? body!.active_lotteries! : [];
+  return active.find((item) => marketOf(item.lottery_type) === market) ?? null;
 }
 
 function pickSummary(body: LotteryListResponse | null | undefined, market: PoolMarket): ActiveLotterySummaryResponse | null {

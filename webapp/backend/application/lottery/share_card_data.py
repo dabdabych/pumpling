@@ -26,7 +26,7 @@ from shared.bet_confirmation import active_bet_condition
 from shared.share_card import ShareCard
 
 # The same numbers the page falls back to.
-DEFAULT_CAP_SOL = 111.0
+DEFAULT_CAP_SOL = 77.0
 MIN_COMMIT_SOL = 0.05
 
 MINT_PATTERN = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")

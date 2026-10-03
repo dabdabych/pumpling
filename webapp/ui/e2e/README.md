@@ -30,6 +30,7 @@ Variables: `BASE` is the frontend address (default `http://localhost:3200`),
 | `my-commits` | your own commits show up in the pool table and on your page |
 | `archive` | round history, empty rounds are not shown |
 | `phase-switch` | the pool page in every phase of a round |
+| `launch-countdown` | a scheduled launch counts down on the pool page and the first screen even with past pools closed behind it, and a pool in progress still comes first |
 | `buys-feed` | the purchase feed and its Solscan links |
 | `coin-hover` | the coin chart on hover, without extra requests |
 | `share-card` | the card for Twitter |

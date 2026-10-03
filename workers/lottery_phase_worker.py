@@ -2818,11 +2818,14 @@ async def main() -> None:
     _install_signal_handlers(stop_event)
 
     logging.info(
-        "Starting lottery lifecycle worker (signers=%s, rpc=%s, interval=%ss, cap_threshold=%s, emergency_delay=%ss, start_purchases_delay=%ss, execution_countdown=%ss, fallback_countdown=%ss)",
+        "Starting lottery lifecycle worker (signers=%s, rpc=%s, interval=%ss, pool_cap=%s SOL, closes_above=%s SOL, emergency_delay=%ss, start_purchases_delay=%ss, execution_countdown=%ss, fallback_countdown=%ss)",
         ",".join(str(pubkey) for pubkey in signer_pubkeys),
         settings.solana_http_endpoint,
         settings.phase2_poll_interval_seconds,
-        settings.phase2_cap_threshold_sol,
+        settings.lottery_autostart_max_total_sol,
+        # What an autostarted round actually closes at: its own cap less the
+        # minimum commit. PHASE2_CAP_THRESHOLD_SOL is only for a round with no cap.
+        _effective_cap_threshold(Decimal(str(settings.lottery_autostart_max_total_sol))),
         EMERGENCY_FULFILL_DELAY_SECONDS,
         settings.start_purchases_delay_seconds,
         settings.execution_countdown_seconds,

@@ -69,11 +69,18 @@ def test_old_cap_behaviour_is_preserved() -> None:
     assert _should_trigger_phase2(_candidate("222", "222", STILL_OPEN), NOW)
 
 
+def test_the_launch_cap_closes_from_the_first_lamport_over_76_95() -> None:
+    # The 77 SOL cap of 2026-10-04: 76.95 still takes a minimum commit, 76.96 does not
+    assert not _should_trigger_phase2(_candidate("76.95", "77", STILL_OPEN), NOW)
+    assert _should_trigger_phase2(_candidate("76.96", "77", STILL_OPEN), NOW)
+    assert _should_trigger_phase2(_candidate("77", "77", STILL_OPEN), NOW)
+
+
 def test_without_a_cap_the_configured_fallback_applies() -> None:
-    # No cap, so nothing to compute from: PHASE2_CAP_THRESHOLD_SOL (110.95) applies
-    assert not _should_trigger_phase2(_candidate("100", None, STILL_OPEN), NOW)
-    assert not _should_trigger_phase2(_candidate("110.95", None, STILL_OPEN), NOW)
-    assert _should_trigger_phase2(_candidate("110.96", None, STILL_OPEN), NOW)
+    # No cap, so nothing to compute from: PHASE2_CAP_THRESHOLD_SOL (76.95) applies
+    assert not _should_trigger_phase2(_candidate("50", None, STILL_OPEN), NOW)
+    assert not _should_trigger_phase2(_candidate("76.95", None, STILL_OPEN), NOW)
+    assert _should_trigger_phase2(_candidate("76.96", None, STILL_OPEN), NOW)
 
 
 def test_a_cap_above_the_fallback_does_not_close_early() -> None:
@@ -81,8 +88,8 @@ def test_a_cap_above_the_fallback_does_not_close_early() -> None:
     A round with a cap above the default must not close at the default.
 
     The opposite trap to the original bug. If the threshold were computed as
-    min(setting, cap - 0.05), then with a default of 110.95 a round with a cap of
-    200 would close at 110.95, almost twice as early as it filled. There is no
+    min(setting, cap - 0.05), then with a default of 76.95 a round with a cap of
+    200 would close at 76.95, well before half of it filled. There is no
     upper limit on max_total in the admin form, so such a round can be created.
     """
     assert not _should_trigger_phase2(_candidate("150", "200", STILL_OPEN), NOW)

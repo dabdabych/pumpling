@@ -567,8 +567,9 @@ repeating in both cases. It was generous where pennies would do and stingy where
 it would not have helped anyway.
 
 **Why the cap is 15 and not 10 or 20.** Ten would be enough for completeness:
-the worst case of a 111 SOL round is 70 winning coins at 1.538 SOL each, which
-is 11 purchases per coin, and 10 minutes fits up to 15 retries per coin. But a
+the worst case is the largest round the draw is built for, 111 SOL (the pool
+cap is 77 since 2026-10-04): 70 winning coins at 1.538 SOL each, which is 11
+purchases per coin, and 10 minutes fits up to 15 retries per coin. But a
 short window compresses the same work into less time and **raises** the peak
 load on the node:
 

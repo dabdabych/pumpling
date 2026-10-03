@@ -270,12 +270,14 @@ def _default_fallback_countdown_seconds(network: str) -> int:
 
 
 def _default_autostart_max_total_sol(network: str) -> str:
-    # 111 SOL on both mainnet and devnet: an identical cap means a devnet run
+    # 77 SOL on both mainnet and devnet: an identical cap means a devnet run
     # reproduces a real round rather than a shrunken copy of it.
-    # It used to be 222 and 2 respectively. The cap came down because the
-    # pump.fun bonding curve holds ~85 real SOL before graduation: a pool of 222
-    # tipped a coin onto a DEX irreversibly.
-    return "111"
+    # It used to be 222 and 2 respectively, then 111. The cap came down because
+    # the pump.fun bonding curve holds ~85 real SOL before graduation: a pool of
+    # 222 tipped a coin onto a DEX irreversibly. 77 is the launch cap
+    # (2026-10-04); it goes back up towards 111 once pools fill it. The draw
+    # (`vrf_engine.py`) stays normalised for 111, and at 77 SOL it makes 58 draws.
+    return "77"
 
 
 def _default_autostart_prediction_seconds(network: str) -> int:
@@ -372,7 +374,7 @@ def get_settings() -> AppSettings:
         phase2_worker_log_level=_env_str("PHASE2_WORKER_LOG_LEVEL", _env_str("WORKER_LOG_LEVEL", "INFO")).upper(),
         phase2_automation_enabled=_env_bool("PHASE2_AUTOMATION_ENABLED", True),
         phase2_poll_interval_seconds=_env_float("PHASE2_POLL_INTERVAL_SECONDS", 1.0),
-        phase2_cap_threshold_sol=_env_decimal_positive("PHASE2_CAP_THRESHOLD_SOL", "110.95"),
+        phase2_cap_threshold_sol=_env_decimal_positive("PHASE2_CAP_THRESHOLD_SOL", "76.95"),
         phase2_skip_log_cooldown_seconds=_env_float_non_negative("PHASE2_SKIP_LOG_COOLDOWN_SECONDS", 60.0),
         start_purchases_delay_seconds=_env_int_non_negative("START_PURCHASES_DELAY_SECONDS", 5),
         execution_countdown_seconds=_env_int_non_negative(

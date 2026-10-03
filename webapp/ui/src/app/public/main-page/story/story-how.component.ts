@@ -3,6 +3,7 @@ import { NgTemplateOutlet } from '@angular/common';
 
 import { FlameComponent } from '../../../shared/flame/flame.component';
 import { MOCHI, StoryBuy, StoryCommit, TOAD, ZAPZ } from './story-how-data';
+import { DEFAULT_CAP_SOL as POOL_CAP_SOL } from '../../../pool/pool-state';
 import {
   BUY_TARGET_SOL,
   buyFrame,
@@ -363,7 +364,7 @@ export class StoryHowComponent implements AfterViewInit, OnChanges, OnDestroy {
     queueMicrotask(() => {
       this.write(this.poolTotalRef, frame.totalSol.toFixed(1));
       this.write(this.poolClockRef, clockText(frame.secondsLeft));
-      this.setWidth(this.poolFillRef, (frame.totalSol / 111) * 100);
+      this.setWidth(this.poolFillRef, (frame.totalSol / POOL_CAP_SOL) * 100);
       this.drawFinishedPrice();
       this.write(this.boughtValueRef, String(BUY_TARGET_SOL));
       this.setWidth(this.boughtBarRef, 100);
@@ -382,7 +383,7 @@ export class StoryHowComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.shownPoolSol = this.approach(this.shownPoolSol, frame.totalSol, deltaMs);
     this.write(this.poolTotalRef, this.shownPoolSol.toFixed(1));
     this.write(this.poolClockRef, frame.locked ? 'closed' : clockText(frame.secondsLeft));
-    this.setWidth(this.poolFillRef, (this.shownPoolSol / 111) * 100);
+    this.setWidth(this.poolFillRef, (this.shownPoolSol / POOL_CAP_SOL) * 100);
 
     const rowsChanged = frame.rows.length !== this.feedRows.length
       || frame.rows.some((row, index) => row !== this.feedRows[index]);

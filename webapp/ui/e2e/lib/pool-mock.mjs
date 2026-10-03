@@ -23,6 +23,8 @@ export const SCENARIOS = {
   ] })], latest_lotteries: [], hype_countdowns: [] }),
   done: () => ({ entries: [], has_active_lottery: false, active_lotteries: [], latest_lotteries: [summary({ status: 'closed', proceeding_purchases_started_at: iso(-80 * 60_000), next_pool_at: iso(3 * 60_000) })], hype_countdowns: [] }),
   launch: () => ({ entries: [], has_active_lottery: false, active_lotteries: [], latest_lotteries: [], hype_countdowns: [{ lottery_type: 'dex', launch_at: iso(2 * 86400_000 + 4 * 3600_000 + 10 * 60_000) }] }),
+  // Production on 2026-10-03: a launch set for tomorrow, and the September pools closed behind it.
+  launchAfterPastPools: () => ({ entries: [], has_active_lottery: false, active_lotteries: [], latest_lotteries: [summary({ status: 'closed', proceeding_purchases_started_at: iso(-4 * 86400_000), next_pool_at: iso(-4 * 86400_000 + 3600_000) })], hype_countdowns: [{ lottery_type: 'dex', launch_at: iso(28 * 3600_000 + 15 * 60_000) }] }),
   waiting: () => ({ entries: [], has_active_lottery: false, active_lotteries: [], latest_lotteries: [], hype_countdowns: [] })
 };
 export async function mockCurrent(ctx, getScenario) {

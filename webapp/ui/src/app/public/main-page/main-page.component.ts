@@ -315,7 +315,7 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     this.poolCard$ = combineLatest([this.pool.snapshot$('dex'), timer(0, 1000)]).pipe(
       map(([snapshot]) => ({
         line: poolCardLine(snapshot, Date.now()),
-        note: poolCardNote(snapshot),
+        note: poolCardNote(snapshot, Date.now()),
         phase: snapshot.phase
       }))
     );

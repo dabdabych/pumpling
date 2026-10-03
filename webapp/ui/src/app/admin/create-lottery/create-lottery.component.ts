@@ -66,10 +66,10 @@ export class CreateLotteryComponent implements OnInit {
       lottery_id: [''],
       wallet_fee: [this.feeWalletPubkey.toBase58()],
       wallet_keeper: [this.keeperWalletPubkey.toBase58()],
-      // 111 SOL is the same cap as autostart uses in settings.py. It used to be
+      // 77 SOL is the same cap as autostart uses in settings.py. It used to be
       // 200 here, so the form and autostart created rounds with different
       // maximums. The cap came down to fit the pump.fun bonding curve.
-      max_total: [111, [Validators.required, Validators.min(0.01)]]
+      max_total: [77, [Validators.required, Validators.min(0.01)]]
     });
   }
 

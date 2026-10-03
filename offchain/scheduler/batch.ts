@@ -53,12 +53,13 @@ const RETRY_SECONDS_PER_PURCHASE = 25;
  * The cap on the retry window.
  *
  * 15 rather than 10 or 20, for two reasons. Ten would be enough for
- * completeness: the worst case of a 111 SOL round is 70 coins at 1.538 SOL,
- * which is 11 purchases per coin, and 10 minutes fits up to 15 retries per
- * coin. But a short window compresses the same work and RAISES the peak load on
- * the node: with 50 coins in parallel that is ~48 RPS against ~35 at fifteen
- * minutes, and the Helius Developer plan is 50 RPS. Twenty minutes would load
- * it even less but would stretch a publicly announced round.
+ * completeness: the worst case, the largest round the draw is built for
+ * (111 SOL), is 70 coins at 1.538 SOL, which is 11 purchases per coin, and
+ * 10 minutes fits up to 15 retries per coin. But a short window compresses
+ * the same work and RAISES the peak load on the node: with 50 coins in
+ * parallel that is ~48 RPS against ~35 at fifteen minutes, and the Helius
+ * Developer plan is 50 RPS. Twenty minutes would load it even less but would
+ * stretch a publicly announced round.
  */
 const MAX_RETRY_WINDOW_MINUTES = 15;
 const DEFAULT_START_SLIPPAGE_BPS = 300;

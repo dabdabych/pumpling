@@ -83,20 +83,21 @@ const measure = (p) => p.evaluate(() => {
 });
 
 // ------------------------------------------------- it fits, at every window
-{
+// Between pools it is the pointer to X; before the launch, the time left to it.
+for (const [label, make] of [['between pools', SCENARIOS.done], ['before the launch', SCENARIOS.launchAfterPastPools]]) {
   let missing = 0;
   let cut = 0;
   let wrapped = 0;
   let worst = { room: 1e9, at: '' };
 
   for (const [width, height] of SIZES) {
-    const { ctx, p } = await mainPage(SCENARIOS.done(), { width, height });
+    const { ctx, p } = await mainPage(make(), { width, height });
     const m = await measure(p);
-    const label = `${width}x${height}`;
+    const size = `${width}x${height}`;
 
     if (!m || !m.note) {
       missing++;
-      console.log(`     ${label}: no note on the card`);
+      console.log(`     ${size}: no note on the card`);
     } else {
       const inside = m.content.top >= m.card.top - 1
         && m.content.bottom <= m.card.bottom + 1
@@ -104,24 +105,24 @@ const measure = (p) => p.evaluate(() => {
         && m.content.right <= m.card.right + 1;
       if (!inside) {
         cut++;
-        console.log(`     ${label}: cut off (card ${m.card.top}..${m.card.bottom}, text ${m.content.top}..${m.content.bottom})`);
+        console.log(`     ${size}: cut off (card ${m.card.top}..${m.card.bottom}, text ${m.content.top}..${m.content.bottom})`);
       }
       // Two lines is still fine on a narrow card; three means the wording has
       // outgrown the space it has.
       if (m.lines > 2) {
         wrapped++;
-        console.log(`     ${label}: the note runs to ${m.lines} lines`);
+        console.log(`     ${size}: the note runs to ${m.lines} lines`);
       }
       const room = Math.min(m.content.top - m.card.top, m.card.bottom - m.content.bottom);
-      if (room < worst.room) worst = { room, at: label };
+      if (room < worst.room) worst = { room, at: size };
     }
     await ctx.close();
   }
 
-  ok(missing === 0, `the note is on the card at every size (${SIZES.length - missing} of ${SIZES.length})`);
-  ok(cut === 0, `and none of them cuts the card's text off (${cut} cut)`);
-  ok(wrapped === 0, `and it never runs past two lines (${wrapped} over)`);
-  ok(worst.room >= 8, `the tightest fit still has room (${worst.room}px at ${worst.at})`);
+  ok(missing === 0, `${label}: the note is on the card at every size (${SIZES.length - missing} of ${SIZES.length})`);
+  ok(cut === 0, `${label}: and none of them cuts the card's text off (${cut} cut)`);
+  ok(wrapped === 0, `${label}: and it never runs past two lines (${wrapped} over)`);
+  ok(worst.room >= 8, `${label}: the tightest fit still has room (${worst.room}px at ${worst.at})`);
 }
 
 // ------------------------------------------------- what it says, and where
