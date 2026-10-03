@@ -26,7 +26,7 @@ import httpx
 from infrastructure.database.database import SessionLocal
 from infrastructure.database.models.lottery_model import LotteryModel  # noqa: F401 - registers lotteries for the FK
 from infrastructure.database.models.user_model import UserModel  # noqa: F401 - registers users for bet_participations
-from shared.coin_screening import SOURCE_SOLANA_TRACKER, ChainRead, DailyBudget, ProviderAnswer, ask_providers, read_chain, read_curve
+from shared.coin_screening import SOURCE_SOLANA_TRACKER, ChainRead, DailyBudget, ProviderAnswer, ask_providers, read_chain, read_curve, screening_enabled
 from shared.coin_screening_store import enqueue_new, run_due
 from shared.log_redaction import install_log_redaction
 from shared.settings import get_settings
@@ -158,6 +158,13 @@ async def main() -> None:
     setup_logging()
     stop_event = asyncio.Event()
     _install_signal_handlers(stop_event)
+    if not screening_enabled():
+        # Off on this server: no provider is asked and nothing is queued. The
+        # process stays up rather than exiting, or compose would restart it in
+        # a loop; it just waits to be stopped.
+        logger.info("coin screening is off on this server (COIN_SCREENING_ENABLED=false): nothing is checked")
+        await stop_event.wait()
+        return
     rpc_url = screening_rpc_url()
     async with SolanaJsonRpc(rpc_url, timeout=PROVIDER_TIMEOUT_SECONDS) as rpc, \
             httpx.AsyncClient(timeout=PROVIDER_TIMEOUT_SECONDS) as http:

@@ -584,3 +584,56 @@ class TestWhatTheSiteGets:
             source = handle.read()
         missing = [reason for reason in cs.REASONS if f"{reason}:" not in source]
         assert missing == []
+
+
+# ------------------------------------------------------- off on a server
+
+class TestTheSwitch:
+    """COIN_SCREENING_ENABLED=false: off on mainnet since 2026-10-03, on the stand still on."""
+
+    @pytest.mark.parametrize("value, enabled", [(None, True), ("", True), ("true", True), ("1", True),
+                                                ("false", False), ("False", False), ("0", False), ("off", False), ("no", False)])
+    def test_the_values(self, monkeypatch, value, enabled):
+        if value is None:
+            monkeypatch.delenv("COIN_SCREENING_ENABLED", raising=False)
+        else:
+            monkeypatch.setenv("COIN_SCREENING_ENABLED", value)
+        assert cs.screening_enabled() is enabled
+
+    def test_off_the_site_shows_nothing_even_with_answers_in_the_table(self, db, monkeypatch):
+        from infrastructure.database.models.coin_screening_model import CoinScreeningModel
+        from presentation.lottery.lottery_router import _pool_screenings, _screening_for_dialog
+
+        add_pool(db, 1)
+        db.add(CoinScreeningModel(lottery_id=1, mint="AAA", status="flagged", reasons=["creator_over_20"], missing=[], source="tracced",
+                                  first_commit_at=NOW, checked_at=NOW, attempts=1, next_attempt_at=NOW))
+        db.commit()
+        monkeypatch.setenv("COIN_SCREENING_ENABLED", "true")
+        assert list(_pool_screenings(db, 1)) == ["AAA"] and _screening_for_dialog(db, "AAA") is not None
+
+        monkeypatch.setenv("COIN_SCREENING_ENABLED", "false")
+        assert _pool_screenings(db, 1) == {}
+        assert _screening_for_dialog(db, "AAA") is None
+
+    def test_off_the_worker_asks_no_provider(self, monkeypatch):
+        import asyncio
+        import importlib
+
+        workers = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "workers")
+        sys.path.insert(0, workers)
+        try:
+            worker = importlib.import_module("coin_screening_worker")
+        finally:
+            sys.path.remove(workers)
+        monkeypatch.setenv("COIN_SCREENING_ENABLED", "false")
+        monkeypatch.setattr(worker, "setup_logging", lambda: None)
+        monkeypatch.setattr(worker, "SolanaJsonRpc", lambda *a, **k: pytest.fail("no node is read when the check is off"))
+        monkeypatch.setattr(worker, "run_once", lambda *a, **k: pytest.fail("nothing is checked when the check is off"))
+
+        async def run_and_stop():
+            task = asyncio.create_task(worker.main())
+            await asyncio.sleep(0.2)
+            assert not task.done(), "it stays up instead of exiting, or compose would restart it in a loop"
+            task.cancel()
+
+        asyncio.run(run_and_stop())

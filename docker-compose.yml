@@ -52,6 +52,8 @@ services:
       - RPC_PROXY_GLOBAL_LIMIT_PER_MINUTE=${RPC_PROXY_GLOBAL_LIMIT_PER_MINUTE:-}
       - HELIUS_DAS_LIMIT_PER_MINUTE=${HELIUS_DAS_LIMIT_PER_MINUTE:-}
       - HELIUS_DAS_DAILY_LIMIT=${HELIUS_DAS_DAILY_LIMIT:-}
+      # The red-flag check on coins; false hides it and stops the worker asking.
+      - COIN_SCREENING_ENABLED=${COIN_SCREENING_ENABLED:-true}
       - WALLET_AUTH_DOMAIN=${WALLET_AUTH_DOMAIN:-${APP_DOMAIN:-pumpling.xyz}}
       - WALLET_AUTH_URI=${WALLET_AUTH_URI:-https://${APP_DOMAIN:-pumpling.xyz}}
       - SMTP_ENABLED=${SMTP_ENABLED:-true}
@@ -244,6 +246,7 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql://crypto_lottery:Online123$@postgres:5432/crypto_lottery}
       - SOLANA_HTTP_ENDPOINT=${SOLANA_HTTP_ENDPOINT:-https://api.mainnet-beta.solana.com/}
       - COIN_SCREENING_RPC_URL=${COIN_SCREENING_RPC_URL:-}
+      - COIN_SCREENING_ENABLED=${COIN_SCREENING_ENABLED:-true}
       - TRACCED_API_KEY=${TRACCED_API_KEY:-}
       - SOLANA_TRACKER_API_KEY=${SOLANA_TRACKER_API_KEY:-}
       - SOLANA_TRACKER_DAILY_LIMIT=${SOLANA_TRACKER_DAILY_LIMIT:-75}

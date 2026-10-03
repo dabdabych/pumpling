@@ -59,6 +59,7 @@ so the site can show what was read, not a verdict.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -66,6 +67,18 @@ from typing import Any, Optional
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+def screening_enabled() -> bool:
+    """Whether the check runs and shows here. `COIN_SCREENING_ENABLED=false` turns it
+    off on a server: the worker asks no provider and queues nothing, and the API
+    gives no check, so the site shows no mark, as for a coin never checked.
+
+    Off on mainnet since 2026-10-03, Georgiy's call: the mechanics were not
+    tested enough and he did not like how they looked yet; the stand keeps it
+    on. On unless set, so a server that never heard of it behaves as before.
+    """
+    return os.getenv("COIN_SCREENING_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
 
 TRACCED_URL = "https://tracced.xyz/api/v1/check"
 SOLANA_TRACKER_URL = "https://data.solanatracker.io/tokens/{mint}"

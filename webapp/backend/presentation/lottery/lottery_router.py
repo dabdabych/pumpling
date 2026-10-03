@@ -19,6 +19,7 @@ from infrastructure.database.models.token_metadata_model import TokenMetadataMod
 from infrastructure.database.models.lottery_model import LotteryModel
 from infrastructure.database.models.smart_contract_event_model import SmartContractEventModel
 from infrastructure.database.models.coin_screening_model import CoinScreeningModel
+from shared.coin_screening import screening_enabled
 from application.lottery.schemas import LotteryListResponse, LotteryEntryResponse, PricePointResponse, CoinResponse, CreateLotteryRequest, LotteryResponse, PagedLotteryResponse, ProblemDetails, CreateBetRequest, BetParticipationResponse, VrfPreviewResponse, MintAllowTokenRequest, MintAllowTokenResponse, Phase2AccountsResponse, RunPurchasesPayload, RunPurchasesResponse, OffchainVrfRequest, ActiveLotterySummaryResponse, LotteryWinnerResultResponse, LotteryArchiveListResponse, LotteryArchiveItemResponse, LotteryArchiveEntryResponse, LotteryCycleControlResponse, LotteryCycleControlsResponse, HypeCountdownResponse
 from application.lottery.schemas import PurchaseFeedResponse, PurchaseFeedCoinResponse, PurchaseFeedItemResponse
 from application.lottery.schemas import PurchaseFeedCoinBurnResponse, PurchaseFeedDeliveryResponse, PurchaseFeedBurnResponse, PurchaseFeedRefundResponse
@@ -357,11 +358,14 @@ def _screening_response(row: CoinScreeningModel | None) -> CoinScreeningResponse
 
 def _pool_screenings(db: Session, lottery_id: int) -> dict[str, CoinScreeningResponse]:
     """Every coin's red-flag check in a pool that has an answer, by mint. One query.
+    Nothing at all when the check is off on this server (`screening_enabled`).
 
     An extra on the pool, never a condition of it: if it cannot be read, the
     pool goes out without it, and the transaction is rolled back so the rest of
     the answer still reads.
     """
+    if not screening_enabled():
+        return {}
     try:
         rows = db.query(CoinScreeningModel).filter(
             CoinScreeningModel.lottery_id == lottery_id,
@@ -397,7 +401,10 @@ def _open_pool_screening(db: Session, mint: str) -> CoinScreeningResponse | None
 
 
 def _screening_for_dialog(db: Session, mint: str) -> CoinScreeningResponse | None:
-    """The check never decides a commit: if it cannot be read, the dialog just shows nothing."""
+    """The check never decides a commit: if it cannot be read, or is off on this
+    server, the dialog just shows nothing."""
+    if not screening_enabled():
+        return None
     try:
         return _open_pool_screening(db, mint)
     except Exception:

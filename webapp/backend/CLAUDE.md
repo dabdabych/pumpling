@@ -149,6 +149,11 @@ at its first confirmed commit in a pool. The site shows what was read in a card
 behind a mark next to the ticker, the same mark on every coin, with the obvious
 cases in red inside. The pool still buys a flagged coin.
 
+**Off on mainnet since 2026-10-03** (`COIN_SCREENING_ENABLED=false` in the
+production `.env`, Georgiy's call: not tested enough, not liked yet). The worker
+asks no provider and queues nothing, and the API gives no check, so the site
+shows no mark. The stand keeps it on. Turning it back on is that one line.
+
 `coin_screening_worker` queues the coins and runs the checks
 (`shared/coin_screening_store.py`); the rule is in `shared/coin_screening.py`,
 with the reasoning in its docstring. A flag on its own: the creator over 20%,
