@@ -5,7 +5,8 @@
     <p class="arch__eyebrow">Archive</p>
     <h1 class="arch__title">Pools that <span class="arch__plate">already ran</span></h1>
     <p class="arch__lede">
-      Every finished pool with SOL in it: what stood behind each coin and how much went into its buys.
+      Every finished pool with SOL in it: what stood behind each coin, how much went into its buys, and
+      every transaction that did it.
     </p>
   </header>
 
@@ -63,6 +64,45 @@
             <!-- For anyone who wants to check a draw later on. -->
             <button type="button" class="round__link round__verify" (click)="openVerify(round.id)">Verify</button>
           </footer>
+
+          <!-- The round's transactions, the same feed the pool page shows while
+               it buys. Asked for the first time the round is opened. -->
+          @let opened = isOpen(round.id);
+          <button type="button" class="round__toggle" [id]="'round-tx-toggle-' + round.id"
+                  [attr.aria-expanded]="opened" [attr.aria-controls]="opened ? 'round-tx-' + round.id : null"
+                  (click)="toggle(round.id)">
+            <span class="round__toggle-label">Transactions</span>
+            <span class="round__toggle-hint" aria-hidden="true">{{ opened ? 'Hide' : 'Show' }}</span>
+            <svg class="round__chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+          </button>
+          @if (opened) {
+            @let tx = txView(round.id);
+            <section class="round__tx" [id]="'round-tx-' + round.id" [attr.aria-labelledby]="'round-tx-title-' + round.id">
+              <h2 class="round__tx-title" [id]="'round-tx-title-' + round.id">Transactions of pool #{{ round.id }}</h2>
+              @switch (tx.state) {
+                @case ('loading') {
+                  <p class="round__tx-state" role="status">Loading the transactions…</p>
+                }
+                @case ('failed') {
+                  <div class="round__tx-state round__tx-state--bad" role="alert">
+                    <span>Could not load the transactions right now.</span>
+                    <button type="button" class="round__retry" (click)="retry(round.id)">Try again</button>
+                  </div>
+                }
+                @default {
+                  @if (tx.rows.length > 0) {
+                    <p class="round__tx-summary">{{ tx.summary }}</p>
+                    <app-tx-feed [rows]="tx.rows" time="clock" [labelledBy]="'round-tx-title-' + round.id" />
+                    @if (tx.total > tx.rows.length) {
+                      <p class="round__tx-note">The latest {{ tx.rows.length }} of {{ tx.total }} transactions.</p>
+                    }
+                  } @else {
+                    <p class="round__tx-state">No transactions were recorded for this pool.</p>
+                  }
+                }
+              }
+            </section>
+          }
         </li>
       }
     </ul>

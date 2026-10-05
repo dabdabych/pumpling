@@ -182,6 +182,15 @@ export class PurchasesService {
     return this.fetch(request);
   }
 
+  /**
+   * A finished round's feed, asked for once and not followed: the archive shows
+   * rounds whose transactions no longer change. Errors reach the caller, which
+   * says so rather than showing an empty round.
+   */
+  once(poolId: number): Promise<PurchaseFeed> {
+    return this.load(poolId);
+  }
+
   private stateFor(poolId: number): BehaviorSubject<PurchaseFeed> {
     let state = this.feeds.get(poolId);
     if (!state) {

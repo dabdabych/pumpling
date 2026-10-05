@@ -1,6 +1,6 @@
 import { animate, group, query, sequence, stagger, style, transition, trigger } from '@angular/animations';
 import { AsyncPipe, DecimalPipe, PercentPipe } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, HostBinding, NgZone, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, HostBinding, NgZone, OnDestroy, OnInit } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -9,11 +9,11 @@ import { distinctUntilChanged, map } from 'rxjs/operators';
 
 import { LegalDialogComponent } from '../../shared/legal/legal-dialog.component';
 import { SiteHeaderComponent } from '../../shared/site-header/site-header.component';
-import { FlameComponent } from '../../shared/flame/flame.component';
 import { CoinScreeningBadgeComponent } from '../../shared/coin-screening/coin-screening-badge.component';
 import { BurnChipComponent } from '../burn-chip/burn-chip.component';
 import { burnChipText } from '../burn';
-import { buildFeedRows, FeedRow, recipientsShort, recipientsText } from '../feed-rows';
+import { buildFeedRows, FeedRow } from '../feed-rows';
+import { TxFeedComponent } from '../tx-feed/tx-feed.component';
 import { CommitDialogComponent, CommitDialogData } from '../commit-dialog/commit-dialog.component';
 import { CommitOutcome, CommitService, SentCommit } from '../commit.service';
 import { lamportsToSol } from '../lamports';
@@ -41,6 +41,8 @@ interface PageModel {
   mine: MyRound | null;
   /** Purchases, deliveries and burns, newest first. */
   feedRows: FeedRow[];
+  /** The page's once-a-second clock: the feed's "2 min ago" is measured from it. */
+  now: number;
 }
 
 type ToastState = 'sending' | CommitOutcome;
@@ -89,7 +91,7 @@ const TRACK = [
 @Component({
   selector: 'app-pool-page',
   standalone: true,
-  imports: [AsyncPipe, DecimalPipe, PercentPipe, RouterLink, SiteHeaderComponent, FlameComponent, CoinScreeningBadgeComponent, BurnChipComponent],
+  imports: [AsyncPipe, DecimalPipe, PercentPipe, RouterLink, SiteHeaderComponent, CoinScreeningBadgeComponent, BurnChipComponent, TxFeedComponent],
   templateUrl: './pool-page.component.html',
   styleUrls: ['./pool-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -175,41 +177,7 @@ export class PoolPageComponent implements OnInit, OnDestroy {
   readonly explorerQuery = environment.solanaExplorerQuery;
   readonly brokenLogos = new Set<string>();
 
-  /** The drawn scrollbar of the buys window: how tall the thumb is, and where. */
-  feedThumb: { size: number; at: number } | null = null;
   private rowsCache: { feed: PurchaseFeed; mine: MyRound | null; rows: FeedRow[] } | null = null;
-  private feedNode: HTMLElement | null = null;
-  private feedFrame = 0;
-  private feedSizes: ResizeObserver | null = null;
-  private thumbDragEnd: (() => void) | null = null;
-
-  /**
-   * The buys window, as it comes and goes with the phase.
-   *
-   * A setter rather than a plain `@ViewChild`, because the window only exists
-   * while there is something to show and has to be measured again each time it
-   * appears — and whenever a buy is added to it, which is what the observer is
-   * for.
-   */
-  @ViewChild('buyFeed')
-  set buyFeed(ref: ElementRef<HTMLElement> | undefined) {
-    this.feedSizes?.disconnect();
-    this.feedSizes = null;
-    this.feedNode = ref?.nativeElement ?? null;
-    if (!this.feedNode) {
-      this.feedThumb = null;
-      return;
-    }
-    if (typeof ResizeObserver === 'function') {
-      this.feedSizes = new ResizeObserver(() => this.scheduleFeedMeasure());
-      this.feedSizes.observe(this.feedNode);
-      const list = this.feedNode.firstElementChild;
-      if (list) {
-        this.feedSizes.observe(list);
-      }
-    }
-    this.scheduleFeedMeasure();
-  }
 
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private copiedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -266,7 +234,8 @@ export class PoolPageComponent implements OnInit, OnDestroy {
           fresh,
           boughtByMint: new Map(feed.coins.map((coin) => [coin.mint, coin])),
           mine,
-          feedRows: this.rowsFor(feed, mine)
+          feedRows: this.rowsFor(feed, mine),
+          now
         };
       })
     );
@@ -286,77 +255,6 @@ export class PoolPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  onFeedScroll(): void {
-    this.scheduleFeedMeasure();
-  }
-
-  /**
-   * Measuring reads the layout, so it happens once a frame at most and never
-   * inside the change detection that put the window there.
-   */
-  private scheduleFeedMeasure(): void {
-    if (this.feedFrame || typeof requestAnimationFrame !== 'function') {
-      return;
-    }
-    this.feedFrame = requestAnimationFrame(() => {
-      this.feedFrame = 0;
-      this.measureFeedThumb();
-      this.cdr.markForCheck();
-    });
-  }
-
-  private measureFeedThumb(): void {
-    const node = this.feedNode;
-    if (!node) {
-      this.feedThumb = null;
-      return;
-    }
-    const room = node.scrollHeight - node.clientHeight;
-    // Nothing to scroll: no bar either, so a short feed keeps its plain look.
-    if (room < 8) {
-      this.feedThumb = null;
-      return;
-    }
-    const size = Math.max(10, Math.min(100, (node.clientHeight / node.scrollHeight) * 100));
-    this.feedThumb = { size, at: (node.scrollTop / room) * (100 - size) };
-  }
-
-  /** The thumb drags the buys the way a scrollbar is expected to. */
-  startThumbDrag(event: PointerEvent): void {
-    const node = this.feedNode;
-    const thumb = event.currentTarget as HTMLElement;
-    const rail = thumb.parentElement;
-    if (!node || !rail) {
-      return;
-    }
-    event.preventDefault();
-    const railBox = rail.getBoundingClientRect();
-    const thumbBox = thumb.getBoundingClientRect();
-    // Where inside the thumb it was taken hold of, so it does not jump under
-    // the cursor on the first move.
-    const grab = event.clientY - thumbBox.top;
-    const travel = railBox.height - thumbBox.height;
-    const room = node.scrollHeight - node.clientHeight;
-    const move = (moved: PointerEvent) => {
-      const at = Math.min(Math.max(moved.clientY - railBox.top - grab, 0), travel);
-      node.scrollTop = travel > 0 ? (at / travel) * room : 0;
-    };
-    this.endThumbDrag();
-    this.zone.runOutsideAngular(() => {
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', () => this.endThumbDrag());
-      window.addEventListener('pointercancel', () => this.endThumbDrag());
-      this.thumbDragEnd = () => {
-        window.removeEventListener('pointermove', move);
-      };
-    });
-  }
-
-  private endThumbDrag(): void {
-    this.thumbDragEnd?.();
-    this.thumbDragEnd = null;
-  }
-
   private scrollToHighlight(): void {
     const row = document.querySelector<HTMLElement>('.coin-row--highlight');
     if (!row) {
@@ -368,11 +266,6 @@ export class PoolPageComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.destroyed = true;
-    this.feedSizes?.disconnect();
-    this.endThumbDrag();
-    if (this.feedFrame) {
-      cancelAnimationFrame(this.feedFrame);
-    }
     this.clearToastTimer();
     if (this.copiedTimer) {
       clearTimeout(this.copiedTimer);
@@ -520,34 +413,8 @@ export class PoolPageComponent implements OnInit, OnDestroy {
     return `$${value.toPrecision(2)}`;
   }
 
-  /** "2 min ago" — the purchase feed uses relative time: that is how the pace shows. */
-  timeAgo(atMs: number, nowMs: number = Date.now()): string {
-    const seconds = Math.max(0, Math.round((nowMs - atMs) / 1000));
-    if (seconds < 45) {
-      return 'just now';
-    }
-    const minutes = Math.round(seconds / 60);
-    if (minutes < 60) {
-      return `${minutes} min ago`;
-    }
-    const hours = Math.floor(minutes / 60);
-    return `${hours}h ${minutes % 60}m ago`;
-  }
-
   trackPurchase(_: number, item: PurchaseItem): string {
     return item.signature;
-  }
-
-  trackRow(_: number, row: FeedRow): string {
-    return row.key;
-  }
-
-  recipientsText(row: FeedRow): string {
-    return recipientsText(row);
-  }
-
-  recipientsShort(row: FeedRow): string {
-    return recipientsShort(row);
   }
 
   /**

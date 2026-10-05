@@ -152,6 +152,27 @@ On a phone the coin row puts the address chip on a line of its own (below
 was 40px wide at 320px, and the ticker, the burn mark and the chip lay on top
 of each other. The suite is `coin-screening`.
 
+## The transactions feed
+
+Every purchase, delivery, burn and refund of a round, newest first, each
+linking to its transaction: `pool/tx-feed`. The pool page shows it while a
+round buys and right after; the archive shows it for each finished round, in
+a bar under the round's card that opens it. The archive asks
+`/lottery/{id}/purchases` the first time a round is opened and never again
+(`PurchasesService.once`): a finished round does not change, and a month of
+rounds asked for up front would be a request per round for rows nobody may
+look at. Times are relative on the pool page ("2 min ago", the pace of the
+buying) and the clock in the archive.
+
+The feed lays out by its own width, not the screen's (container queries): in
+the archive it sits in a card. One line per row from 696px of feed, two
+below, three below 360px: on a phone two lines left the middle column so
+narrow that a ticker like $PUMPLING ran into the amount and a chip lay on
+the transaction link. A coin's name goes under its ticker when the two do not
+fit side by side, rather than being cut to half a letter. The suites are
+`archive-transactions` and `tx-feed-layout`, both on the layout checks in
+`e2e/lib/feed-layout.mjs`.
+
 ## The burn
 
 A participant can have part of what is bought for them burned instead of

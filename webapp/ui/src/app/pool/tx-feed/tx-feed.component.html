@@ -1,0 +1,64 @@
+<!-- Three kinds of row besides a purchase, each a transaction: a delivery to up
+     to five wallets, a burn, a refund. -->
+<div class="buy-window">
+  <div class="buy-feed" #feed tabindex="0" role="region" [attr.aria-labelledby]="labelledBy || null" (scroll)="onScroll()">
+    <ul class="buy-list">
+      @for (row of rows; track trackRow($index, row)) {
+        <li class="buy-row" [class.buy-row--send]="row.kind === 'send'" [class.buy-row--burn]="row.kind === 'burn'" [class.buy-row--refund]="row.kind === 'refund'">
+          <span class="buy-row__when">{{ when(row) }}</span>
+          <span class="buy-row__coin">
+            <b>${{ row.symbol }}</b>
+            <span>{{ row.name }}</span>
+          </span>
+          @switch (row.kind) {
+            @case ('buy') {
+              <span class="buy-row__sol">{{ formatSol(row.sol ?? 0) }} <small>SOL</small></span>
+              @if (row.venue) {
+                <span class="buy-row__venue">{{ row.venue }}</span>
+              }
+            }
+            @case ('send') {
+              <span class="buy-row__sol buy-row__tokens">
+                <svg class="buy-row__send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5h14.5M14 4.5l4 4-4 4M6.5 15.5H21M17.5 11.5l4 4-4 4" /></svg>
+                @if (row.amount) { {{ row.amount }} }
+                <small class="buy-row__to">{{ recipientsText(row) }}</small>
+              </span>
+              <span class="buy-row__venue buy-row__venue--send">Sent<span class="buy-row__to-phone"> {{ recipientsShort(row) }}</span></span>
+            }
+            @case ('burn') {
+              <span class="buy-row__sol buy-row__tokens">
+                <app-flame [size]="14" />
+                {{ row.amount }}
+              </span>
+              <span class="buy-row__venue buy-row__venue--burn">Burned</span>
+            }
+            @case ('refund') {
+              <span class="buy-row__sol buy-row__tokens">
+                <svg class="buy-row__send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>
+                {{ formatSol(row.sol ?? 0) }} <small>SOL</small>
+                <small class="buy-row__to">{{ recipientsText(row) }}</small>
+                <small class="buy-row__to-short">{{ recipientsShort(row) }}</small>
+              </span>
+              <span class="buy-row__venue buy-row__venue--refund">Returned</span>
+            }
+          }
+          <a class="buy-row__tx" [href]="explorerUrl(row.signature)" target="_blank" rel="noreferrer">
+            {{ shortSignature(row.signature) }}
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" /></svg>
+          </a>
+        </li>
+      }
+    </ul>
+  </div>
+  @if (thumb; as bar) {
+    <!-- The scrollbar is drawn here rather than left to the browser: on a Mac
+         the system one is an overlay that fades out, and nothing then says the
+         rows go on below. It drags like the real thing. -->
+    <div class="buy-rail">
+      <span class="buy-rail__thumb"
+            [style.height.%]="bar.size"
+            [style.top.%]="bar.at"
+            (pointerdown)="startDrag($event)"></span>
+    </div>
+  }
+</div>

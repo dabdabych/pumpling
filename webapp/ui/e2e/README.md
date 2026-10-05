@@ -29,6 +29,8 @@ Variables: `BASE` is the frontend address (default `http://localhost:3200`),
 | `wallet-silent` | a wallet that answers nothing: Phantom's connection checked first, a note after ten seconds, a fresh try that never sends twice, -32002 in its own words, other wallets untouched |
 | `my-commits` | your own commits show up in the pool table and on your page |
 | `archive` | round history, empty rounds are not shown |
+| `archive-transactions` | each past pool opens to its transactions: asked once, the four kinds of row, the clock, nothing recorded, a failed request and its retry, a capped feed, the keyboard, and at every window nothing out of its card or on top of anything |
+| `tx-feed-layout` | the pool page's transactions feed at every window in both phases that show it, long tickers included: nothing sticks out, overlaps or is cut to a sliver |
 | `phase-switch` | the pool page in every phase of a round |
 | `launch-countdown` | a scheduled launch counts down on the pool page and the first screen even with past pools closed behind it, and a pool in progress still comes first |
 | `buys-feed` | the purchase feed and its Solscan links |

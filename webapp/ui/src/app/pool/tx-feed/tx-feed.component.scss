@@ -1,0 +1,293 @@
+/* ------------------------------------------------------------------------
+   A round's transactions: the window, its rows and the drawn scrollbar.
+   Moved here from the pool page as they were, so the archive shows them the same.
+
+   The rows change layout with the width of the feed itself, not the window:
+   in the archive it sits in a card, narrower than the screen. 696px is where
+   the pool page used to switch at a 760px screen, so the page looks the same.
+   ------------------------------------------------------------------------ */
+:host {
+  display: block;
+  container: tx-feed / inline-size;
+}
+
+/* The feed's own window.
+ *
+ * A round buys for an hour in small batches, so the list runs to a few hundred
+ * rows, and the program id, the pool account and the link that proves the draw
+ * all sat underneath them. Reaching those meant scrolling past every buy.
+ *
+ * About six rows deep, and never more than half the screen, so the sections
+ * around it stay in reach.
+ */
+.buy-window {
+  position: relative;
+  padding-right: 24px;
+}
+
+.buy-feed {
+  max-height: min(23rem, 50vh);
+  overflow-y: auto;
+  /* No `overscroll-behavior` on purpose: on a phone the window is a third of
+     the screen, and a finger that lands on it has to be able to carry on down
+     the page rather than hit a dead end. */
+
+  /* The browser's own bar is hidden because we draw one. On a Mac it is an
+     overlay that fades out a second after it is used, so at rest nothing said
+     the buys went on below; measured on 2026-09-25, `::-webkit-scrollbar` is
+     ignored for those and the window kept a zero-width gutter either way. */
+  scrollbar-width: none;
+}
+
+.buy-feed::-webkit-scrollbar {
+  display: none;
+}
+
+.buy-feed:focus-visible {
+  outline: 2px solid var(--qres-purple);
+  outline-offset: 4px;
+}
+
+/* The bar itself: the same black frame as everything else on the page. */
+.buy-rail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+}
+
+.buy-rail__thumb {
+  position: absolute;
+  left: 0;
+  right: 0;
+  min-height: 26px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-purple);
+  cursor: grab;
+  touch-action: none;
+}
+
+.buy-rail__thumb:active {
+  cursor: grabbing;
+}
+
+.buy-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.buy-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "when coin sol"
+    "when venue tx";
+  align-items: center;
+  gap: 4px 14px;
+  padding: 10px 14px;
+  border: 2px solid var(--qres-black);
+  background: var(--qres-white);
+  animation: buy-in 0.45s ease-out;
+}
+
+@container tx-feed (min-width: 696px) {
+  .buy-row {
+    grid-template-columns: 7.5rem minmax(0, 1fr) auto auto auto;
+    grid-template-areas: "when coin sol venue tx";
+  }
+}
+
+/* A feed on a phone, under 360px. Two lines there left the middle column 13 to
+   80px wide: in an archive card at 320px the chip ("RETURNED", 85px) lay on the
+   transaction link, and from 320 to 390px a ticker like $PUMPLING ran out of
+   its cell into the amount, on the pool page as well. Three lines instead, each
+   wide enough: the coin and the time, the amount, then the chip and the link. */
+@container tx-feed (max-width: 359.98px) {
+  .buy-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "coin when"
+      "sol sol"
+      "venue tx";
+    gap: 6px 10px;
+    padding: 10px 12px;
+  }
+}
+
+@keyframes buy-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.buy-row__when {
+  grid-area: when;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.56);
+}
+
+/* The ticker and the coin's name share a line while both fit. When they do
+   not, the name goes under the ticker rather than being cut down beside it: in
+   a narrow cell an ellipsis has no room, and what was left was half a letter.
+   Either of them longer than the whole cell ends in an ellipsis, so neither can
+   run into the amount beside it. */
+.buy-row__coin {
+  grid-area: coin;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.buy-row__coin b,
+.buy-row__coin span {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.buy-row__coin b {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.buy-row__coin span {
+  font-size: 13px;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.buy-row__sol {
+  grid-area: sol;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.buy-row__sol small {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.6);
+}
+
+.buy-row__venue {
+  grid-area: venue;
+  justify-self: start;
+  padding: 3px 8px;
+  border: 2px solid var(--qres-black);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.buy-row__tx {
+  grid-area: tx;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--qres-black);
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.buy-row__tx svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* A delivery and a burn in the feed. The backing tells them from a purchase at
+   a glance, the mark and the chip say what they are without the colour. */
+.buy-row--send {
+  background: color-mix(in srgb, var(--qres-cyan) 10%, var(--qres-white));
+}
+
+.buy-row--burn {
+  background: color-mix(in srgb, var(--qres-purple) 14%, var(--qres-white));
+}
+
+/* The SOL the buying did not spend, going back: the site's green, as money
+   coming home rather than going out. */
+.buy-row--refund {
+  background: color-mix(in srgb, var(--qres-green) 22%, var(--qres-white));
+}
+
+.buy-row__tokens {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.buy-row__send-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: none;
+  stroke: var(--qres-black);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Beside the amount, lowercase and quiet: it qualifies the number rather than
+   labelling it like "SOL" does, so it overrides the small caps above. */
+.buy-row__sol .buy-row__to {
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* On a phone "to 5 wallets" squeezed the coin's name: for a delivery it moves
+   into the chip, which has a line of its own. A refund's amount is short
+   ("0.48 SOL"), so its "to you" stays beside it in the short form instead —
+   "RETURNED TO YOU" in the chip broke onto two lines. */
+.buy-row__to-phone,
+.buy-row__sol .buy-row__to-short {
+  display: none;
+}
+
+.buy-row__sol .buy-row__to-short {
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+@container tx-feed (max-width: 695.98px) {
+  .buy-row__sol .buy-row__to {
+    display: none;
+  }
+
+  .buy-row__to-phone,
+  .buy-row__sol .buy-row__to-short {
+    display: inline;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .buy-row {
+    animation: none;
+  }
+}
