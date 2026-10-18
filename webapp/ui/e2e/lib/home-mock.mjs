@@ -97,7 +97,7 @@ export async function mockStory(ctx, mode = 'ok') {
     const coin = BACKED.find((c) => c.mint === mint) ?? BACKED[0];
     const body = { ...fixture, mint, name: coin.name, symbol: coin.symbol, logo_url: coin.logo ? `https://img.test/${coin.logo}/${mint}.svg` : null,
       trade_url: coin.venue === 'pump.fun' ? `https://pump.fun/coin/${mint}` : `https://dexscreener.com/solana/${mint}`, venue: coin.venue,
-      chart_final: true, chart_updated_at: '2026-10-04T20:50:00Z', supply: 1e9 };
+      chart_final: true, chart_updated_at: '2026-10-04T20:50:00Z', supply: 1e9, burned: 79863241.987601, refunded_sol: 0.01 };
     if (mode === 'busy' || mode === 'none' || mode === 'failed' || mode === 'pending') Object.assign(body, { candles: null, candle_minutes: null, chart_url: null, chart_state: mode });
     if (mode === 'pending') Object.assign(body, { chart_final: false, chart_updated_at: null });
     if (mode === 'running') Object.assign(body, { finished: false, left_at: null, buys: [], chart_final: false, chart_updated_at: iso(-3 * 60_000 - 10_000) });

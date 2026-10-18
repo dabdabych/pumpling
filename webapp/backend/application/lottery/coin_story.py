@@ -235,6 +235,20 @@ def supply_from_feed(feed: Optional[dict], mint: str) -> Optional[float]:
     return None
 
 
+def burned_from_feed(feed: Optional[dict], mint: str) -> Optional[float]:
+    """The tokens of the coin the pool burned, whole units; 0 when it burned none; None when the feed does not know the coin."""
+    for token in (feed or {}).get("tokens") or []:
+        if not isinstance(token, dict) or str(token.get("mint") or "") != mint:
+            continue
+        burn = token.get("burn") if isinstance(token.get("burn"), dict) else {}
+        raw = burn.get("burnedRaw")
+        decimals = token.get("decimals")
+        if isinstance(raw, str) and raw.isdigit() and isinstance(decimals, int) and not isinstance(decimals, bool) and 0 <= decimals <= 18:
+            return int(raw) / 10 ** decimals
+        return 0.0
+    return None
+
+
 def left_at(stay: Stay, buys: list[Buy]) -> Optional[datetime]:
     """When the coin's stay ended: the pool's last buy of it, or the pool's close; None while it runs."""
     if not stay.finished:
@@ -317,9 +331,12 @@ class GeckoTerminal:
         candidates = [pool for pool in self._pools_of(mint) if pool[2] is None or pool[2] <= end][:2]
         found: list[tuple[str, str, list[list[float]], float]] = []
         for address, dex, _created in candidates:
+            # The empty minutes too, as the previous close with no volume: by
+            # default GeckoTerminal skips them, the coin's dot had no candle in
+            # a quiet minute, and side by side the candles squeezed time.
             body = self._ask(
                 f"{GECKO_API}/pools/{address}/ohlcv/minute?aggregate={minutes}&before_timestamp={before}"
-                f"&limit={limit}&currency=token&token=base"
+                f"&limit={limit}&currency=token&token=base&include_empty_intervals=true"
             )
             rows = (((body.get("data") or {}).get("attributes") or {}).get("ohlcv_list")) or []
             inside = sorted(
@@ -332,10 +349,28 @@ class GeckoTerminal:
             return None
         most = max(found, key=lambda pool: pool[3])
         if len(found) == 2:
-            first, then = sorted(found, key=lambda pool: pool[2][0][0])
-            if first[1] == "pump-fun" and then[2][0][0] >= first[2][-1][0]:
-                return Candles(pool=most[0], rows=_joined(first[2], then[2]), minutes=minutes)
+            # Filled, both pools run the whole window; what counts is where
+            # each one traded: the curve up to its last trade, then the new
+            # pool from its first.
+            first, then = sorted(found, key=lambda pool: _first_trade(pool[2]))
+            curve, new = _until_last_trade(first[2]), _from_first_trade(then[2])
+            if first[1] == "pump-fun" and curve and new and new[0][0] >= curve[-1][0]:
+                return Candles(pool=most[0], rows=_joined(curve, new), minutes=minutes)
         return Candles(pool=most[0], rows=most[2], minutes=minutes)
+
+
+def _first_trade(rows: list[list[float]]) -> float:
+    return next((row[0] for row in rows if row[5] > 0), float("inf"))
+
+
+def _until_last_trade(rows: list[list[float]]) -> list[list[float]]:
+    last = max((index for index, row in enumerate(rows) if row[5] > 0), default=-1)
+    return rows[: last + 1]
+
+
+def _from_first_trade(rows: list[list[float]]) -> list[list[float]]:
+    first = next((index for index, row in enumerate(rows) if row[5] > 0), len(rows))
+    return rows[first:]
 
 
 def _joined(curve: list[list[float]], then: list[list[float]]) -> list[list[float]]:
@@ -391,6 +426,8 @@ class Target:
     final: Optional[bool] = None
     has_candles: bool = False
     has_supply: bool = False
+    has_burned: bool = False
+    filled: bool = False
     tries: int = 0
     fetched_at: Optional[datetime] = None
     window_start: Optional[datetime] = None
@@ -405,9 +442,11 @@ def targets(db: Session) -> list[Target]:
     finished. A final chart stays.
     """
     from application.lottery import backed_coins
+    from shared.settings import get_settings
 
     found: list[Target] = []
-    for coin in backed_coins.backed_coins(db, BUBBLE_MIN_SOL, BUBBLE_COUNT, backed_coins.SORT_RECENT):
+    hidden = get_settings().coin_bubbles_hidden_mints
+    for coin in backed_coins.backed_coins(db, BUBBLE_MIN_SOL, BUBBLE_COUNT, backed_coins.SORT_RECENT, hidden=hidden):
         stay = chosen_stay(db, coin.mint)
         if stay is None:
             continue
@@ -417,7 +456,8 @@ def targets(db: Session) -> list[Target]:
         else:
             found.append(Target(
                 coin.mint, stay, final=bool(row.final), has_candles=row.candles is not None,
-                has_supply=row.supply is not None, tries=int(row.tries or 0),
+                has_supply=row.supply is not None, has_burned=row.burned is not None,
+                filled=bool(row.candles_filled), tries=int(row.tries or 0),
                 fetched_at=_utc(row.fetched_at), window_start=_utc(row.window_start), window_end=_utc(row.window_end),
             ))
     keep = {(target.mint, target.stay.lottery_id) for target in found}
@@ -459,6 +499,9 @@ def _save(
         row.candles = candles.rows if candles else None
         row.final, row.tries, row.fetched_at = final, tries, now
         row.supply = supply
+        row.candles_filled = True
+        if feed is not None:
+            row.burned = burned_from_feed(feed, target.mint)
         if final and feed is not None:
             row.buys = [{"at": buy.at.isoformat(), "sol": buy.sol, "signature": buy.signature} for buy in buys or []]
             row.share_sol = share_of(feed, target.mint)
@@ -494,23 +537,50 @@ def run_once(
     saved = 0
     for target in sorted(found, key=_order):
         stay = target.stay
-        if target.final and target.has_candles and not target.has_supply:
-            # A final chart kept before its supply was: only the supply is asked
-            # for, from the buyer's feed or the chain; GeckoTerminal is not.
+        if target.final and target.has_candles and not (target.has_supply and target.has_burned):
+            # A final chart kept before its supply or its burn was: only those
+            # are asked for, from the buyer's feed or the chain; GeckoTerminal is not.
             try:
                 feed = feed_of(stay.lottery_id)
             except Exception:
                 feed = None
-            supply = supply_for(target.mint, feed)
-            if supply is not None:
+            supply = None if target.has_supply else supply_for(target.mint, feed)
+            burned = None if target.has_burned else burned_from_feed(feed, target.mint)
+            if supply is not None or burned is not None:
                 session = session_factory()
                 try:
                     row = session.get(CoinStoryChartModel, (target.mint, stay.lottery_id))
                     if row is not None:
-                        row.supply = supply
+                        if supply is not None:
+                            row.supply = supply
+                        if burned is not None:
+                            row.burned = burned
                         session.commit()
                 finally:
                     session.close()
+        if target.final and not target.filled:
+            # Kept before the empty minutes were asked for: asked again once,
+            # over the window it was kept for. Nothing back keeps what was there.
+            if budget.left() <= LEAVES:
+                break
+            try:
+                candles = gecko.fetch(target.mint, target.window_start, target.window_end)
+            except GeckoBusy:
+                break
+            except Exception:
+                logger.warning("coin story: candles not read again (mint=%s)", target.mint, exc_info=True)
+                continue
+            session = session_factory()
+            try:
+                row = session.get(CoinStoryChartModel, (target.mint, stay.lottery_id))
+                if row is not None:
+                    if candles is not None:
+                        row.pool_address, row.candle_minutes, row.candles = candles.pool, candles.minutes, candles.rows
+                    row.candles_filled = True
+                    session.commit()
+            finally:
+                session.close()
+            saved += 1
             continue
         if target.final:
             # Final. Asked again only when GeckoTerminal had nothing, an hour apart, three times.
@@ -534,6 +604,7 @@ def run_once(
                     row.candles = candles.rows if candles else None
                     row.tries = target.tries + (0 if candles else 1)
                     row.fetched_at = now
+                    row.candles_filled = True
                     session.commit()
             finally:
                 session.close()

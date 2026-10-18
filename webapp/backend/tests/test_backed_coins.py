@@ -108,6 +108,12 @@ class TestWhatAddsUp:
         assert [c.mint for c in recent] == [SMALL_COIN, RAYDIUM_COIN, PUMP_COIN], "latest first, then by SOL among equals"
         assert [c.mint for c in bc.backed_coins(db, 1.0, 2, sort=bc.SORT_RECENT)] == [SMALL_COIN, RAYDIUM_COIN], "the limit keeps the latest"
 
+    def test_a_hidden_coin_is_left_out_before_the_limit(self, db):
+        """CMC off production's bubbles, 2026-10-18: the limit still fills with the others."""
+        seed(db)
+        assert [c.mint for c in bc.backed_coins(db, 1.0, 2, hidden=[PUMP_COIN])] == [RAYDIUM_COIN, SMALL_COIN]
+        assert [c.mint for c in bc.backed_coins(db, 1.0, 60, hidden=[])] == [PUMP_COIN, RAYDIUM_COIN, SMALL_COIN]
+
     def test_nothing_yet_is_an_empty_list(self, db):
         assert bc.backed_coins(db, 1.0, 60) == []
 
@@ -243,6 +249,18 @@ class TestTheEndpoint:
         body = client.get("/lottery/coins/backed", params={"limit": 10, "sort": "recent"}).json()
         assert [i["mint"] for i in body["items"]][0] == RAYDIUM_COIN, "committed to at NOW, after PUMPLING's last at NOW-1d"
         assert client.get("/lottery/coins/backed", params={"sort": "newest"}).status_code == 422
+
+    def test_the_hidden_list_comes_from_the_server_settings(self, client, monkeypatch):
+        from shared import settings as settings_module
+
+        monkeypatch.setenv("COIN_BUBBLES_HIDDEN_MINTS", f" {PUMP_COIN}, ")
+        settings_module.get_settings.cache_clear()
+        try:
+            assert settings_module.get_settings().coin_bubbles_hidden_mints == (PUMP_COIN,)
+            items = client.get("/lottery/coins/backed", params={"limit": 10, "sort": "recent"}).json()["items"]
+            assert PUMP_COIN not in [i["mint"] for i in items] and len(items) == 2
+        finally:
+            settings_module.get_settings.cache_clear()
 
     def test_bounds_on_what_can_be_asked(self, client):
         assert client.get("/lottery/coins/backed", params={"min_sol": 0}).status_code == 422

@@ -127,6 +127,14 @@ class TestTheBuysAndTheWindow:
         assert cs.supply_from_feed(feed, OTHER) is None and cs.supply_from_feed(None, MINT) is None
         assert cs.supply_from_feed({"tokens": [{"mint": MINT, "decimals": True, "burn": {"supplyAtStart": "1"}}]}, MINT) is None
 
+    def test_what_the_pool_burned_from_the_feed(self):
+        feed = {"tokens": [{"mint": MINT, "decimals": 6, "burn": {"burnedRaw": "79863241987601"}},
+                           {"mint": OTHER, "decimals": 6, "burn": {"burnedRaw": None}}]}
+        assert cs.burned_from_feed(feed, MINT) == 79_863_241.987601
+        assert cs.burned_from_feed(feed, OTHER) == 0.0, "a coin the buyer knows and did not burn"
+        assert cs.burned_from_feed({"tokens": [{"mint": MINT}]}, MINT) == 0.0
+        assert cs.burned_from_feed(feed, "Z" * 44) is None and cs.burned_from_feed(None, MINT) is None
+
     def test_the_share_and_what_went_back(self):
         feed = {
             "tokens": [{"mint": MINT, "targetSol": 15.019}, {"mint": OTHER, "targetSol": 0}],
@@ -232,6 +240,25 @@ class TestGeckoTerminal:
         assert [row[0] for row in candles.rows] == [t(50), t(31), t(20)]
         assert candles.rows[1] == [t(31), 2, 5, 2, 5, 35.0], "the minute it moved: the curve's open, the new pool's close, both volumes"
         assert candles.pool == "SWAP", "the link goes to the pool that traded most"
+
+    def test_the_empty_minutes_are_asked_for(self):
+        """Skipped by default: a coin that came in on a quiet minute had no candle for its dot."""
+        fake = FakeGecko(pools=[("CURVE", "pump-fun", None)], candles={"CURVE": [[t(30), 1, 1, 1, 1, 1.0]]})
+        gecko_with(fake, lambda: 0.0).fetch(MINT, START, END)
+        assert all("include_empty_intervals=true" in url for url in fake.asked if "/ohlcv/" in url)
+
+    def test_filled_minutes_do_not_stop_a_curve_and_its_new_pool_being_joined(self):
+        """Filled, the curve runs flat past its graduation and the new pool flat before its first trade."""
+        fake = FakeGecko(
+            pools=[("SWAP", "pumpswap", "2026-10-18T11:30:00Z"), ("CURVE", "pump-fun", "2026-10-17T10:00:00Z")],
+            candles={
+                "CURVE": [[t(50), 1, 2, 1, 2, 10.0], [t(31), 2, 4, 2, 4, 30.0], [t(30), 4, 4, 4, 4, 0.0], [t(20), 4, 4, 4, 4, 0.0]],
+                "SWAP": [[t(50), 4, 4, 4, 4, 0.0], [t(31), 4, 5, 3, 5, 5.0], [t(20), 5, 6, 5, 6, 50.0]],
+            },
+        )
+        candles = gecko_with(fake, lambda: 0.0).fetch(MINT, START, END)
+        assert [row[0] for row in candles.rows] == [t(50), t(31), t(20)]
+        assert candles.rows[1] == [t(31), 2, 5, 2, 5, 35.0]
 
     def test_two_pools_one_after_the_other_off_the_curve_are_not_joined(self):
         fake = FakeGecko(pools=[("RAY", "raydium", None), ("ORCA", "orca", None)],
@@ -456,6 +483,58 @@ class TestTheSchedule:
         assert self.row(MINT, 1).supply == 1e9
         assert not any(MINT in url for url in self.fake.asked[asked:]), "only the supply, never GeckoTerminal again"
 
+    def test_a_final_chart_kept_without_the_empty_minutes_is_asked_again_once(self, world):
+        from infrastructure.database.models.coin_story_chart_model import CoinStoryChartModel
+
+        cs.run_once(cs.targets(self.sessions()), self.gecko, self.budget, self.feeds.get, self.sessions, LAST_BUY + cs.FINAL_AFTER)
+        db = self.sessions()
+        row = db.get(CoinStoryChartModel, (MINT, 1))
+        assert row.candles_filled is True, "a new chart is asked with them"
+        row.candles_filled, row.candles = False, [[1, 9, 9, 9, 9, 1.0]]
+        db.commit()
+        db.close()
+        self.fake.candles = {"CURVE": [[int((LAST_BUY - timedelta(minutes=20)).timestamp()), 1, 2, 1, 2, 5.0],
+                                       [int((LAST_BUY - timedelta(minutes=19)).timestamp()), 2, 2, 2, 2, 0.0]]}
+        self.budget.reset()
+        cs.run_once(cs.targets(self.sessions()), self.gecko, self.budget, self.feeds.get, self.sessions, NOW)
+        row = self.row(MINT, 1)
+        assert row.candles_filled is True and len(row.candles) == 2 and row.final is True
+        assert [b["signature"] for b in row.buys] == ["b1"], "its buys and share stay as they were"
+        asked = len(self.fake.asked)
+        self.budget.reset()
+        cs.run_once(cs.targets(self.sessions()), self.gecko, self.budget, self.feeds.get, self.sessions, NOW + timedelta(days=1))
+        assert not any("/ohlcv/" in url for url in self.fake.asked[asked:] if MINT in url) and self.row(MINT, 1).candles_filled
+
+    def test_nothing_back_from_the_second_ask_keeps_the_candles_there_were(self, world):
+        from infrastructure.database.models.coin_story_chart_model import CoinStoryChartModel
+
+        cs.run_once(cs.targets(self.sessions()), self.gecko, self.budget, self.feeds.get, self.sessions, LAST_BUY + cs.FINAL_AFTER)
+        db = self.sessions()
+        row = db.get(CoinStoryChartModel, (MINT, 1))
+        kept = row.candles
+        row.candles_filled = False
+        db.commit()
+        db.close()
+        self.fake.candles = {}
+        self.budget.reset()
+        cs.run_once(cs.targets(self.sessions()), self.gecko, self.budget, self.feeds.get, self.sessions, NOW)
+        assert self.row(MINT, 1).candles == kept and self.row(MINT, 1).candles_filled is True
+
+    def test_the_burn_is_kept_with_a_final_chart_and_filled_in_for_old_ones(self, world):
+        from infrastructure.database.models.coin_story_chart_model import CoinStoryChartModel
+
+        self.feeds[1] = {**self.FEED, "tokens": [{"mint": MINT, "targetSol": 1.94, "decimals": 6, "burn": {"burnedRaw": "5000000"}}]}
+        cs.run_once(cs.targets(self.sessions()), self.gecko, self.budget, self.feeds.get, self.sessions, LAST_BUY + cs.FINAL_AFTER)
+        assert self.row(MINT, 1).burned == 5.0
+        db = self.sessions()
+        db.get(CoinStoryChartModel, (MINT, 1)).burned = None
+        db.commit()
+        db.close()
+        asked = len(self.fake.asked)
+        self.budget.reset()
+        cs.run_once(cs.targets(self.sessions()), self.gecko, self.budget, self.feeds.get, self.sessions, NOW)
+        assert self.row(MINT, 1).burned == 5.0 and len(self.fake.asked) - asked <= 1, "no GeckoTerminal for the burn"
+
     def test_finished_coins_go_first(self, world):
         found = cs.targets(self.sessions())
         assert [target.mint for target in sorted(found, key=cs._order)] == [MINT, OTHER]
@@ -528,6 +607,17 @@ class TestTheEndpoint:
         assert body["chart_url"] == "https://www.geckoterminal.com/solana/pools/CURVE"
         assert [b["signature"] for b in body["buys"]] == ["kept1"] and body["share_sol"] == 0.52 and body["buys_known"] is True
         assert body["window_end"].startswith("2026-10-17T12:00")
+
+    def test_the_burn_comes_with_a_final_chart_and_from_the_feed_for_a_running_one(self, client):
+        from infrastructure.database.models.coin_story_chart_model import CoinStoryChartModel
+
+        assert client.get(f"/lottery/coins/{MINT}/story").json()["burned"] == 0.0, "the buyer knows the coin and burned none"
+        self.keep(final=True, buys=[], share=0.5)
+        db = self.sessions()
+        db.get(CoinStoryChartModel, (MINT, 2)).burned = 79_863_241.98
+        db.commit()
+        db.close()
+        assert client.get(f"/lottery/coins/{MINT}/story").json()["burned"] == 79_863_241.98
 
     def test_the_supply_comes_with_the_chart(self, client):
         from infrastructure.database.models.coin_story_chart_model import CoinStoryChartModel

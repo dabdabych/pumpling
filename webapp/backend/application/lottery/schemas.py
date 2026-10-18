@@ -240,6 +240,8 @@ class CoinStoryResponse(BaseModel):
     chart_state: str = "none"
     #: The chart is fetched for the last time and will not change.
     chart_final: bool = False
+    #: Tokens of the coin the pool burned, whole units; 0 for none, None when not known.
+    burned: Optional[float] = None
     #: The coin's supply in whole tokens: a candle's price times this is its
     #: market cap, which the site draws. None when not known: the site shows the price.
     supply: Optional[float] = None

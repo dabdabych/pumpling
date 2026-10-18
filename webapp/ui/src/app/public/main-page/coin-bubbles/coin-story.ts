@@ -59,6 +59,8 @@ export interface CoinStory {
   chartUpdatedAtMs: number | null;
   /** The coin's supply in whole tokens; the chart draws market cap (price times it) when it is known. */
   supply: number | null;
+  /** Tokens of the coin the pool burned, whole units; 0 for none, null when not known. */
+  burned: number | null;
 }
 
 /** Where to mark on the chart: a buy, or the coin coming into the pool. */
@@ -187,7 +189,7 @@ export function storyMarks(story: Pick<CoinStory, 'buys' | 'candles' | 'candleMi
  * its backers, and the window said the draw had given it nothing.
  */
 export function boughtText(
-  story: Pick<CoinStory, 'buys' | 'buysKnown' | 'finished' | 'shareSol' | 'refundedSol'>,
+  story: Pick<CoinStory, 'buys' | 'buysKnown' | 'finished' | 'shareSol' | 'refundedSol' | 'burned' | 'supply'>,
   sol: (value: number) => string
 ): string {
   if (!story.finished) {
@@ -196,10 +198,12 @@ export function boughtText(
   if (!story.buysKnown) {
     return 'Not known right now';
   }
-  const refunded = story.refundedSol > 0 ? ` · ${sol(story.refundedSol)} SOL went back` : '';
+  // What went back after buys is a few lamports of rounding and fees, and it
+  // read as if the pool had held some back ("· 0.01 SOL went back", until
+  // 2026-10-18). A burn is the news instead, when there was one.
   if (story.buys.length > 0) {
     const spent = story.buys.reduce((sum, buy) => sum + buy.sol, 0);
-    return `${story.buys.length} public ${story.buys.length === 1 ? 'buy' : 'buys'} · ${sol(spent)} SOL${refunded}`;
+    return `${story.buys.length} public ${story.buys.length === 1 ? 'buy' : 'buys'} · ${sol(spent)} SOL${burnText(story)}`;
   }
   if (story.shareSol === null) {
     return 'None';
@@ -210,6 +214,20 @@ export function boughtText(
       : `None. Its ${sol(story.shareSol)} SOL share was not bought`;
   }
   return 'Nothing: the draw gave it no share';
+}
+
+/**
+ * " · 79.9M tokens burned (8% of supply)": what the pool burned of the coin,
+ * against its supply before the burn; nothing at all when it burned none.
+ */
+export function burnText(story: Pick<CoinStory, 'burned' | 'supply'>): string {
+  const burned = story.burned;
+  if (burned === null || !(burned > 0)) {
+    return '';
+  }
+  const share = story.supply !== null && story.supply > 0 ? (burned / story.supply) * 100 : null;
+  const percent = share === null ? '' : ` (${share < 0.1 ? 'under 0.1' : share < 1 ? share.toFixed(1) : String(Math.round(share))}% of supply)`;
+  return ` · ${formatCap(burned)} tokens burned${percent}`;
 }
 
 /** "updated just now", "updated 4 min ago": how old a running pool's chart is. */
@@ -277,7 +295,8 @@ export function toStory(raw: unknown): CoinStory | null {
     chartState: (states.includes(state) ? state : 'none') as CoinStory['chartState'],
     chartFinal: item['chart_final'] === true,
     chartUpdatedAtMs: time(item['chart_updated_at']) || null,
-    supply: Number.isFinite(Number(item['supply'])) && Number(item['supply']) > 0 && item['supply'] !== null ? Number(item['supply']) : null
+    supply: Number.isFinite(Number(item['supply'])) && Number(item['supply']) > 0 && item['supply'] !== null ? Number(item['supply']) : null,
+    burned: item['burned'] !== null && Number.isFinite(Number(item['burned'])) && Number(item['burned']) >= 0 ? Number(item['burned']) : null
   };
 }
 

@@ -73,7 +73,7 @@ const text = (p, sel) => p.locator(sel).first().evaluate((el) => el.textContent.
   const facts = await p.$$eval('.story__facts div', (els) => els.map((el) => [...el.children].map((c) => c.textContent.replace(/\s+/g, ' ').trim()).join(' ')));
   ok(facts[0] === 'In pumpling Oct 4, 19:01 → 20:34 UTC · Pool #1791138900542', `when it took part, and in which pool (${facts[0]})`);
   ok(facts[1] === 'Behind it 20.05 SOL', `how much stood behind it (${facts[1]})`);
-  ok(facts[2] === 'Bought by the pool 46 public buys · 19.68 SOL', `what the pool bought of it (${facts[2]})`);
+  ok(facts[2] === 'Bought by the pool 46 public buys · 19.68 SOL · 79.9M tokens burned (8% of supply)', `what the pool bought of it and burned, and not the lamports that went back (${facts[2]})`);
 
   const address = await p.locator('.story__address').getAttribute('title');
   const shown = await p.locator('.story__address').evaluate((el) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim());

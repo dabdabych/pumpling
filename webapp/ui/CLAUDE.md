@@ -265,7 +265,9 @@ gave it no share" only when the buyer says the share was zero: a share that
 was not bought is "None. Its 15.02 SOL share went back to its backers" (or
 "was not bought"). On the stand every coin read "no share" on 2026-10-18:
 the buyer, on devnet, cannot buy mainnet coins and sends the SOL back. The
-words are `boughtText` in `coin-story.ts`, and "In pumpling" ends at
+words are `boughtText` and `burnText` in `coin-story.ts` (what went back
+after buys is not said, a few lamports that read as if the pool held some
+back; a burn is, "79.9M tokens burned (8% of supply)"), and "In pumpling" ends at
 `left_at`, the last buy or the pool's close.
 
 The chart is the coin's market cap in SOL, not its price, since 2026-10-18

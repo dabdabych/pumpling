@@ -56,26 +56,31 @@ SORT_SOL = "sol"
 SORT_RECENT = "recent"
 
 
-def backed_coins(db: Session, min_sol: float, limit: int, sort: str = SORT_SOL) -> list[BackedCoin]:
+def backed_coins(
+    db: Session, min_sol: float, limit: int, sort: str = SORT_SOL, hidden: Iterable[str] = ()
+) -> list[BackedCoin]:
     """Coins with at least `min_sol` of counted commits: the most SOL first, or
     with `sort="recent"` the ones committed to most lately first. The main page
     asks for the ten most recent (Georgiy, 2026-10-16).
 
     Counted is what the rest of the site counts: confirmed or finalized, never
-    an orphaned or unconfirmed one (`active_bet_condition`).
+    an orphaned or unconfirmed one (`active_bet_condition`). `hidden` mints are
+    left out before the limit, so the bubbles still get ten others.
     """
+    hidden = [mint for mint in hidden if mint]
     total = func.sum(BetParticipationModel.sol_amount)
     latest = func.max(BetParticipationModel.created_at)
     order = (latest.desc(), total.desc()) if sort == SORT_RECENT else (total.desc(), latest.desc())
+    query = db.query(
+        BetParticipationModel.meme_coin_address,
+        total,
+        func.count(func.distinct(BetParticipationModel.lottery_id)),
+        latest,
+    ).filter(active_bet_condition(BetParticipationModel))
+    if hidden:
+        query = query.filter(BetParticipationModel.meme_coin_address.notin_(hidden))
     rows = (
-        db.query(
-            BetParticipationModel.meme_coin_address,
-            total,
-            func.count(func.distinct(BetParticipationModel.lottery_id)),
-            latest,
-        )
-        .filter(active_bet_condition(BetParticipationModel))
-        .group_by(BetParticipationModel.meme_coin_address)
+        query.group_by(BetParticipationModel.meme_coin_address)
         .having(total >= min_sol)
         .order_by(*order, BetParticipationModel.meme_coin_address)
         .limit(limit)

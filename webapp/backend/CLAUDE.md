@@ -164,6 +164,18 @@ case the feed is there for: its launch pool of 2026-10-04 burned 79.9M of it,
 the chain says 919.6M now, and the chart draws the billion it had before the
 burn (`supplyAtStart`). With no supply the site shows the price and says so.
 
+**Empty minutes, the burn, hidden coins (2026-10-18).** Candles are asked with
+`include_empty_intervals=true`: GeckoTerminal skips minutes with no trades by
+default, so a coin that came in on a quiet minute had no candle for its dot
+(CAT: 16 candles over 93 minutes), and the chart, which draws candles side by
+side, squeezed the time. Filled minutes are the previous close with no
+volume; a curve and its new pool are joined at their last and first trades.
+Charts kept before were asked again once (`candles_filled`, migration 047).
+`burned` is the tokens the pool burned (`burn.burnedRaw` from the feed, 0 for
+none), and the site says it instead of the lamports that went back.
+`COIN_BUBBLES_HIDDEN_MINTS` leaves mints out of the bubbles before the limit:
+production hides CMC (Georgiy, 2026-10-18).
+
 **One budget.** The hover chart on the pool page (`shared/coin_chart.py`)
 asks GeckoTerminal too, on demand. Each kept 20 a minute of its own until
 2026-10-18; now both spend one budget of 8 a minute (`shared/gecko_budget.py`;

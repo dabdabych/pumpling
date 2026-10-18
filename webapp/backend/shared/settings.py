@@ -103,6 +103,14 @@ class AppSettings:
     #: to show a coin without market numbers than to hold someone for half a minute.
     external_lookup_timeout_seconds: float
     chart_lookup_timeout_seconds: float
+    #: Mints left out of the main page's bubbles, comma or space separated
+    #: (`COIN_BUBBLES_HIDDEN_MINTS`). Georgiy took CMC off production's on
+    #: 2026-10-18; a server-side list, so no deploy is needed for the next one.
+    coin_bubbles_hidden_mints_raw: str = ""
+
+    @property
+    def coin_bubbles_hidden_mints(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(part for part in self.coin_bubbles_hidden_mints_raw.replace(",", " ").split() if part))
 
     @property
     def jwt_secret_key(self) -> str:
@@ -475,4 +483,5 @@ def get_settings() -> AppSettings:
         # one — the chart is a hover, the page is already drawn, and a chart
         # already held is served while the new one is fetched.
         chart_lookup_timeout_seconds=_env_float("CHART_LOOKUP_TIMEOUT_SECONDS", 12.0),
+        coin_bubbles_hidden_mints_raw=_env_str("COIN_BUBBLES_HIDDEN_MINTS"),
     )

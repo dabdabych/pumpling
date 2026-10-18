@@ -1991,7 +1991,7 @@ def get_backed_coins(
     if cached is not None:
         return cached
     try:
-        coins = backed_coins_module.backed_coins(db, min_sol, limit, sort)
+        coins = backed_coins_module.backed_coins(db, min_sol, limit, sort, hidden=get_settings().coin_bubbles_hidden_mints)
         metadata = {coin.mint: _get_coin_metadata(db, coin.mint) for coin in coins}
     except Exception as e:
         logger.exception("backed coins failed")
@@ -2065,6 +2065,7 @@ def get_coin_story(mint: str, db: Session = Depends(get_db)):
             "share": row.share_sol,
             "refunded": row.refunded_sol or 0.0,
             "supply": row.supply,
+            "burned": row.burned,
         }
     name, symbol, logo = _get_coin_metadata(db, mint)
     db.close()
@@ -2073,6 +2074,7 @@ def get_coin_story(mint: str, db: Session = Depends(get_db)):
         buys = kept["buys"]
         buys_known = True
         share, refunded = kept["share"], kept["refunded"]
+        burned = kept["burned"]
         start, end = kept["window"]
     else:
         try:
@@ -2083,6 +2085,7 @@ def get_coin_story(mint: str, db: Session = Depends(get_db)):
         buys = coin_story_module.buys_of(feed, mint)
         buys_known = feed is not None
         share, refunded = coin_story_module.share_of(feed, mint), coin_story_module.refunded_of(feed, mint)
+        burned = coin_story_module.burned_from_feed(feed, mint)
         start, end = coin_story_module.window(stay, buys, datetime.now(timezone.utc))
     trade_url, venue = backed_coins_module.trade_link(mint, _made_on_pump.get([mint]).get(mint))
 
@@ -2117,6 +2120,7 @@ def get_coin_story(mint: str, db: Session = Depends(get_db)):
         chart_state=state,
         chart_final=bool(kept and kept["final"]),
         supply=kept["supply"] if ready else None,
+        burned=burned,
         chart_updated_at=kept["fetched_at"] if kept else None,
     )
 

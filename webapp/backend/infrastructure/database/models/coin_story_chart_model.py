@@ -27,6 +27,10 @@ class CoinStoryChartModel(Base):
     share_sol = Column(Float, nullable=True)
     #: Tokens in whole units (migration 046): market cap is a candle's price times this.
     supply = Column(Float, nullable=True)
+    #: Tokens of the coin the pool burned, whole units; 0 for none (migration 047).
+    burned = Column(Float, nullable=True)
+    #: Asked with the empty minutes filled in (migration 047); kept charts without are asked again once.
+    candles_filled = Column(Boolean, nullable=False, default=False, server_default="false")
     refunded_sol = Column(Float, nullable=True)
     final = Column(Boolean, nullable=False, default=False, server_default="false")
     #: Final fetches that found no candles; asked again an hour apart, three times at most.
