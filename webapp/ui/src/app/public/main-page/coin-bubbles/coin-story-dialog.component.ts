@@ -6,7 +6,7 @@ import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import { formatSol } from '../../../pool/pool-state';
 import { AnalyticsService } from '../../../shared/analytics/analytics.service';
 import { BackedCoin } from './backed-coins.service';
-import { boughtText, chartCandles, CoinStory, formatCap, formatTinyPrice, storyMarks, updatedText, windowText } from './coin-story';
+import { boughtText, chartCandles, CoinStory, formatCap, formatTinyPrice, storyMarks, updatedText, windowText, wonText } from './coin-story';
 import { CoinStoryService } from './coin-story.service';
 
 /**
@@ -175,8 +175,8 @@ export class CoinStoryDialogComponent implements OnInit, OnDestroy {
     return this.story ? boughtText(this.story, formatSol) : '';
   }
 
-  get committed(): string {
-    return formatSol(this.story?.committedSol ?? 0);
+  get won(): string {
+    return this.story ? wonText(this.story, formatSol) : '';
   }
 
   /** Whether the chart is the market cap (the supply is known) or, failing that, the price. */

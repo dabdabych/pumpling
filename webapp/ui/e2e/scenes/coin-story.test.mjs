@@ -3,7 +3,7 @@
 // the candles they fall in, the window said in words, and the server's answer
 // made safe before it reaches a link or a chart.
 import assert from 'node:assert/strict';
-import { boughtText, burnText, chartCandles, formatCap, formatTinyPrice, storyMarks, toStory, updatedText, windowText } from './coin-story.mjs';
+import { boughtText, burnText, chartCandles, formatCap, formatTinyPrice, storyMarks, toStory, updatedText, windowText, wonText } from './coin-story.mjs';
 
 let n = 0;
 const t = (name, fn) => { fn(); n++; console.log('ok', name); };
@@ -87,17 +87,28 @@ t('what the pool bought, and "no share" only when the share was zero', () => {
   const sol = (v) => v.toFixed(2);
   const buy = (s) => ({ atMs: 1, sol: s, signature: 'x' });
   const base = { finished: true, buysKnown: true, buys: [], shareSol: 0, refundedSol: 0, burned: 0, supply: 1e9 };
-  assert.equal(boughtText({ ...base, finished: false }, sol), 'The buys start when the pool closes');
+  assert.equal(boughtText({ ...base, finished: false, shareSol: null }, sol), 'The buys start when the pool closes');
+  assert.equal(boughtText({ ...base, finished: false, shareSol: 0.8 }, sol), 'The buys are starting');
+  assert.equal(boughtText({ ...base, finished: false, shareSol: 0.8, buys: [buy(0.2)] }, sol), '1 public buy so far · 0.20 SOL', 'while the pool buys, not "they start when it closes"');
   assert.equal(boughtText({ ...base, buysKnown: false }, sol), 'Not known right now');
   assert.equal(boughtText({ ...base, buys: [buy(0.39), buy(0.4)], shareSol: 0.8 }, sol), '2 public buys · 0.79 SOL');
   assert.equal(boughtText({ ...base, buys: [buy(0.5)], shareSol: 0.8, refundedSol: 0.3 }, sol), '1 public buy · 0.50 SOL', 'what went back after buys is not said');
   assert.equal(boughtText({ ...base, buys: [buy(19.68)], shareSol: 19.7, burned: 79_863_241.98 }, sol), '1 public buy · 19.68 SOL · 79.9M tokens burned (8% of supply)', 'PUMPLING on 2026-10-04');
-  assert.equal(boughtText({ ...base, shareSol: 15.02, refundedSol: 15.02 }, sol), 'None. Its 15.02 SOL share went back to its backers', 'LETTER on the stand');
-  assert.equal(boughtText({ ...base, shareSol: 4.95 }, sol), 'None. Its 4.95 SOL share was not bought');
-  assert.equal(boughtText({ ...base, shareSol: null }, sol), 'None', 'the buyer has no coins for the pool: not "no share"');
-  assert.equal(boughtText(base, sol), 'Nothing: the draw gave it no share');
+  assert.equal(boughtText({ ...base, shareSol: 15.02, refundedSol: 15.02 }, sol), 'None. Its share went back to its backers', 'LETTER on the stand');
+  assert.equal(boughtText({ ...base, shareSol: 4.95 }, sol), 'None. Its share was not bought');
+  assert.equal(boughtText({ ...base, shareSol: null }, sol), 'None');
+  assert.equal(boughtText(base, sol), 'None', 'won nothing: the line above says so');
   assert.equal(toStory({ ...raw, share_sol: null }).shareSol, null);
   assert.equal(toStory({ ...raw, share_sol: 15.02, refunded_sol: 'x' }).refundedSol, 0);
+});
+
+t('what the coin won in the draw, not the SOL behind it', () => {
+  const sol = (v) => v.toFixed(2);
+  assert.equal(wonText({ finished: true, shareSol: 0.678856 }, sol), '0.68 SOL', 'SI: 1 SOL behind it, one draw of thirty');
+  assert.equal(wonText({ finished: true, shareSol: 0 }, sol), 'Nothing');
+  assert.equal(wonText({ finished: false, shareSol: null }, sol), 'Drawn when the pool closes');
+  assert.equal(wonText({ finished: false, shareSol: 19.69 }, sol), '19.69 SOL', 'known while the pool buys');
+  assert.equal(wonText({ finished: true, shareSol: null }, sol), 'Not known right now');
 });
 
 t('the burn, said only when there was one, against the supply before it', () => {

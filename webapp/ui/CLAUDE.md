@@ -244,7 +244,9 @@ its neighbour. The suite is `coin-bubbles`.
 `public/main-page/coin-bubbles/coin-story-dialog`, opened from a bubble, since
 2026-10-16: what pumpling did to that coin, to see. The coin's ticker, name,
 picture and mint (Copy mint copies it whole), when it took part and in which
-pool, the SOL behind it, what the pool bought of it, and its price chart over
+pool, what it won in the draw (not the SOL behind it, since 2026-10-18: SI had
+1 SOL behind it and won 0.68, and "1 SOL" beside "0.68 SOL bought" read as a
+short buy), what the pool bought of it, and its price chart over
 its stay with the pool's buys marked under the candles they fell in, a dot on
 the candle it came in on. The ways on are Trade on pump.fun (or DexScreener,
 as the bubble was) and See pool #, the round in the archive.

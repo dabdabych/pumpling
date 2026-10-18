@@ -183,17 +183,25 @@ export function storyMarks(story: Pick<CoinStory, 'buys' | 'candles' | 'candleMi
 }
 
 /**
- * What the pool bought of the coin, in words. "The draw gave it no share" is
- * said only when the buyer says its share was zero: on the stand, the buyer,
- * on devnet, could not buy mainnet coins, LETTER's 15 SOL share went back to
- * its backers, and the window said the draw had given it nothing.
+ * What the pool bought of the coin, in words. A share it did not buy is said
+ * as such: on the stand, the buyer, on devnet, could not buy mainnet coins,
+ * LETTER's 15 SOL share went back to its backers, and the window said the
+ * draw had given it nothing.
  */
 export function boughtText(
   story: Pick<CoinStory, 'buys' | 'buysKnown' | 'finished' | 'shareSol' | 'refundedSol' | 'burned' | 'supply'>,
   sol: (value: number) => string
 ): string {
+  const count = story.buys.length;
+  const buys = `${count} public ${count === 1 ? 'buy' : 'buys'}`;
+  const spent = story.buys.reduce((sum, buy) => sum + buy.sol, 0);
   if (!story.finished) {
-    return 'The buys start when the pool closes';
+    // While the pool buys, what it has bought so far; it said "The buys start
+    // when the pool closes" through the whole buying until 2026-10-18.
+    if (count > 0) {
+      return `${buys} so far · ${sol(spent)} SOL${burnText(story)}`;
+    }
+    return story.shareSol === null ? 'The buys start when the pool closes' : 'The buys are starting';
   }
   if (!story.buysKnown) {
     return 'Not known right now';
@@ -201,19 +209,27 @@ export function boughtText(
   // What went back after buys is a few lamports of rounding and fees, and it
   // read as if the pool had held some back ("· 0.01 SOL went back", until
   // 2026-10-18). A burn is the news instead, when there was one.
-  if (story.buys.length > 0) {
-    const spent = story.buys.reduce((sum, buy) => sum + buy.sol, 0);
-    return `${story.buys.length} public ${story.buys.length === 1 ? 'buy' : 'buys'} · ${sol(spent)} SOL${burnText(story)}`;
+  if (count > 0) {
+    return `${buys} · ${sol(spent)} SOL${burnText(story)}`;
   }
+  if (story.shareSol !== null && story.shareSol > 0) {
+    // The share is the line above it; here, only what became of it.
+    return story.refundedSol > 0 ? 'None. Its share went back to its backers' : 'None. Its share was not bought';
+  }
+  return 'None';
+}
+
+/**
+ * What the coin won in the draw: its share of the pool, in SOL, which is
+ * what the pool then buys. It replaced the SOL behind the coin on 2026-10-18
+ * (Georgiy): SI had 1 SOL behind it and won one draw of thirty, 0.68 SOL, and
+ * "1 SOL" beside "0.68 SOL bought" read as if the pool had bought short.
+ */
+export function wonText(story: Pick<CoinStory, 'finished' | 'shareSol'>, sol: (value: number) => string): string {
   if (story.shareSol === null) {
-    return 'None';
+    return story.finished ? 'Not known right now' : 'Drawn when the pool closes';
   }
-  if (story.shareSol > 0) {
-    return story.refundedSol > 0
-      ? `None. Its ${sol(story.shareSol)} SOL share went back to its backers`
-      : `None. Its ${sol(story.shareSol)} SOL share was not bought`;
-  }
-  return 'Nothing: the draw gave it no share';
+  return story.shareSol > 0 ? `${sol(story.shareSol)} SOL` : 'Nothing';
 }
 
 /**

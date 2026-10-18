@@ -72,7 +72,7 @@ const text = (p, sel) => p.locator(sel).first().evaluate((el) => el.textContent.
   ok(await text(p, '.story__title') === '$PUMPLING' && await text(p, '.story__name') === 'pumpling', 'the ticker and the name');
   const facts = await p.$$eval('.story__facts div', (els) => els.map((el) => [...el.children].map((c) => c.textContent.replace(/\s+/g, ' ').trim()).join(' ')));
   ok(facts[0] === 'In pumpling Oct 4, 19:01 → 20:34 UTC · Pool #1791138900542', `when it took part, and in which pool (${facts[0]})`);
-  ok(facts[1] === 'Behind it 20.05 SOL', `how much stood behind it (${facts[1]})`);
+  ok(facts[1] === 'Won in the draw 19.69 SOL', `what it won in the draw, not the SOL behind it (${facts[1]})`);
   ok(facts[2] === 'Bought by the pool 46 public buys · 19.68 SOL · 79.9M tokens burned (8% of supply)', `what the pool bought of it and burned, and not the lamports that went back (${facts[2]})`);
 
   const address = await p.locator('.story__address').getAttribute('title');
@@ -162,7 +162,7 @@ for (const [mode, want] of [
   await pressBubble(p);
   await p.waitForSelector('.story__canvas canvas', { timeout: 15000 }).catch(() => {});
   const facts = await p.$$eval('.story__facts dd', (els) => els.map((el) => el.textContent.replace(/\s+/g, ' ').trim()));
-  ok(/→ now · Pool #/.test(facts[0]) && facts[2] === 'The buys start when the pool closes', `a pool still taking SOL runs to now, and says when the buys come (${facts[0]} / ${facts[2]})`);
+  ok(/→ now · Pool #/.test(facts[0]) && facts[1] === 'Drawn when the pool closes' && facts[2] === 'The buys start when the pool closes', `a pool still taking SOL runs to now, and says when the draw and the buys come (${facts[0]} / ${facts[1]} / ${facts[2]})`);
   ok(await p.locator('.story__archive').count() === 0, 'and has no archive link yet');
   const caption = await text(p, '.story__caption span:last-child');
   ok(/a candle a minute, updated 3 min ago · Source: GeckoTerminal/.test(caption ?? ''), `a chart still being refreshed says how old it is (${caption})`);
@@ -184,7 +184,7 @@ for (const [mode, want] of [
   await pressBubble(p);
   await p.waitForTimeout(600);
   const facts = await p.$$eval('.story__facts dd', (els) => els.map((el) => el.textContent.replace(/\s+/g, ' ').trim()));
-  ok(/^Oct 4, 19:01 → 20:40 UTC · Pool #/.test(facts[0]) && facts[2] === 'Nothing: the draw gave it no share', `a finished pool that bought none of it ends at its close (${facts[0]} / ${facts[2]})`);
+  ok(/^Oct 4, 19:01 → 20:40 UTC · Pool #/.test(facts[0]) && facts[1] === 'Nothing' && facts[2] === 'None', `a finished pool that bought none of it ends at its close (${facts[0]} / ${facts[1]} / ${facts[2]})`);
   await ctx.close();
 }
 {
@@ -193,7 +193,8 @@ for (const [mode, want] of [
   await pressBubble(p);
   await p.waitForTimeout(600);
   const bought = await p.$$eval('.story__facts dd', (els) => els[2]?.textContent.replace(/\s+/g, ' ').trim());
-  ok(bought === 'None. Its 15.02 SOL share went back to its backers', `a share not bought and sent back is said so, never "no share" (${bought})`);
+  const won = await p.$$eval('.story__facts dd', (els) => els[1]?.textContent.replace(/\s+/g, ' ').trim());
+  ok(won === '15.02 SOL' && bought === 'None. Its share went back to its backers', `a share not bought and sent back is said so, never "no share" (${won} / ${bought})`);
   await p.waitForSelector('.story__canvas canvas', { timeout: 15000 });
   const key = await text(p, '.story__caption span');
   ok(key === 'came into the pool', `with no buys, the key does not name buys (${key})`);
