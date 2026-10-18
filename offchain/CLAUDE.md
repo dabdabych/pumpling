@@ -835,8 +835,9 @@ retried and then abandoned: the SOL is refunded instead of spent. So every
 call takes a slot from `jupiterLimiter` in `dex/buy.ts` first, one at a time,
 no burst: `JUPITER_RATE_LIMIT`, 0.45 keyless and 0.9 with `JUPITER_API_KEY`
 (sent as `x-api-key`; with a key the base URL defaults to api.jup.ag, but a
-`JUPITER_BASE_URL` in the `.env` wins, and production sets lite-api there). A
-purchase waits its turn instead of failing. A usual pool (a few coins, most
+`JUPITER_BASE_URL` in the `.env` wins). Production has a server key on the
+free plan since 2026-10-18, with `JUPITER_BASE_URL=https://api.jup.ag`: Jupiter
+is phasing lite-api out. A purchase waits its turn instead of failing. A usual pool (a few coins, most
 on the pump.fun curve, which needs no Jupiter at all) never waits.
 
 ### The algorithm (3 phases)
