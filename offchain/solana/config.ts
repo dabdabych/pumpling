@@ -97,9 +97,16 @@ export const PUMPSWAP_PROGRAM_ID = new PublicKey(
 // JUPITER (DEX AGGREGATOR)
 // =============================================================================
 
+/**
+ * A Jupiter API key (portal.jup.ag; the free plan is one request a second),
+ * sent as `x-api-key`. Without one the buyer goes keyless to lite-api.jup.ag.
+ */
+export const JUPITER_API_KEY = (process.env.JUPITER_API_KEY || "").trim();
+
 // Jupiter lite-api: the public endpoint, no auth
 // api.jup.ag needs an API key, lite-api.jup.ag does not
-export const JUPITER_BASE_URL = process.env.JUPITER_BASE_URL || "https://lite-api.jup.ag";
+export const JUPITER_BASE_URL =
+    process.env.JUPITER_BASE_URL || (JUPITER_API_KEY ? "https://api.jup.ag" : "https://lite-api.jup.ag");
 export const JUPITER_QUOTE_URL = `${JUPITER_BASE_URL}/swap/v1/quote`;
 export const JUPITER_SWAP_URL = `${JUPITER_BASE_URL}/swap/v1/swap`;
 
@@ -146,4 +153,22 @@ export const RPC_ENDPOINT = NETWORK === "devnet" ? RPC_DEVNET : RPC_MAINNET;
 export const SEND_TX_RATE_LIMIT = (() => {
     const parsed = Number(process.env.SEND_TX_RATE_LIMIT || "4");
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 4;
+})();
+
+/**
+ * How many Jupiter calls a second; a purchase through Jupiter is two, a quote
+ * and a swap.
+ *
+ * Jupiter's limits ("API Rate Limit", developers.jup.ag, read 2026-10-18):
+ * keyless 0.5 a second, 30 a minute; the free key 1 a second; over a sixty
+ * second sliding window. A 429 there is retried, and a purchase that keeps
+ * getting it ends up abandoned and its SOL refunded instead of spent. With the
+ * twenty-minute window (2026-10-18) a pool of many coins on a DEX needs about
+ * one call a second, so the calls are spaced under the ceiling instead:
+ * 0.45 keyless, 0.9 with a key. A purchase waits its turn, it does not fail.
+ */
+export const JUPITER_RATE_LIMIT = (() => {
+    const fallback = JUPITER_API_KEY ? 0.9 : 0.45;
+    const parsed = Number(process.env.JUPITER_RATE_LIMIT || fallback);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 })();

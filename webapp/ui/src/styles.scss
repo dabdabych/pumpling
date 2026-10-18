@@ -122,3 +122,33 @@ a {
     animation: none;
   }
 }
+
+/* ============================================================
+   The chat behind the header button (ChatLauncherComponent).
+
+   Its panel is drawn in the CDK overlay, so the backdrop and the way the pane
+   comes in are styled here; the panel itself is the component's.
+   ============================================================ */
+.chat-launcher-backdrop {
+  background: rgba(2, 2, 2, 0.45);
+}
+
+.cdk-overlay-pane.chat-launcher-pane--popover {
+  animation: chat-popover-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cdk-overlay-pane.chat-launcher-pane--sheet {
+  animation: auth-sheet-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes chat-popover-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cdk-overlay-pane.chat-launcher-pane--popover,
+  .cdk-overlay-pane.chat-launcher-pane--sheet {
+    animation: none;
+  }
+}

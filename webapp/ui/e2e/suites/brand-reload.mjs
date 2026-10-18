@@ -84,7 +84,9 @@ ok(shape.cards !== null && shape.cards > 0.9, `and the cards are there (opacity 
 
 // The story still advances all the way, which is the half of the bug a person
 // actually reports.
-await p.click('[data-nav-label="how"]').catch(() => {});
+// From What is it: since 2026-10-16 the scroll goes What is it → Quick start,
+// and How it works is a place of its own that a scroll does not leave.
+await p.click('[data-nav-label="what"]', { timeout: 3000 }).catch(() => {});
 await p.waitForTimeout(2500);
 let y = await p.evaluate(() => Math.round(window.scrollY));
 let reached = false;
@@ -102,7 +104,7 @@ for (let swipe = 0; swipe < 8; swipe++) {
   if (reached) break;
 }
 ok(!stuck, `the story keeps moving (stopped at ${y})`);
-ok(reached, `and gets from How it works to Quick start (y ${y})`);
+ok(reached, `and gets from What is it to Quick start (y ${y})`);
 
 ok(errors.length === 0, `no page errors ${errors.join(' | ')}`);
 console.log(fails ? `${fails} FAILED` : 'BRAND RELOAD ALL PASSED');

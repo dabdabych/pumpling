@@ -11,7 +11,7 @@
 // 00:00:00 while purchases were still going out — the page said the buying was
 // over and the chain said otherwise.
 import assert from 'node:assert/strict';
-import { buildPoolView, poolCardLine, poolCardNote } from './pool-view.mjs';
+import { buildPoolView } from './pool-view.mjs';
 
 let n = 0;
 const t = (name, fn) => { fn(); n++; console.log('ok', name); };
@@ -181,24 +181,6 @@ t('without the buyer the page behaves exactly as it did before', () => {
 
   assert.equal(view.timer.label, 'Buys end in');
   assert.equal(view.progress.label, 'Buy window');
-});
-
-t('the card on the main page drops a countdown that has run out', () => {
-  // It does not follow the second pass — it has no feed — so a zero clock
-  // there would be a lie of a different kind.
-  assert.equal(poolCardLine(snapshot(), NOW), 'Buys running · 00:30:00 left');
-  assert.equal(poolCardLine(snapshot({ buysEndAtMs: NOW - MINUTE }), NOW), 'Buys running');
-});
-
-t('before the first pool the card counts down to it', () => {
-  // The launch date is known, so the note under the line is the time left,
-  // not a pointer to X.
-  const launch = snapshot({ phase: 'launch', launchAtMs: NOW + 28 * 60 * MINUTE + 15 * MINUTE });
-  assert.equal(poolCardLine(launch, NOW), 'The first pool opens soon');
-  assert.equal(poolCardNote(launch, NOW), 'Opens in 1d 04h 15m');
-  assert.equal(poolCardNote(launch, NOW + 25 * 60 * MINUTE), 'Opens in 03:15:00', 'within a day it shows the seconds');
-  assert.equal(poolCardNote(snapshot({ phase: 'done' }), NOW), 'We announce the next pool on our X');
-  assert.equal(poolCardNote(snapshot(), NOW), null);
 });
 
 console.log(`\n${n} tests passed`);

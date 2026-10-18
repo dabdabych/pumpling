@@ -49,7 +49,7 @@ const SWEEP_DELAYS_MS = [0, 30_000, 120_000];
  *
  * The buying window and the number of delivery passes can be changed through
  * environment variables. That is for devnet: a purchase there cannot succeed
- * (neither pump.fun nor Jupiter exist on devnet) and waiting fifty minutes to
+ * (neither pump.fun nor Jupiter exist on devnet) and waiting twenty minutes to
  * test refunds is pointless. In production the variables are unset and the
  * original numbers apply.
  */
@@ -60,7 +60,10 @@ function envNumber(name: string, fallback: number): number {
 
 const DEFAULT_BUY_CONCURRENCY = envNumber("BUY_CONCURRENCY", 50);
 const DEFAULT_SEND_CONCURRENCY = envNumber("SEND_CONCURRENCY", 20);
-const DEFAULT_BUY_WINDOW_MINUTES = envNumber("BUY_WINDOW_MINUTES", 50);
+// Twenty minutes since 2026-10-18 (fifty before): launchers asked for a faster
+// buy. The site's countdown is the same number (EXECUTION_COUNTDOWN_SECONDS in
+// webapp/backend/shared/settings.py; test_buying_window.py checks they agree).
+const DEFAULT_BUY_WINDOW_MINUTES = envNumber("BUY_WINDOW_MINUTES", 20);
 const DEFAULT_SEND_ROUNDS = envNumber("SEND_ROUNDS", 10);
 // The send interval is buyWindowMinutes / sendRounds
 

@@ -12,6 +12,8 @@ const sources = [
   // What the pool page says about a round: also pure, and the one place where
   // the buyer's second pass turns into words and a countdown.
   [join(here, '..', '..', 'src', 'app', 'pool', 'pool-view.ts'), join(here, 'pool-view.mjs')],
+  // What the main page's Commit SOL card says in each phase: pure too.
+  [join(here, '..', '..', 'src', 'app', 'public', 'main-page', 'pool-cta', 'pool-cta.ts'), join(here, 'pool-cta.mjs')],
   // The burn: the choice and its memo, token amounts, the feed's three kinds of
   // row, and the verification window's burn section. All pure.
   [join(here, '..', '..', 'src', 'app', 'pool', 'burn.ts'), join(here, 'burn.mjs')],
@@ -20,6 +22,10 @@ const sources = [
   [join(here, '..', '..', 'src', 'app', 'shared', 'verify-round', 'burn-view.ts'), join(here, 'burn-view.mjs')],
   // The red-flag check's words: what the mark and its card say, and when.
   [join(here, '..', '..', 'src', 'app', 'shared', 'coin-screening', 'coin-screening.ts'), join(here, 'coin-screening.mjs')],
+  // Where the coins' bubbles go on the main page: pure geometry.
+  [join(here, '..', '..', 'src', 'app', 'public', 'main-page', 'coin-bubbles', 'bubble-layout.ts'), join(here, 'bubble-layout.mjs')],
+  // The coin window from a bubble: tiny prices, the marks on the chart, the window's words.
+  [join(here, '..', '..', 'src', 'app', 'public', 'main-page', 'coin-bubbles', 'coin-story.ts'), join(here, 'coin-story.mjs')],
 ];
 
 for (const [source, out] of sources) {

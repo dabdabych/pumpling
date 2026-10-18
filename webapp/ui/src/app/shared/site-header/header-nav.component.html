@@ -1,0 +1,57 @@
+<nav class="hnav" aria-label="Site">
+  <!-- Wide: in the bar. -->
+  <ul class="hnav__bar">
+    <li>
+      @if (howInPage) {
+        <button type="button" class="hnav__link" (click)="goHow('bar')">How it works</button>
+      } @else {
+        <a class="hnav__link" href="/#how" (click)="goHow('bar')">How it works</a>
+      }
+    </li>
+    <li>
+      <a class="hnav__link" routerLink="/archive" routerLinkActive="hnav__link--current" ariaCurrentWhenActive="page"
+         (click)="pastPools('bar')">Past pools</a>
+    </li>
+    @if (mine) {
+      <li>
+        <a class="hnav__link" routerLink="/me" routerLinkActive="hnav__link--current" ariaCurrentWhenActive="page">My commits</a>
+      </li>
+    }
+  </ul>
+
+  <!-- Narrow: behind a button. A disclosure of links, not an ARIA menu. -->
+  <div class="hnav__fold">
+    <button #menuButton type="button" class="hnav__toggle" [class.hnav__toggle--open]="menuOpen"
+            [attr.aria-expanded]="menuOpen" aria-controls="hnav-list" (click)="toggleMenu()">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        @if (menuOpen) {
+          <path d="M6 6l12 12M18 6L6 18" />
+        } @else {
+          <path d="M4 7h16M4 12h16M4 17h16" />
+        }
+      </svg>
+      <span class="hnav__sr">Menu</span>
+    </button>
+    @if (menuOpen) {
+      <ul class="hnav__list" id="hnav-list">
+        <li>
+          @if (howInPage) {
+            <button type="button" class="hnav__item" (click)="goHow('menu')">How it works</button>
+          } @else {
+            <a class="hnav__item" href="/#how" (click)="goHow('menu')">How it works</a>
+          }
+        </li>
+        <li>
+          <a class="hnav__item" routerLink="/archive" routerLinkActive="hnav__item--current" ariaCurrentWhenActive="page"
+             (click)="pastPools('menu')">Past pools</a>
+        </li>
+        @if (mine) {
+          <li>
+            <a class="hnav__item" routerLink="/me" routerLinkActive="hnav__item--current" ariaCurrentWhenActive="page"
+               (click)="closeMenu()">My commits</a>
+          </li>
+        }
+      </ul>
+    }
+  </div>
+</nav>

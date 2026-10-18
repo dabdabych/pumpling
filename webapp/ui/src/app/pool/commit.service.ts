@@ -98,6 +98,9 @@ export interface SentCommit {
 /** An error that can be shown to a person as it is. */
 export class CommitError extends Error {}
 
+/** The server checks coins only for an account: 401 on a coin check. */
+export class SignInRequiredError extends CommitError {}
+
 /** A newer attempt took this one's place: whatever this one gets back is dropped. */
 class SupersededAttemptError extends Error {}
 
@@ -200,6 +203,9 @@ export class CommitService {
     try {
       response = await this.allowToken.checkMint({ mint_address: mint, lottery_type: market });
     } catch (error) {
+      if (error instanceof HttpErrorResponse && error.status === 401) {
+        throw new SignInRequiredError('Sign in again to check coins.');
+      }
       throw new CommitError(mintCheckError(error));
     }
     const canonical = (response.mint_address || mint).trim();

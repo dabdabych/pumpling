@@ -1,0 +1,199 @@
+// The Commit SOL card. Gleb's composition, kept: the drawing fills the card and
+// the words sit in the clear band it leaves between the coins, a title and a
+// line under it, as on production before 2026-10-16. The band holds those two
+// lines and no more (measured by e2e/suites/pool-cta.mjs at 320px to 2560px).
+//
+// Stacking: the card is its own stacking context and the drawing sits at
+// z-index -1 inside it, under the words and over the card's own fill. The words
+// are not positioned, so the link's ::after is positioned against the card and
+// covers all of it.
+:host {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.cta {
+  --cta-fill: var(--qres-white);
+  position: relative;
+  isolation: isolate;
+  // A size container for the short-card rule below. Safe here: the host is
+  // absolutely positioned over the card, so its height is the card's and never
+  // comes from what is inside it.
+  container: cta / size;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 16px;
+  background: var(--cta-fill);
+  color: var(--qres-black);
+  text-align: center;
+  transition: background-color 0.3s ease;
+
+  // On hover the card turns purple, as it always did, and the purple candles
+  // would vanish into it, so they go white. Black text stays: white on purple
+  // is 2.5:1.
+  &:hover,
+  &:has(.cta__link:focus-visible) {
+    --cta-fill: var(--qres-purple);
+    background: var(--qres-purple);
+
+    .cta__art--pump {
+      --pump-bear: #FCFCFC;
+    }
+
+    .cta__arrow {
+      transform: translateX(3px);
+    }
+  }
+}
+
+.cta__art {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.cta__art--pump {
+  --pump-line: rgba(2, 2, 2, 0.3);
+  --pump-bull: #8FFFAF;
+  --pump-bear: #AF8FFF;
+  --pump-outline: rgba(2, 2, 2, 0.5);
+}
+
+// A halo in the card's own colour under the words: where a candle or a coin's
+// edge passes behind a line, the letters keep their contrast (NN/g, "Text Over
+// Images": provide for the worst-case background). It follows the fill on hover.
+.cta__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: min(90%, 30rem);
+  text-shadow: 0 0 3px var(--cta-fill), 0 0 6px var(--cta-fill), 0 0 10px var(--cta-fill);
+}
+
+// A touch under the 2.5rem "Commit SOL" had: "Promote your coin" is seven
+// letters longer, and at the old size its end met the top right coin.
+.cta__title {
+  --cta-title-size: clamp(1.3rem, 2.6vw, 2.25rem);
+  margin: 0;
+  font-size: var(--cta-title-size);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.cta__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25em;
+  color: inherit;
+  text-decoration: none;
+
+  // The whole card is the press target.
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+
+  &:focus-visible::after {
+    outline: 3px solid var(--qres-black);
+    outline-offset: -6px;
+  }
+}
+
+.cta__arrow {
+  width: 0.7em;
+  height: 0.7em;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.2s ease;
+}
+
+// 70% black, as before: 5.1:1 on white and still over 4.5:1 on the hover purple.
+// A block with the dot inline, so on a narrow card the line wraps under the dot
+// rather than leaving it hanging beside a two-line block.
+.cta__status {
+  display: block;
+  margin: 16px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: rgba(2, 2, 2, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+
+.cta__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  vertical-align: 1px;
+  border: 1.5px solid var(--qres-black);
+  border-radius: 50%;
+  background: var(--qres-white);
+}
+
+.cta__dot--live {
+  background: var(--qres-green);
+  animation: cta-pulse 1.6s ease-out infinite;
+}
+
+@keyframes cta-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(143, 255, 175, 0.9);
+  }
+  100% {
+    box-shadow: 0 0 0 7px rgba(143, 255, 175, 0);
+  }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .cta,
+  .cta__arrow {
+    transition: none;
+  }
+
+  .cta__dot--live {
+    animation: none;
+  }
+}
+
+// The narrowest cards (phones of 320 to 360px): the end of "Promote your
+// coin →" came within 4px of the top right coin, so a little smaller still.
+@container cta (max-width: 300px) {
+  .cta__title {
+    --cta-title-size: 1.2rem;
+  }
+}
+
+// A short card (a short window, or any desktop with reduced motion, where the
+// card is 220px): the coins shrink with it, and the two lines tighten so they
+// still fit the band between them. Never larger than the ordinary size: the
+// first version said min(1.75rem, 11cqh), and on a phone, whose card is 320px,
+// it made the title bigger and broke it in two. The height is the content box,
+// inside the 16px padding: 240 means a card of about 270px and less.
+@container cta (max-height: 240px) {
+  .cta__title {
+    font-size: min(var(--cta-title-size), 11cqh);
+  }
+
+  .cta__status {
+    margin-top: 10px;
+    font-size: 12px;
+  }
+}

@@ -16,7 +16,7 @@ export interface ExecuteLotteryParams {
     sleepFn?: (ms: number) => Promise<void>;
     buyConcurrency?: number;   // default 50
     sendConcurrency?: number;  // default 20
-    buyWindowMinutes?: number; // default 50
+    buyWindowMinutes?: number; // default 20 (50 until 2026-10-18)
     sendRounds?: number;       // default 10
     stateFilePath?: string;
     /** Structured logger (pino). Falls back to the root logger. */

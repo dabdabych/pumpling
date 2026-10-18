@@ -1,0 +1,63 @@
+<section class="bub" aria-labelledby="bub-title">
+  <header class="bub__head">
+    <h2 class="bub__title" id="bub-title">Latest coins in our pools</h2>
+    <span class="bub__meta">{{ minSol }} SOL and up</span>
+  </header>
+
+  <div class="bub__field" #field>
+    @if (bubbles.length > 0) {
+      <ul class="bub__list" aria-label="Latest coins in our pools, the most SOL first">
+        @for (bubble of bubbles; track trackBubble($index, bubble)) {
+          <li class="bub__item"
+              [style.left.px]="bubble.x - bubble.r" [style.top.px]="bubble.y - bubble.r"
+              [style.width.px]="bubble.r * 2" [style.height.px]="bubble.r * 2"
+              [style.--bub-fx]="bubble.floatX + 'px'" [style.--bub-fy]="bubble.floatY + 'px'"
+              [style.--bub-float]="bubble.floatSeconds + 's'" [style.--bub-delay]="bubble.floatDelay + 's'"
+              [style.--bub-label]="bubble.labelPx + 'px'"
+              [class.bub__item--active]="active === bubble">
+            <!-- A button since 2026-10-16: it opens the coin's window (its chart over
+                 its stay in pumpling), and trading it is the window's first button. -->
+            <button type="button" class="bub__link" aria-haspopup="dialog" [attr.aria-label]="bubble.label"
+                    (mouseenter)="show(bubble)" (mouseleave)="show(null)" (focus)="show(bubble)" (blur)="show(null)"
+                    (click)="openStory(bubble)">
+              <span class="bub__face" [style.background]="bubble.tint">
+                @if (hasImage(bubble)) {
+                  <img class="bub__img" [src]="bubble.coin.logoUrl" alt="" loading="lazy" decoding="async"
+                       referrerpolicy="no-referrer" (error)="imageFailed(bubble)">
+                } @else {
+                  <span class="bub__initials" [style.font-size.px]="bubble.r * 0.5">{{ bubble.initials }}</span>
+                }
+              </span>
+              @if (bubble.showSol) {
+                <span class="bub__sol">{{ sol(bubble.coin.sol) }} SOL</span>
+              }
+              <span class="bub__ticker">${{ bubble.coin.symbol }}</span>
+            </button>
+          </li>
+        }
+      </ul>
+    } @else {
+      <p class="bub__state" [attr.role]="state === 'loading' ? 'status' : null">
+        @switch (state) {
+          @case ('loading') { Loading the coins… }
+          @case ('failed') { The coins could not be loaded just now. }
+          @default { Coins show up here once they have {{ minSol }} SOL behind them. }
+        }
+      </p>
+    }
+  </div>
+
+  <!-- What the bubble under the pointer is, said where there is always room.
+       A screen reader has the same in each link's label. -->
+  <footer class="bub__foot" aria-hidden="true">
+    @if (active; as bubble) {
+      <span class="bub__detail">
+        <b>${{ bubble.coin.symbol }}</b><span class="bub__name"> {{ bubble.coin.name }}</span>
+        · {{ sol(bubble.coin.sol) }} SOL from {{ pools(bubble.coin.pools) }}
+        · its chart in pumpling
+      </span>
+    } @else {
+      <span>The bigger the bubble, the more SOL behind the coin. {{ pointer }} one to see its chart.@if (hidden > 0) { <span class="bub__more">+{{ hidden }} more</span>}</span>
+    }
+  </footer>
+</section>

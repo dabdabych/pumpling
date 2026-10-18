@@ -18,6 +18,30 @@ import {
   StoryCommit
 } from './story-how-data';
 
+/**
+ * The scale in How it works, in minutes: a pool takes SOL for 65, then 20 of
+ * buying (the defaults in webapp/backend/shared/settings.py and the buyer's
+ * BUY_WINDOW_MINUTES). It was drawn as two equal hours, 0h / 1h / 2h, until
+ * 2026-10-18, when the buying went from fifty minutes to twenty; the scale is
+ * to time now, so the dots of Locked, Buying and Sent sit close together.
+ */
+export const HOW_OPEN_MINUTES = 65;
+export const HOW_BUY_MINUTES = 20;
+const HOW_TOTAL_MINUTES = HOW_OPEN_MINUTES + HOW_BUY_MINUTES;
+
+/**
+ * Where each phase's dot sits on the scale, 0..1: Open, Public (halfway through
+ * the open phase), Locked, Buying (halfway through the buys), Sent. The dots in
+ * story-how and the fill the story animates both read it.
+ */
+export const HOW_NODE_AT: readonly number[] = [
+  0,
+  HOW_OPEN_MINUTES / 2 / HOW_TOTAL_MINUTES,
+  HOW_OPEN_MINUTES / HOW_TOTAL_MINUTES,
+  (HOW_OPEN_MINUTES + HOW_BUY_MINUTES / 2) / HOW_TOTAL_MINUTES,
+  1
+];
+
 /** How long to wait between commits in the feed, ms. */
 export const COMMIT_EVERY_MS = 2000;
 /** The pause on "pool locked" before the next one starts, ms. */
@@ -82,7 +106,7 @@ export function feedFrame(elapsedMs: number, firstPoolId = 128): FeedFrame {
     rows.push(STORY_SEED_COMMITS[index]);
   }
 
-  // The timer runs from an hour and lands exactly when the pool is locked.
+  // The timer runs from the 65 minutes a pool is open and lands exactly when it is locked.
   const fullMs = STORY_COMMITS.length * COMMIT_EVERY_MS;
   const leftShare = locked ? 0 : 1 - inCycle / fullMs;
   return {
@@ -90,7 +114,7 @@ export function feedFrame(elapsedMs: number, firstPoolId = 128): FeedFrame {
     totalSol: round2(total),
     rows,
     locked,
-    secondsLeft: Math.max(0, Math.round(leftShare * 60 * 60))
+    secondsLeft: Math.max(0, Math.round(leftShare * HOW_OPEN_MINUTES * 60))
   };
 }
 

@@ -589,7 +589,7 @@ class TestWhatTheSiteGets:
 # ------------------------------------------------------- off on a server
 
 class TestTheSwitch:
-    """COIN_SCREENING_ENABLED=false: off on mainnet since 2026-10-03, on the stand still on."""
+    """COIN_SCREENING_ENABLED=false turns it off on a server (mainnet had it off 2026-10-03 to 10-08)."""
 
     @pytest.mark.parametrize("value, enabled", [(None, True), ("", True), ("true", True), ("1", True),
                                                 ("false", False), ("False", False), ("0", False), ("off", False), ("no", False)])

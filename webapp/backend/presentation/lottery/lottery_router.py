@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Literal
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
@@ -19,12 +20,16 @@ from infrastructure.database.models.token_metadata_model import TokenMetadataMod
 from infrastructure.database.models.lottery_model import LotteryModel
 from infrastructure.database.models.smart_contract_event_model import SmartContractEventModel
 from infrastructure.database.models.coin_screening_model import CoinScreeningModel
+from infrastructure.database.models.coin_story_chart_model import CoinStoryChartModel
 from shared.coin_screening import screening_enabled
 from application.lottery.schemas import LotteryListResponse, LotteryEntryResponse, PricePointResponse, CoinResponse, CreateLotteryRequest, LotteryResponse, PagedLotteryResponse, ProblemDetails, CreateBetRequest, BetParticipationResponse, VrfPreviewResponse, MintAllowTokenRequest, MintAllowTokenResponse, Phase2AccountsResponse, RunPurchasesPayload, RunPurchasesResponse, OffchainVrfRequest, ActiveLotterySummaryResponse, LotteryWinnerResultResponse, LotteryArchiveListResponse, LotteryArchiveItemResponse, LotteryArchiveEntryResponse, LotteryCycleControlResponse, LotteryCycleControlsResponse, HypeCountdownResponse
 from application.lottery.schemas import PurchaseFeedResponse, PurchaseFeedCoinResponse, PurchaseFeedItemResponse
 from application.lottery.schemas import PurchaseFeedCoinBurnResponse, PurchaseFeedDeliveryResponse, PurchaseFeedBurnResponse, PurchaseFeedRefundResponse
 from application.lottery.schemas import CoinChartResponse, CoinChartPointResponse, CoinScreeningResponse
 from application.lottery.schemas import MyCommitsResponse, MyCommitRoundResponse, MyCommitCoinResponse
+from application.lottery.schemas import BackedCoinResponse, BackedCoinsResponse, CoinStoryBuyResponse, CoinStoryResponse
+from application.lottery import backed_coins as backed_coins_module
+from application.lottery import coin_story as coin_story_module
 from application.lottery.schemas import LotteryVerificationResponse, VerificationBurnResponse, VerificationBurnBetResponse, VerificationBurnTxResponse
 from application.lottery.vrf_engine import VrfEngine
 from domain.lottery.entities.lottery import Lottery, LotteryStatus, LotteryType
@@ -35,6 +40,7 @@ from decimal import Decimal, ROUND_HALF_UP
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, wait
 import os
+import re
 import threading
 import time
 from collections import deque
@@ -1952,6 +1958,162 @@ async def get_current_lottery(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get lottery entries: {str(e)}")
+
+
+def _mainnet_rpc_url() -> str:
+    """The node to read coins from. A devnet stand reads them from mainnet: they are mainnet addresses there too."""
+    settings = get_settings()
+    if settings.network == "mainnet" and settings.solana_http_endpoint:
+        return settings.solana_http_endpoint
+    return backed_coins_module.MAINNET_PUBLIC_RPC
+
+
+_made_on_pump = backed_coins_module.MadeOnPumpCache(
+    lambda mints: backed_coins_module.read_made_on_pump(_mainnet_rpc_url(), mints)
+)
+_backed_coins_cache = backed_coins_module.TimedCache(60)
+
+
+@router.get("/coins/backed", response_model=BackedCoinsResponse)
+def get_backed_coins(
+    min_sol: float = Query(1.0, ge=0.05, le=1000, description="The least SOL a coin needs, all pools together"),
+    limit: int = Query(60, ge=1, le=100),
+    sort: Literal["sol", "recent"] = Query("sol", description="The most SOL first, or the latest committed to first"),
+    db: Session = Depends(get_db),
+):
+    """Coins people have backed with at least `min_sol`, and where each trades.
+
+    Plain `def`: where a coin trades is read from the node the first time the
+    coin is seen, and that wait belongs in the thread pool, not on the loop.
+    """
+    key = (round(min_sol, 4), limit, sort)
+    cached = _backed_coins_cache.get(key)
+    if cached is not None:
+        return cached
+    try:
+        coins = backed_coins_module.backed_coins(db, min_sol, limit, sort)
+        metadata = {coin.mint: _get_coin_metadata(db, coin.mint) for coin in coins}
+    except Exception as e:
+        logger.exception("backed coins failed")
+        raise HTTPException(status_code=500, detail=f"Failed to get backed coins: {str(e)}")
+    # The node is asked with the database connection already handed back.
+    db.close()
+    made_on_pump = _made_on_pump.get(coin.mint for coin in coins)
+    items = []
+    for coin in coins:
+        name, symbol, logo = metadata[coin.mint]
+        trade_url, venue = backed_coins_module.trade_link(coin.mint, made_on_pump.get(coin.mint))
+        items.append(BackedCoinResponse(
+            mint=coin.mint,
+            name=name,
+            symbol=symbol,
+            logo_url=logo or None,
+            sol=coin.sol,
+            pools=coin.pools,
+            last_at=coin.last_at,
+            trade_url=trade_url,
+            venue=venue,
+        ))
+    response = BackedCoinsResponse(min_sol=min_sol, items=items)
+    _backed_coins_cache.put(key, response)
+    return response
+
+
+_MINT_SHAPE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+_gecko = coin_story_module.GeckoTerminal(
+    coin_story_module.fetch_json_with(_HTTPS_CONTEXT, timeout=6.0)
+)
+
+
+def start_coin_story_charts(session_factory) -> None:
+    """The thread that keeps the bubbles' charts in `coin_story_charts` (`coin_story.start`); called at startup."""
+    coin_story_module.start(session_factory, _gecko, _cached_purchase_feed)
+
+
+@router.get("/coins/{mint}/story", response_model=CoinStoryResponse)
+def get_coin_story(mint: str, db: Session = Depends(get_db)):
+    """A coin's stay in pumpling, for the window that opens from its bubble.
+
+    The pool where the most SOL stood behind it; from its first commit there
+    to that pool's last buy of it, with the pool's buys and its chart. The
+    chart is read from `coin_story_charts`, which one thread fills on a
+    schedule (`coin_story.start`): no request here reaches GeckoTerminal. A
+    final chart carries its buys and share too, so a finished coin needs not
+    even the buyer. Anything but a mint is 404, so this cannot be pointed at
+    other addresses. Plain `def`: the buyer is waited on in the thread pool,
+    with the database connection already handed back.
+    """
+    if not _MINT_SHAPE.match(mint or ""):
+        raise HTTPException(status_code=404, detail="Not a coin address.")
+    stay = coin_story_module.chosen_stay(db, mint)
+    if stay is None:
+        raise HTTPException(status_code=404, detail="This coin has not been in a pool.")
+    row = db.get(CoinStoryChartModel, (mint, stay.lottery_id))
+    kept = None
+    if row is not None:
+        kept = {
+            "final": bool(row.final),
+            "candles": row.candles,
+            "minutes": row.candle_minutes,
+            "pool": row.pool_address,
+            "fetched_at": row.fetched_at,
+            "window": (row.window_start, row.window_end),
+            "buys": coin_story_module.stored_buys(row) if row.final else None,
+            "share": row.share_sol,
+            "refunded": row.refunded_sol or 0.0,
+        }
+    name, symbol, logo = _get_coin_metadata(db, mint)
+    db.close()
+
+    if kept and kept["final"]:
+        buys = kept["buys"]
+        buys_known = True
+        share, refunded = kept["share"], kept["refunded"]
+        start, end = kept["window"]
+    else:
+        try:
+            feed = _cached_purchase_feed(stay.lottery_id)
+        except Exception:
+            logger.warning("coin story: no purchase feed (lottery_id=%s)", stay.lottery_id, exc_info=True)
+            feed = None
+        buys = coin_story_module.buys_of(feed, mint)
+        buys_known = feed is not None
+        share, refunded = coin_story_module.share_of(feed, mint), coin_story_module.refunded_of(feed, mint)
+        start, end = coin_story_module.window(stay, buys, datetime.now(timezone.utc))
+    trade_url, venue = backed_coins_module.trade_link(mint, _made_on_pump.get([mint]).get(mint))
+
+    if kept is None:
+        state = "pending"
+    elif kept["candles"] is None:
+        state = "none"
+    else:
+        state = "ready"
+    ready = state == "ready"
+    return CoinStoryResponse(
+        mint=mint,
+        name=name,
+        symbol=symbol,
+        logo_url=logo or None,
+        trade_url=trade_url,
+        venue=venue,
+        lottery_id=stay.lottery_id,
+        committed_sol=stay.sol,
+        entered_at=stay.entered_at,
+        left_at=coin_story_module.left_at(stay, buys),
+        finished=stay.finished,
+        window_start=start,
+        window_end=end,
+        buys=[CoinStoryBuyResponse(at=buy.at, sol=round(buy.sol, 6), signature=buy.signature) for buy in buys],
+        buys_known=buys_known,
+        share_sol=share,
+        refunded_sol=round(refunded or 0.0, 6),
+        candles=kept["candles"] if ready else None,
+        candle_minutes=kept["minutes"] if ready else None,
+        chart_url=coin_story_module.GECKO_POOL_PAGE.format(pool=kept["pool"]) if ready and kept["pool"] else None,
+        chart_state=state,
+        chart_final=bool(kept and kept["final"]),
+        chart_updated_at=kept["fetched_at"] if kept else None,
+    )
 
 
 @router.get("/archive", response_model=LotteryArchiveListResponse)

@@ -17,7 +17,7 @@ import { TxFeedComponent } from '../tx-feed/tx-feed.component';
 import { CommitDialogComponent, CommitDialogData } from '../commit-dialog/commit-dialog.component';
 import { CommitOutcome, CommitService, SentCommit } from '../commit.service';
 import { lamportsToSol } from '../lamports';
-import { coinInitials, formatSol, PoolCoin, PoolSnapshot } from '../pool-state';
+import { buyWindowMs, coinInitials, formatSol, PoolCoin, PoolSnapshot } from '../pool-state';
 import { EMPTY_FEED, PurchaseCoin, PurchaseFeed, PurchaseItem, PurchasesService } from '../purchases.service';
 import { chartChangePct, chartPath, CoinChart, CoinChartService } from '../coin-chart.service';
 import { ShareKind, shareCardData } from '../share/share-card';
@@ -26,6 +26,7 @@ import { VerifyRoundDialogComponent } from '../../shared/verify-round/verify-rou
 import { buildPoolView, PoolView } from '../pool-view';
 import { PoolService } from '../pool.service';
 import { MyCommitsService, MyRound } from '../../me/my-commits.service';
+import { AnalyticsService } from '../../shared/analytics/analytics.service';
 import { environment } from '../../../environments/environment';
 import idl from '../../idl/lottery_v_1_0.json';
 
@@ -65,19 +66,10 @@ const HOVER_CARD_HEIGHT = 150;
 /** How long to hold a new row's highlight, ms. */
 const FRESH_MS = 2600;
 
-/** The length of the buying window from the snapshot: the feed poll rate is computed from it. */
-function buyWindowMs(snapshot: PoolSnapshot): number {
-  if (snapshot.buysStartedAtMs !== null && snapshot.buysEndAtMs !== null) {
-    return Math.max(60_000, snapshot.buysEndAtMs - snapshot.buysStartedAtMs);
-  }
-  // The buyer's main pass, the same figure as DEFAULT_BUY_WINDOW_SECONDS.
-  return 50 * 60_000;
-}
-
 const TRACK = [
-  { label: 'Open', note: '1 hour' },
+  { label: 'Open', note: '65 min' },
   { label: 'Locked', note: 'draw' },
-  { label: 'Buying', note: '1 hour' },
+  { label: 'Buying', note: '20 min' },
   { label: 'Done', note: 'next pool' }
 ];
 
@@ -178,6 +170,7 @@ export class PoolPageComponent implements OnInit, OnDestroy {
   readonly brokenLogos = new Set<string>();
 
   private rowsCache: { feed: PurchaseFeed; mine: MyRound | null; rows: FeedRow[] } | null = null;
+  /** Waiting for the pool to open the commit dialog a link from the main page asked for. */
 
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private copiedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -199,7 +192,8 @@ export class PoolPageComponent implements OnInit, OnDestroy {
     private readonly route: ActivatedRoute,
     private readonly purchases: PurchasesService,
     private readonly charts: CoinChartService,
-    private readonly myCommits: MyCommitsService
+    private readonly myCommits: MyCommitsService,
+    private readonly analytics: AnalyticsService
   ) {
     // The purchase feed is only needed where it exists: during the buying and
     // right after it. In the other phases the server is not asked about it at all.
@@ -512,9 +506,25 @@ export class PoolPageComponent implements OnInit, OnDestroy {
     if (this.latest?.phase !== 'open') {
       return;
     }
+    this.showCommitDialog(mint);
+  }
+
+  trackPastPools(phase: string): void {
+    this.analytics.event('past_pools_click', { from: 'pool', phase });
+  }
+
+  /**
+   * The commit dialog, from the pool page's own Commit SOL. It opens only when
+   * somebody presses it: arriving from the main page's card does not open it
+   * (Georgiy, 2026-10-16: "it offers to commit SOL at once, not needed").
+   */
+  private showCommitDialog(mint: string | undefined): void {
+    const from = 'pool';
+    this.analytics.event('commit_dialog_open', { from, coin: mint ? 'given' : 'none' });
     const ref = CommitDialogComponent.open(this.dialog, { market: 'dex', mint } satisfies CommitDialogData);
     ref.afterClosed().subscribe((sent: SentCommit | undefined) => {
       if (sent) {
+        this.analytics.event('commit_sent', { from });
         void this.followCommit(sent);
       }
     });

@@ -1,6 +1,8 @@
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Input, NgZone, OnChanges, OnDestroy, QueryList, ViewChild, ViewChildren } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
+import { RouterLink } from '@angular/router';
 
+import { AnalyticsService } from '../../../shared/analytics/analytics.service';
 import { FlameComponent } from '../../../shared/flame/flame.component';
 import { MOCHI, StoryBuy, StoryCommit, TOAD, ZAPZ } from './story-how-data';
 import { DEFAULT_CAP_SOL as POOL_CAP_SOL } from '../../../pool/pool-state';
@@ -14,6 +16,9 @@ import {
   DRAW_AFTER,
   DRAW_BEFORE,
   feedFrame,
+  HOW_BUY_MINUTES,
+  HOW_NODE_AT,
+  HOW_OPEN_MINUTES,
   payoutDurationMs,
   payoutFrame,
   PRICE_POINTS,
@@ -28,7 +33,7 @@ import {
 
 /**
  * "How it works": one round through five phases — the pool is open, everything
- * is visible, the pool is locked, an hour of buying, tokens to participants. A
+ * is visible, the pool is locked, twenty minutes of buying, tokens to participants. A
  * round scale in real time runs across the top, and on the right the same pool
  * card changes its contents. The numbers run through: the pool grows from 13 to
  * 73 SOL, the draw gives 47 / 28 / 22 out of 97 SOL after the 3% fee — the
@@ -57,7 +62,7 @@ const PRICE_BASE_USD = 0.0000182;
 @Component({
   selector: 'app-story-how',
   standalone: true,
-  imports: [NgTemplateOutlet, FlameComponent],
+  imports: [NgTemplateOutlet, RouterLink, FlameComponent],
   templateUrl: './story-how.component.html',
   styleUrls: ['./story-how.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -82,13 +87,11 @@ export class StoryHowComponent implements AfterViewInit, OnChanges, OnDestroy {
   @ViewChildren('payoutBar') private payoutBars?: QueryList<ElementRef<HTMLElement>>;
   @ViewChildren('payoutTokens') private payoutTokens?: QueryList<ElementRef<HTMLElement>>;
 
-  readonly nodes = [
-    { label: 'Open', at: 0 },
-    { label: 'Public', at: 25 },
-    { label: 'Locked', at: 50 },
-    { label: 'Buying', at: 75 },
-    { label: 'Sent', at: 100 }
-  ];
+  readonly nodes = ['Open', 'Public', 'Locked', 'Buying', 'Sent'].map((label, index) => ({ label, at: HOW_NODE_AT[index] * 100 }));
+  readonly openMinutes = HOW_OPEN_MINUTES;
+  readonly buyMinutes = HOW_BUY_MINUTES;
+  /** Where the scale's middle tick goes: the moment the pool is locked. */
+  readonly lockedAt = HOW_NODE_AT[2] * 100;
 
   readonly board = [
     { coin: MOCHI, sol: 50 },
@@ -174,8 +177,17 @@ export class StoryHowComponent implements AfterViewInit, OnChanges, OnDestroy {
   constructor(
     private readonly zone: NgZone,
     private readonly cdr: ChangeDetectorRef,
-    private readonly host: ElementRef<HTMLElement>
+    private readonly host: ElementRef<HTMLElement>,
+    private readonly analytics: AnalyticsService
   ) {}
+
+  /**
+   * The button on the last phase: How it works is a place of its own, a scroll
+   * does not leave it (2026-10-16), so the end of it says where to go next.
+   */
+  promote(): void {
+    this.analytics.event('how_promote_click', {});
+  }
 
   ngOnChanges(): void {
     if (this.activeStep !== null) {
@@ -545,7 +557,7 @@ export class StoryHowComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.priceResize.observe(svg);
   }
 
-  // 4. The hour of buying: candles accumulate and the bought counter grows.
+  // 4. The twenty minutes of buying: candles accumulate and the bought counter grows.
   private renderBuys(elapsed: number, deltaMs: number): void {
     const frame = buyFrame(elapsed, this.candles.length);
     this.shownBoughtSol = this.approach(this.shownBoughtSol, frame.boughtSol, deltaMs);

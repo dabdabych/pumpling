@@ -1,6 +1,6 @@
 // Frames of the live How it works scenes: computed without a browser.
 import assert from 'node:assert/strict';
-import { feedFrame, clockText, priceFrame, priceAxis, priceToUnit, priceAt, priceHead, priceOrigin, priceScaleWindow, priceSeries, PRICE_POINTS, PRICE_TICK_MS, PRICE_HEAD_START, buyFrame, buyRows, buyRowAge, payoutFrame, payoutDurationMs, CANDLE_DONE_SOL, CANDLE_START_STEP, COMMIT_EVERY_MS, POOL_LOCK_PAUSE_MS, FEED_ROWS, FEED_ROWS_RENDERED, BUY_ROWS, BUY_ROWS_RENDERED, BUY_ROW_EVERY_MS, BUY_TARGET_SOL } from './scenes.mjs';
+import { HOW_BUY_MINUTES, HOW_NODE_AT, HOW_OPEN_MINUTES, feedFrame, clockText, priceFrame, priceAxis, priceToUnit, priceAt, priceHead, priceOrigin, priceScaleWindow, priceSeries, PRICE_POINTS, PRICE_TICK_MS, PRICE_HEAD_START, buyFrame, buyRows, buyRowAge, payoutFrame, payoutDurationMs, CANDLE_DONE_SOL, CANDLE_START_STEP, COMMIT_EVERY_MS, POOL_LOCK_PAUSE_MS, FEED_ROWS, FEED_ROWS_RENDERED, BUY_ROWS, BUY_ROWS_RENDERED, BUY_ROW_EVERY_MS, BUY_TARGET_SOL } from './scenes.mjs';
 
 let n = 0;
 const t = (name, fn) => { fn(); n++; console.log('ok', name); };
@@ -75,10 +75,10 @@ t('after the pause the next pool opens at 13 SOL', () => {
 
 
 
-t('the timer runs from an hour down to zero', () => {
-  assert.equal(clockText(feedFrame(0).secondsLeft), '01:00:00');
+t('the timer runs from the 65 minutes a pool is open down to zero', () => {
+  assert.equal(clockText(feedFrame(0).secondsLeft), '01:05:00');
   const half = feedFrame(COMMITS * COMMIT_EVERY_MS / 2).secondsLeft;
-  assert.ok(half > 1700 && half < 1900, `half way is half an hour (${half})`);
+  assert.ok(half > 1850 && half < 2050, `half way is half of it (${half})`);
   assert.equal(clockText(feedFrame(COMMITS * COMMIT_EVERY_MS + 5).secondsLeft), '00:00:00');
 });
 
@@ -377,6 +377,12 @@ t('delivery plays once and stays filled', () => {
   const muchLater = payoutFrame(60_000, 3);
   assert.deepEqual(muchLater.fill.map((v) => Math.round(v)), [1, 1, 1]);
   assert.ok(payoutDurationMs(3) < 3200, `${payoutDurationMs(3)}`);
+});
+
+t('the How it works scale is to time: 65 minutes open, 20 of buying', () => {
+  assert.deepEqual(HOW_NODE_AT.map((at) => Math.round(at * 1000) / 1000), [0, 0.382, 0.765, 0.882, 1]);
+  assert.equal(HOW_OPEN_MINUTES, 65);
+  assert.equal(HOW_BUY_MINUTES, 20);
 });
 
 console.log(`\n${n} tests passed`);

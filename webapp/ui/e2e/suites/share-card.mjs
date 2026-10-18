@@ -1,11 +1,15 @@
 // The card for a post: it draws, exports, and the link and post text are there.
 import { launch } from '../lib/browser.mjs';
 import { execSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { SCENARIOS, mockCurrent, MINTS } from '../lib/pool-mock.mjs';
 const BASE = process.env.BASE || 'http://localhost:3200';
-const S = process.env.S || '/private/tmp/claude-501/-Users-georgiy-qres/5d0d11e6-15d5-4eae-9eac-a9cc508dc8e9/scratchpad';
+// Where the drawn cards are saved to be looked at: $S when the runner sets it (SHOTS=1), a temp folder otherwise.
+const S = process.env.S || join(tmpdir(), 'pumpling-e2e');
+mkdirSync(`${S}/pw/shots`, { recursive: true });
 const b = await launch();
 let fails = 0;
 const ok = (c, m) => { if (!c) fails++; console.log(`${c ? 'OK  ' : 'FAIL'} ${m}`); };

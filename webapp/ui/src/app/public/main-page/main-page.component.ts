@@ -1,12 +1,10 @@
-import { animate, style, transition, trigger } from '@angular/animations';
 import { AfterViewInit, ChangeDetectorRef, Component, ElementRef, Inject, NgZone, OnDestroy, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { Store } from '@ngrx/store';
-import { combineLatest, interval, Observable, Subscription, timer } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { interval, Subscription } from 'rxjs';
 import { WalletService } from '../../shared/wallet.service';
 import { environment } from '../../../environments/environment';
 import { signIn, signOut } from '../../store/actions/auth';
@@ -16,11 +14,9 @@ import { Router } from '@angular/router';
 import { MatDialog } from '@angular/material/dialog';
 import { AuthDialogService } from '../../auth/auth-dialog.service';
 import { StoryScrollEngine } from './story-scroll-engine';
+import { HOW_NODE_AT } from './story/story-how-scenes';
 import { bindQuickStartPointer, QuickStartPointer } from './quick-start-pointer';
 import { holdSplash, isSplashActive, onSplashExit, releaseSplash } from '../../shared/splash';
-import { PoolService } from '../../pool/pool.service';
-import { PoolPhase } from '../../pool/pool-state';
-import { poolCardLine, poolCardNote } from '../../pool/pool-view';
 import { SignOutConfirm, SystemDialog } from '../../shared/system-dialog';
 import { JwtHelperService } from '@auth0/angular-jwt';
 import { WALLET_LINKED_ADDRESS_STORAGE_KEY } from '../../shared/wallet-link';
@@ -56,20 +52,36 @@ const STORY_STEP_DURATION_S = 0.7;
 // ===================== qres scroll-story data (designer redesign) =====================
 const QRES_TRUTH_LINE = [
   'any Solana memecoin',
-  'a new pool every 2 hours',
-  'one hour of public buys',
+  'a new pool every 1.5 hours',
+  '20 minutes of public buys',
   'every buy on-chain',
   '3% fee'
 ];
 
 
-/** Where the sections sit when the story is laid out as an ordinary page. */
+/**
+ * Where the sections sit when the story is laid out as an ordinary page, in
+ * the order of the markup: the current one is the last whose top has passed a
+ * line, so this order has to be the page's. How it works comes after Quick
+ * start there since 2026-10-16.
+ */
 const STORY_SECTION_SELECTORS: ReadonlyArray<[string, string]> = [
   ['hero', '#qres-hero'],
   ['what', '[aria-label="what is it?"]'],
-  ['how', '[aria-label="how it works"]'],
-  ['quick', '[aria-label="quick start"]']
+  ['quick', '[aria-label="quick start"]'],
+  ['how', '[aria-label="how it works"]']
 ];
+
+/**
+ * How it works is a place of its own in the pinned story since 2026-10-16.
+ * Scrolling goes from What is it straight to Quick start; How it works is
+ * reached from the header (or /#how), and once there a scroll moves between its
+ * five phases and never out of them: the section strip and the button on the
+ * last phase are the ways out. Its labels are `how` and `step2`..`step5`.
+ */
+function isHowLabel(name: string): boolean {
+  return name === 'how' || name.startsWith('step');
+}
 
 const QRES_COIN_PALETTE = [
   { fill: '#FFD36A', stroke: '#F4A900' },
@@ -109,19 +121,7 @@ const JUMP_COVER_MAX_MS = 1500;
   selector: 'app-main-page',
   templateUrl: './main-page.component.html',
   styleUrls: ['./main-page.component.scss'],
-  standalone: false,
-  // The pool moves to the next phase by itself, and the caption on the card
-  // changes with nobody touching it. It fades back in so the change is visible
-  // without twitching: the animation is tied to the phase, not to ticking seconds.
-  animations: [
-    trigger('lineSwap', [
-      transition('void => *', []),
-      transition('* => *', [
-        style({ opacity: 0 }),
-        animate('320ms ease', style({ opacity: 1 }))
-      ])
-    ])
-  ]
+  standalone: false
 })
 export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
   // --- qres scroll-story refs (designer redesign, phase 2) ---
@@ -241,6 +241,9 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     // 'quick': How it works fades by 9.42 (phase 5 leaves at 9.1).
     { label: 'quick', title: 'Quick start', enterAt: 9.46 }
   ];
+  /** The strip's sections: How it works is a button in the header since 2026-10-16. */
+  readonly stripSections = this.storySections.filter((section) => section.label !== 'how');
+  private lastNavMarkerBox: { x: number; width: number } = { x: 0, width: 0 };
   private solCommitCleanups: Array<() => void> = [];
   /** The Quick start rows under a mouse and a finger (quick-start-pointer.ts). */
   private quickStart?: QuickStartPointer;
@@ -250,12 +253,6 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
 
   marqueeItems: string[] = [];
-  /**
-   * The line on the "Commit SOL" card: the pool phase and the timer. Empty
-   * until the first answer. The phase itself travels alongside: the line fades
-   * back in when the pool moves to the next phase, and does not blink every second.
-   */
-  readonly poolCard$: Observable<{ line: string; note: string | null; phase: PoolPhase }>;
   quickCoins: Array<{ ngStyle: Record<string, string>; svg: SafeHtml }> = [];
 
   /** The How it works phase currently on screen: the scene comes alive by it. */
@@ -309,16 +306,8 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     private jwtHelper: JwtHelperService,
     private sanitizer: DomSanitizer,
     private authDialog: AuthDialogService,
-    private zone: NgZone,
-    private pool: PoolService
+    private zone: NgZone
   ) {
-    this.poolCard$ = combineLatest([this.pool.snapshot$('dex'), timer(0, 1000)]).pipe(
-      map(([snapshot]) => ({
-        line: poolCardLine(snapshot, Date.now()),
-        note: poolCardNote(snapshot, Date.now()),
-        phase: snapshot.phase
-      }))
-    );
     if (isSplashActive()) {
       holdSplash();
       this.holdingSplash = true;
@@ -372,8 +361,22 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.navTargetLabel ?? this.activeSection;
   }
 
+  /**
+   * Where the stroke goes. While the story is on a section with no item in the
+   * strip (How it works, since it moved to the header) the stroke stays where
+   * it was and fades out, rather than sliding to the left edge and back.
+   */
   get navMarkerBox(): { x: number; width: number } {
-    return this.navItemBoxes[this.currentNavSection] ?? { x: 0, width: 0 };
+    const box = this.navItemBoxes[this.currentNavSection];
+    if (box) {
+      this.lastNavMarkerBox = box;
+    }
+    return box ?? this.lastNavMarkerBox;
+  }
+
+  /** Whether the current section has an item in the strip to stand under. */
+  get navMarkerShown(): boolean {
+    return (this.navItemBoxes[this.currentNavSection]?.width ?? 0) > 0;
   }
 
   /**
@@ -883,9 +886,7 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
       return value;
     }
     const duration = timeline.duration();
-    const points = Object.values(timeline.labels)
-      .map((position) => (position as number) / duration)
-      .sort((a, b) => a - b);
+    const points = this.storyStopLabels().map(([, position]) => position / duration);
     if (!points.length) {
       return value;
     }
@@ -897,6 +898,24 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     return points.reduce((best, point) => (Math.abs(point - value) < Math.abs(best - value) ? point : best), points[0]);
   }
 
+  /** Inside How it works the stops are its phases; anywhere else, every stop but those. */
+  private get inHowItWorks(): boolean {
+    return this.activeSection === 'how';
+  }
+
+  /** The labels a scroll may stop at from where the story is now. */
+  private storyStopLabels(): Array<[string, number]> {
+    const timeline = this.storyTimeline;
+    if (!timeline) {
+      return [];
+    }
+    const inside = this.inHowItWorks;
+    return Object.entries(timeline.labels)
+      .filter(([name]) => isHowLabel(name) === inside)
+      .map(([name, position]) => [name, position as number] as [string, number])
+      .sort((a, b) => a[1] - b[1]);
+  }
+
   /** The positions of the story stops, in scroll pixels. */
   private storyStopPositions(): number[] {
     const timeline = this.storyTimeline;
@@ -906,9 +925,16 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     const duration = timeline.duration();
     const span = trigger.end - trigger.start;
-    return Object.values(timeline.labels)
-      .map((position) => trigger.start + span * Math.min(1, (position as number) / duration))
-      .sort((a, b) => a - b);
+    return this.storyStopLabels().map(([, position]) => trigger.start + span * Math.min(1, position / duration));
+  }
+
+  /**
+   * Below the last stop: the footer, except from inside How it works, where a
+   * scroll goes nowhere (the engine does nothing when the target is where the
+   * page already is).
+   */
+  private storyExitTarget(): number {
+    return this.inHowItWorks ? window.scrollY : ScrollTrigger.maxScroll(window);
   }
 
   /** A page under a dialog or the menu: we do not touch its scroll now. */
@@ -918,6 +944,17 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private animateStoryScroll(top: number, done: () => void): void {
     const trigger = this.storyTimeline?.scrollTrigger;
+    // A step between What is it and Quick start would scrub through the five
+    // phases of How it works lying between them on the timeline. It is taken
+    // the way the menu takes a jump between sections instead: the screen fades,
+    // the frame moves under cover, and the next stop comes in. The engine is
+    // released at once; the transition holds it busy until it lands.
+    const across = this.labelAcrossHowItWorks(top);
+    if (across) {
+      this.goToSection(across.label, across.enterAt);
+      done();
+      return;
+    }
     gsap.killTweensOf(this.sectionScrollProxy);
     this.sectionScrollProxy.top = window.scrollY;
     this.beginInstantScroll();
@@ -939,6 +976,46 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
       // A menu transition kills this tween — otherwise the engine would stay "busy".
       onInterrupt: finish
     });
+  }
+
+  /**
+   * The stop at `top` when getting there from here would cross How it works,
+   * and where its entrance starts; null for an ordinary step. Down from What
+   * is it, that is Quick start with its own entrance; up from Quick start, the
+   * last beat of What is it, entered from where the beat before it leaves.
+   */
+  private labelAcrossHowItWorks(top: number): { label: string; enterAt?: number } | null {
+    const timeline = this.storyTimeline;
+    const trigger = timeline?.scrollTrigger;
+    if (!timeline || !trigger || this.inHowItWorks) {
+      return null;
+    }
+    const labels = timeline.labels;
+    const duration = timeline.duration();
+    const span = trigger.end - trigger.start;
+    const toTop = (position: number) => trigger.start + span * Math.min(1, position / duration);
+    const first = labels['how'];
+    const last = labels['step5'];
+    if (first === undefined || last === undefined) {
+      return null;
+    }
+    const from = window.scrollY;
+    if (Math.min(from, top) >= toTop(first) - 1 || Math.max(from, top) <= toTop(last) + 1) {
+      return null;
+    }
+    const target = this.storyStopLabels().reduce<[string, number] | null>((best, entry) => {
+      const distance = Math.abs(toTop(entry[1]) - top);
+      return !best || distance < Math.abs(toTop(best[1]) - top) ? entry : best;
+    }, null);
+    if (!target) {
+      return null;
+    }
+    const [label] = target;
+    if (label === 'what3' && labels['what2'] !== undefined) {
+      // Beat 3 comes in from 2.3, where beat 2 starts to leave.
+      return { label, enterAt: (labels['what2'] as number) + 0.1 };
+    }
+    return { label };
   }
 
   /**
@@ -1076,7 +1153,8 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  goToSection(label: string): void {
+  /** `enterAt`: where on the timeline the entrance starts, for a stop that is not a section's own (a beat of What is it). */
+  goToSection(label: string, enterAtOverride?: number): void {
     const timeline = this.storyTimeline;
     const trigger = timeline?.scrollTrigger;
     const at = timeline?.labels?.[label];
@@ -1115,9 +1193,9 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
     const section = this.storySections.find((item) => item.label === label);
     const fromHero = this.activeSection === 'hero';
     const toHero = label === 'hero';
-    const rawEnter = section
+    const rawEnter = enterAtOverride ?? (section
       ? (fromHero ? section.enterAt : (section.enterFromStory ?? section.enterAt))
-      : at;
+      : at);
     const enterAt = Math.min(rawEnter, at);
 
     // We kill the previous transition first and raise the flags only after:
@@ -1131,7 +1209,8 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
 
     this.navigatingToSection = true;
     this.navTargetProgress = at / duration;
-    this.navTargetLabel = label;
+    // The strip's stroke goes to the section, not to one of its beats.
+    this.navTargetLabel = label.startsWith('what') ? 'what' : label;
 
     // The header leaves at the start of the transition rather than when the
     // section changes: it used to toggle somewhere mid-scroll and simply vanish.
@@ -1362,8 +1441,8 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
       const sceneBars = scenes.map((scene) => q(`[data-how-scene="${scenes.indexOf(scene) + 1}"] [data-how-bar]`));
       const shareBars = q('[data-how-share]');
       const shackle = q('[data-how-shackle]');
-      /** The fraction of the scale the phase node sits at. The same as `nodes` in story-how. */
-      const nodeAt = [0, 1 / 4, 1 / 2, 3 / 4, 1];
+      /** The fraction of the scale the phase node sits at: the same constant `nodes` in story-how reads. */
+      const nodeAt = HOW_NODE_AT;
 
       // ------------------------------------------------ Quick start
       const quickStartSection = q('[data-qres-quick-start]');
@@ -1559,7 +1638,7 @@ export class MainPageComponent implements OnInit, AfterViewInit, OnDestroy {
       this.storyScrollEngine = new StoryScrollEngine({
         getStops: () => this.storyStopPositions(),
         getEnd: () => this.storyTimeline?.scrollTrigger?.end ?? 0,
-        getExitTarget: () => ScrollTrigger.maxScroll(window),
+        getExitTarget: () => this.storyExitTarget(),
         isBusy: () => this.navigatingToSection,
         isSuspended: () => this.isStoryInputSuspended(),
         animateTo: (top, done) => this.animateStoryScroll(top, done)

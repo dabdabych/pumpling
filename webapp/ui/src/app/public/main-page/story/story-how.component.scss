@@ -22,6 +22,8 @@
   flex: 0 0 auto;
   height: 64px;
   margin: clamp(10px, 2.6vh, 28px) 10px 0;
+  /* Its width comes from the column, never from inside: safe as a container. */
+  container: how-track / inline-size;
 }
 
 .track__line {
@@ -94,6 +96,24 @@
   translate: none;
 }
 
+/* To time, Locked, Buying and Sent sit within the last quarter of the scale.
+   Centred over their dots they lay on each other below about 880px of scale
+   (measured: "04 Buying" over "05 Sent" by 8px at a 768px window), so there
+   the captions of Locked and Buying end at their dots instead. */
+@container how-track (max-width: 880px) {
+  .track__node:nth-child(3) .track__label {
+    left: auto;
+    right: 8px;
+    translate: none;
+  }
+
+  .track__node:nth-child(4) .track__label {
+    left: auto;
+    right: 0;
+    translate: none;
+  }
+}
+
 .track__ticks {
   position: absolute;
   top: 48px;
@@ -104,6 +124,8 @@
 .track__ticks span {
   position: absolute;
   translate: -50% 0;
+  /* "85 min" at the right end has no room of its own and broke in two. */
+  white-space: nowrap;
   font-size: 11px;
   font-weight: 600;
   color: rgba(2, 2, 2, 0.6);
@@ -120,7 +142,7 @@
 /* Captions for the scale segments — only in the column layout. */
 .track__segments {
   position: absolute;
-  top: 42px;
+  top: 47px;
   left: 0;
   right: 0;
   display: none;
@@ -130,14 +152,13 @@
   text-transform: uppercase;
 }
 
-/* Half and half: the pool is open for an hour (70 minutes), then an hour of buying. */
-.track__segments span:first-child {
-  width: 50%;
-}
-
-.track__segments span:last-child {
-  width: 50%;
-  text-align: right;
+/* The two captions at the two ends. The scale is to time (65 minutes open, 20
+   of buying, `HOW_NODE_AT`): "Buys · 20 min" does not fit in the 24% that is
+   its segment on a phone, so the captions are not given the segments' widths. */
+.track__segments {
+  justify-content: space-between;
+  gap: 8px;
+  white-space: nowrap;
 }
 
 /* -------------------------------------------------------------- the phases */
@@ -186,6 +207,58 @@
   line-height: 1.45;
   /* 72% black is 8.9:1. */
   color: rgba(2, 2, 2, 0.72);
+}
+
+// The way out of How it works, on its last phase: the site's primary button,
+// green with a hard shadow, as in the commit dialog. The section around it
+// takes no pointer, so the button takes it back.
+.scene__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  margin-top: clamp(14px, 2.8vh, 26px);
+  padding: 0.7em 1.15em;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-green);
+  box-shadow: 4px 4px 0 var(--qres-black);
+  color: var(--qres-black);
+  font-size: clamp(15px, min(1.3vw, 2.3vh), 19px);
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  pointer-events: auto;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+
+  svg {
+    width: 1em;
+    height: 1em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  &:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 5px 5px 0 var(--qres-black);
+    color: var(--qres-black);
+  }
+
+  &:active {
+    transform: translate(3px, 3px);
+    box-shadow: 1px 1px 0 var(--qres-black);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--qres-purple);
+    outline-offset: 3px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 }
 
 .scene__note {
@@ -559,13 +632,14 @@
 
 /* On a phone five captions overlapped on the narrow scale: three nodes sit in
    the second half. We keep the dots and the times, and give the meaning of the
-   scale ("open for an hour, an hour of buying") as segment captions. */
+   scale ("open for 65 minutes, 20 of buying") as segment captions. */
 :host-context(.qres-story--static) .track__label {
   display: none;
 }
 
 :host-context(.qres-story--static) .track {
-  height: 58px;
+  /* The segment names under the ticks: at 58px their boxes overlapped by 3px. */
+  height: 64px;
   margin-top: 8px;
 }
 

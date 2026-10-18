@@ -19,6 +19,8 @@
 // from a script jumps hundreds of pixels at once and passes either way, which
 // is why the second break was not caught.
 import { launch, BASE } from '../lib/browser.mjs';
+import { mockCard } from '../lib/cta-mock.mjs';
+import { mockBubbles, mockChat } from '../lib/home-mock.mjs';
 
 const b = await launch();
 let fails = 0;
@@ -34,10 +36,25 @@ const metrics = (page) => page.evaluate(() => {
   };
 });
 
-/** The site with the chat loaded and its images settled. */
+/**
+ * A long chat whose pictures arrive late, as the real ones did. Since
+ * 2026-10-16 the chat opens from its button in the header: this suite waited
+ * for messages on the page itself and fell on that day. It read the live
+ * chat of whatever backend was running, too, and failed with none.
+ */
+async function withChat(ctx) {
+  await mockCard(ctx, 'openEmpty');
+  await mockBubbles(ctx);
+  await mockChat(ctx, { count: 60, newestId: 500, pictureEvery: 7 });
+  return ctx;
+}
+
+/** The site with the chat opened and its images settled. */
 async function chatPage(ctx, viewport) {
   const page = await ctx.newPage({ viewport });
   await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.chat-launch', { timeout: 30000 });
+  await page.locator('.chat-launch').click();
   await page.waitForSelector('.messages .message', { timeout: 20000 });
   // Long enough for the GIFs: they are what moved the bottom the first time.
   await page.waitForTimeout(5000);
@@ -51,7 +68,7 @@ async function hoverFeed(page) {
   return box;
 }
 
-const ctx = await b.newContext();
+const ctx = await withChat(await b.newContext());
 
 // ------------------------------------------------- it opens at the newest
 {
@@ -60,6 +77,8 @@ const ctx = await b.newContext();
 
   ok(m !== null, 'the chat is on the page');
   ok(m.scrollable > 100, `there is something to scroll (${m.scrollable}px)`);
+  const pictures = await page.$$eval('.messages img.gif-attachment', (imgs) => imgs.map((img) => img.naturalHeight));
+  ok(pictures.length >= 8 && pictures.every((h) => h === 240), `the late pictures came in, the newest message's too (${pictures.length})`);
   ok(m.fromBottom <= 4, `it opens at the newest message (${m.fromBottom}px from the bottom)`);
   await page.close();
 }
@@ -126,11 +145,11 @@ const ctx = await b.newContext();
 
 // ------------------------------------------------------- a finger, on a phone
 {
-  const touch = await b.newContext({
+  const touch = await withChat(await b.newContext({
     viewport: { width: 390, height: 844 },
     hasTouch: true,
     isMobile: true,
-  });
+  }));
   const page = await chatPage(touch, undefined);
   const box = await page.locator('.messages').boundingBox();
   const x = box.x + box.width / 2;

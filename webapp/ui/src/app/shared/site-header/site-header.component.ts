@@ -1,11 +1,12 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { JwtHelperService } from '@auth0/angular-jwt';
 import { Store } from '@ngrx/store';
 import { Subscription } from 'rxjs';
 
 import { AuthDialogService } from '../../auth/auth-dialog.service';
+import { ChatLauncherComponent } from '../../chat/chat-launcher/chat-launcher.component';
 import { MascotLogoComponent } from '../../public/main-page/mascot/mascot-logo.component';
+import { HeaderNavComponent } from './header-nav.component';
 import { signOut } from '../../store/actions/auth';
 import { authSelector } from '../../store/selectors/auth';
 import { IAppState } from '../../store/state/app.state';
@@ -15,15 +16,18 @@ import { WALLET_LINKED_ADDRESS_STORAGE_KEY } from '../wallet-link';
 
 
 /**
- * The header of the inner pages: the pumpling mark, X and sign-in. The same
+ * The header of the inner pages: the pumpling mark, the links (How it works,
+ * Past pools, My commits when signed in), the chat, X and sign-in. The same
  * border, shadow and buttons as the main page header, but with no marquee and no
  * section menu — those are about the story on the main page, and here somebody
- * has already arrived on business.
+ * has already arrived on business. My commits sits with the other links now:
+ * without a link a person does not know their participation is recorded
+ * anywhere, and in the bar it no longer fitted a phone beside the chat.
  */
 @Component({
   selector: 'app-site-header',
   standalone: true,
-  imports: [RouterLink, MascotLogoComponent],
+  imports: [MascotLogoComponent, HeaderNavComponent, ChatLauncherComponent],
   templateUrl: './site-header.component.html',
   styleUrls: ['./site-header.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush

@@ -45,6 +45,17 @@
   min-height: 0;
 }
 
+/* The whole Commit SOL card is the link: on hover it turns purple, the frame
+   with it (the fill is the card's own, in pool-cta). */
+.qres-cta-card {
+  transition: border-color 0.3s ease;
+}
+
+.qres-cta-card:hover,
+.qres-cta-card:has(:focus-visible) {
+  border-color: var(--qres-purple);
+}
+
 @media (min-width: 768px) {
   .qres-hero {
     height: calc(100vh - var(--qres-header-h, 174px));
@@ -65,12 +76,6 @@
   }
 }
 
-.qres-chat-card > app-chat {
-  position: absolute;
-  inset: 0;
-  display: block;
-  min-height: 0;
-}
 
 /* ============================================================
    The title of the first screen.

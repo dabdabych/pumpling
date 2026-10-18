@@ -27,7 +27,7 @@ export type TxFeedTime = 'relative' | 'clock';
  * the buying shows. In the archive it is the clock: "3 days ago" on every row of
  * a finished round would say nothing.
  *
- * An hour of buying is a few hundred rows, so the window scrolls inside itself
+ * A round's buying is a few hundred rows, so the window scrolls inside itself
  * and draws its own bar (the styles say why).
  */
 @Component({

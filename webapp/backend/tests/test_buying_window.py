@@ -1,6 +1,6 @@
 """The buying window, the second pass, and when a round is allowed to close.
 
-The buyer spends fifty minutes on its main pass. Whatever it could not buy in
+The buyer spends twenty minutes on its main pass (fifty until 2026-10-18). Whatever it could not buy in
 that time it buys again afterwards, in a window it sizes itself from the number
 of purchases that have to be repeated: three minutes at the least, fifteen at
 the most. A round where everything went through has no second pass at all.
@@ -64,12 +64,14 @@ class TestTheWindowIsTheBuyersWindow:
 
         assert _default_fallback_countdown_seconds("mainnet") == int(match.group(1)) * 60
 
-    def test_a_pool_takes_commits_for_seventy_minutes(self):
-        # "1 hour" on the site; 70 minutes, the same on both networks.
+    def test_a_pool_takes_commits_for_sixty_five_minutes_and_buys_for_twenty(self):
+        # 65 and 20 on the site (How it works, the pool page); since 2026-10-18,
+        # launchers asked for a faster buy. 70 and 50 before.
         from shared.settings import _default_autostart_prediction_seconds
 
-        assert _default_autostart_prediction_seconds("mainnet") == 70 * 60
-        assert _default_autostart_prediction_seconds("devnet") == 70 * 60
+        assert _default_autostart_prediction_seconds("mainnet") == 65 * 60
+        assert _default_autostart_prediction_seconds("devnet") == 65 * 60
+        assert _default_execution_countdown_seconds("mainnet") == 20 * 60
 
     def test_devnet_is_shorter_but_still_has_one(self):
         # A devnet round exists to be watched end to end in a few minutes, and

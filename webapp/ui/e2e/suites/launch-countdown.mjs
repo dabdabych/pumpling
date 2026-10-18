@@ -53,10 +53,12 @@ const COUNTDOWN = /1d 04h 1[45]m/;
 // ------------------------------------------------ the first screen's card
 {
   const { ctx, p } = await open('/', SCENARIOS.launchAfterPastPools());
-  const card = await text(p, '.qres-hero-card');
-  const note = await text(p, '.qres-hero-card .qres-card-note');
-  ok(/The first pool opens soon/i.test(card), `the main page card announces the first pool (${card.slice(0, 80)})`);
-  ok(/^Opens in /.test(note) && COUNTDOWN.test(note), `and the line under it is the time left (${note || 'no note'})`);
+  // The card's two lines (`pool-cta`): what pressing it does, and where the round is.
+  const card = await text(p, '.cta__body');
+  const title = await text(p, '.cta__link');
+  const status = await text(p, '.cta__status');
+  ok(title === 'See the pool', `the main page card leads to the pool page, where the countdown is too (${title})`);
+  ok(/^First pool opens in /.test(status) && COUNTDOWN.test(status), `and its status line is the time left (${status || 'none'})`);
   ok(!card.includes('We announce the next pool on our X'), 'not a pointer to X for a date it knows');
   await ctx.close();
 }
@@ -75,8 +77,8 @@ const COUNTDOWN = /1d 04h 1[45]m/;
 // ----------------------------------------- with no launch, between pools as before
 {
   const { ctx, p } = await open('/', SCENARIOS.done());
-  const card = await text(p, '.qres-hero-card');
-  ok(/Next pool opens soon/i.test(card), `with nothing scheduled the card waits for the next pool (${card.slice(0, 80)})`);
+  const card = await text(p, '.cta__body');
+  ok(/Next pool/i.test(card), `with nothing scheduled the card waits for the next pool (${card.slice(0, 80)})`);
   await ctx.close();
 }
 

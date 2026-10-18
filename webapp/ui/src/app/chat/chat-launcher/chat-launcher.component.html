@@ -1,0 +1,30 @@
+<!-- The same 40px square with a black border as the X link next to it. -->
+<button #toggleButton type="button" class="chat-launch" [class.chat-launch--open]="open"
+        [attr.aria-expanded]="open" [attr.aria-controls]="open ? panelId : null"
+        aria-haspopup="dialog" (click)="toggle()">
+  <svg class="chat-launch__icon" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.2 3.6c-.3.3-.8 0-.8-.4V16h0a1 1 0 0 1-1-1Z" />
+    <path class="chat-launch__lines" d="M8 8.5h8M8 11.5h5" />
+  </svg>
+  @let fresh = !open && (unread$ | async);
+  <span class="sr-only">{{ open ? 'Close the chat' : fresh ? 'Open the chat, new messages' : 'Open the chat' }}</span>
+  @if (fresh) {
+    <span class="chat-launch__dot" aria-hidden="true"></span>
+  }
+</button>
+
+<ng-template #panel>
+  <section class="chat-panel" [class.chat-panel--sheet]="sheet" [id]="panelId" role="dialog"
+           [attr.aria-modal]="sheet ? 'true' : null" aria-labelledby="chat-panel-title" tabindex="-1"
+           [cdkTrapFocus]="sheet">
+    <header class="chat-panel__head">
+      <h2 class="chat-panel__title" id="chat-panel-title">Chat</h2>
+      <button type="button" class="chat-panel__close" (click)="close()" aria-label="Close the chat">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+    </header>
+    <div class="chat-panel__body">
+      <app-chat [embedded]="true"></app-chat>
+    </div>
+  </section>
+</ng-template>

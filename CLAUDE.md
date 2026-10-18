@@ -142,8 +142,9 @@ touch Solana, so they stay on Python.
 
 **Why the keeper is a plain wallet and not a PDA.** Simpler, and there is no
 compute limit to fight. The trade-off is that the keeper is trusted for the
-hour it holds the pool, which is why every purchase it makes is public and the
-round publishes what it spent.
+twenty-odd minutes it holds the pool (twenty of buying, up to fifteen more to
+buy again what did not go through), which is why every purchase it makes is
+public and the round publishes what it spent.
 
 **Why the buyer does not make one big purchase.** It spends the pool in small
 batches at irregular intervals. The draw result is published immediately, that

@@ -74,9 +74,9 @@ def screening_enabled() -> bool:
     off on a server: the worker asks no provider and queues nothing, and the API
     gives no check, so the site shows no mark, as for a coin never checked.
 
-    Off on mainnet since 2026-10-03, Georgiy's call: the mechanics were not
-    tested enough and he did not like how they looked yet; the stand keeps it
-    on. On unless set, so a server that never heard of it behaves as before.
+    It was off on mainnet from 2026-10-03 to 2026-10-08, Georgiy's call, and
+    is on there again since. On unless set, so a server that never heard of it
+    behaves as before.
     """
     return os.getenv("COIN_SCREENING_ENABLED", "true").strip().lower() not in ("0", "false", "no", "off")
 

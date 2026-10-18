@@ -11,8 +11,8 @@ import { SUPPRESS_GLOBAL_ERROR_DIALOG } from '../shared/http-context-tokens';
  *
  * It is the only proof that the promise is being kept, so the feed lives on the
  * pool page for the whole buying phase. The polling adapts to the pace of the
- * purchases themselves: if four an hour are planned, asking the server every ten
- * seconds is pointless — a new one appears about every fifteen minutes. And the
+ * purchases themselves: if four in twenty minutes are planned, asking the server every ten
+ * seconds is pointless — a new one appears about every five minutes. And the
  * other way round, in a dense window the feed has to keep up with the events.
  */
 

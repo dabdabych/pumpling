@@ -62,7 +62,35 @@ const heroContent = () => p.evaluate(() => {
 const labels = await p.evaluate(
   () => Array.from(document.querySelectorAll('[data-nav-label]')).map((n) => n.getAttribute('data-nav-label'))
 );
-ok(labels.length >= 3, `menu has the story sections (${labels.join(', ')})`);
+// How it works left the strip for the header on 2026-10-16, and its capped mark
+// went to the first item.
+ok(labels.join(',') === 'hero,what,quick', `the strip has pumpling, What is it and Quick start (${labels.join(', ')})`);
+const firstIcon = await p.locator('[data-nav-label="hero"] .qres-nav-icon__img').first().getAttribute('src');
+ok(/nav-how\.png/.test(firstIcon ?? ''), `the first item wears How it works' capped mark (${firstIcon})`);
+
+/** A story section by the way a person gets there: How it works from the header, the rest from the strip. */
+const go = (label) => label === 'how'
+  ? p.getByRole('button', { name: 'How it works' }).first().click({ timeout: 3000 })
+  : p.click(`[data-nav-label="${label}"]`, { timeout: 3000 });
+const marker = () => p.evaluate(() => +getComputedStyle(document.querySelector('.qres-nav-marker')).opacity);
+const howOnScreen = () => p.evaluate(() => {
+  const el = document.querySelector('[aria-label="how it works"]');
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  return +getComputedStyle(el).opacity > 0.5 && r.bottom > 0 && r.top < window.innerHeight;
+});
+
+// 0. How it works from the header: the story goes there, and the strip's stroke,
+// which has no item to stand under, fades rather than standing under a wrong one.
+await go('how').catch(() => {});
+await p.waitForTimeout(2400);
+ok(await howOnScreen(), 'the header\'s How it works takes the story to How it works');
+ok(await marker() === 0, `the strip's stroke is hidden there (opacity ${await marker()})`);
+await go('quick').catch(() => {});
+await p.waitForTimeout(2400);
+ok(await marker() === 1, `and comes back under Quick start (opacity ${await marker()})`);
+await go('hero').catch(() => {});
+await p.waitForTimeout(2400);
 
 // 1. A calm walk: every section arrives and stays visible.
 for (const label of labels) {
@@ -105,7 +133,7 @@ for (let round = 0; round < 4; round++) {
 // 3. After an interruption the scroll has to work: the "transition running" flag is down.
 await p.click('[data-nav-label="hero"]').catch(() => {});
 await p.waitForTimeout(220);
-await p.click('[data-nav-label="how"]').catch(() => {});
+await go('how').catch(() => {});
 await p.waitForTimeout(2400);
 const before = (await screenState()).scrollY;
 await p.mouse.wheel(0, 900);
@@ -156,7 +184,7 @@ for (const label of ['how', 'what']) {
   const home = await heroCard();
   ok(home && home.opacity > 0.9, `hero: the Commit SOL card is there to begin with (opacity ${home?.opacity})`);
 
-  await p.click(`[data-nav-label="${label}"]`).catch(() => {});
+  await go(label).catch(() => {});
   await p.waitForTimeout(2400);
   const away = await heroCard();
   ok(

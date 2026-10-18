@@ -11,9 +11,10 @@ Three rules, which are why this module exists on its own:
   short and an error turns into "no chart" rather than into waiting;
 * **one request to the source for all visitors** — the answer sits in the cache
   until it goes stale, and parallel requests for the same coin wait for the first;
-* **our own request counter** — free access allows about thirty requests a
-  minute per address, and we stay below that by serving whatever is already
-  cached for that time.
+* **one request counter** — keyless access allows about ten requests a
+  minute per address (it was thirty once), shared with a coin's window on the
+  main page (`shared/gecko_budget.py`), and we stay below that by serving
+  whatever is already cached for that time.
 
 A coin can be younger than the first candle: then we return the points there
 are, and how many minutes they cover, and the interface honestly says "the first
@@ -31,7 +32,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 from urllib import error, request
 
-from shared import fast_http
+from shared import fast_http, gecko_budget
 
 import certifi
 
@@ -54,8 +55,10 @@ FAILURE_TTL_SECONDS = 180.0
 #: given. Three minutes of staleness on a minute-candle chart is a few candles
 #: behind; nothing is a blank.
 STALE_TTL_SECONDS = 180.0
-#: Our own ceiling on requests per minute, below the free access limit.
-MAX_CALLS_PER_MINUTE = 20
+#: Our ceiling on requests per minute, below the free access limit. It is
+#: shared with a coin's window on the main page, which asks GeckoTerminal too
+#: (`shared/gecko_budget.py`).
+MAX_CALLS_PER_MINUTE = gecko_budget.CALLS_PER_MINUTE
 #: How many minute candles to ask for.
 DEFAULT_POINTS = 60
 
@@ -78,7 +81,6 @@ _cache: dict[str, tuple[float, CoinChart]] = {}
 #: The last chart that actually had points, kept past its freshness so a slow
 #: source shows an old chart rather than none. Failures never land here.
 _stale: dict[str, tuple[float, CoinChart]] = {}
-_calls: list[float] = []
 _inflight: dict[str, threading.Event] = {}
 
 
@@ -224,14 +226,7 @@ def _remember(mint: str, chart: CoinChart, ttl: float) -> None:
 
 
 def _allow_call() -> bool:
-    now = time.monotonic()
-    with _lock:
-        while _calls and now - _calls[0] >= 60:
-            _calls.pop(0)
-        if len(_calls) >= MAX_CALLS_PER_MINUTE:
-            return False
-        _calls.append(now)
-        return True
+    return gecko_budget.BUDGET.take()
 
 
 def _fetch_ohlcv(pool_address: str, timeout_seconds: float) -> list[list[float]]:
@@ -277,5 +272,5 @@ def _to_points(raw: list[list[float]]) -> list[tuple[int, float]]:
 def reset_for_tests() -> None:
     with _lock:
         _cache.clear()
-        _calls.clear()
         _inflight.clear()
+    gecko_budget.BUDGET.reset()

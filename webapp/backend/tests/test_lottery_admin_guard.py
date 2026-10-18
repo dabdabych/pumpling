@@ -88,6 +88,12 @@ def test_no_new_route_slips_in_without_a_guard():
         # requires an account with the very people being verified. There is no
         # personal data there, only the commitment, the randomness and the result.
         ("GET", "/lottery/{lottery_id}/verification"),
+        # The coins people have backed, for the main page's bubbles: a sum per
+        # coin of commits that are public on chain anyway, no wallet in it.
+        ("GET", "/lottery/coins/backed"),
+        # A coin's chart over its stay in a pool: its buys are on chain, the
+        # candles GeckoTerminal's, no wallet in it.
+        ("GET", "/lottery/coins/{mint}/story"),
     }
     known = ADMIN_ROUTES | USER_ROUTES | public
     actual = {(method, path) for method, path, _ in _routes()}

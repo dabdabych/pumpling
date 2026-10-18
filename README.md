@@ -39,9 +39,9 @@ on-chain and nobody can pull the SOL back out.
 
 | Phase | Length | What happens |
 |---|---|---|
-| Open | up to ~1 hour, or until the 77 SOL cap | anyone adds SOL behind any Solana memecoin |
+| Open | up to 65 minutes, or until the 77 SOL cap | anyone adds SOL behind any Solana memecoin |
 | Draw | a few seconds | verifiable randomness from ORAO VRF sets each coin's share of the buying |
-| Buys | about an hour | the SOL goes out in small on-chain purchases |
+| Buys | 20 minutes, plus up to 15 to buy again what did not go through | the SOL goes out in small on-chain purchases |
 | Done | five minutes | bought tokens reach the wallets that backed those coins, then the next pool opens |
 
 Four things we say out loud, because they are easy to get wrong:
@@ -50,7 +50,7 @@ Four things we say out loud, because they are easy to get wrong:
   but the outcome is random. Small stakes swing the most, sometimes down to
   nothing. The site says this next to the commit button, not in a footnote.
 * **Buying happens off-chain on purpose.** The program releases the pool to a
-  keeper wallet, and the buyer spends it in small batches across the hour.
+  keeper wallet, and the buyer spends it in small batches across twenty minutes.
   Every purchase is a normal transaction with a signature anyone can open. The
   buy being public is deliberate; only its schedule is not, and the next
   section says why.
@@ -87,7 +87,7 @@ compute they point at it, because the number does not exist yet.
 
 **The schedule is not published.** The buyer splits the window into slots,
 picks a random moment inside each one, keeps a minimum gap, and varies each
-amount by ±10%. You can know the hour. You cannot know the minute or the size.
+amount by ±10%. You can know the twenty minutes. You cannot know the moment or the size.
 
 Where that stops: the pool total is public, so the aggregate pressure is known,
 and a round with a single coin has nothing to split, leaving only the timing

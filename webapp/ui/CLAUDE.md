@@ -152,6 +152,192 @@ On a phone the coin row puts the address chip on a line of its own (below
 was 40px wide at 320px, and the ticker, the burn mark and the chip lay on top
 of each other. The suite is `coin-screening`.
 
+## The Commit SOL card
+
+The left card on the first screen, `public/main-page/pool-cta`: Gleb's coins
+and candles fill the card, and the whole card is one link to the pool page.
+Over the drawing, in the clear band it leaves between the coins, two lines as
+he drew them: what pressing the card does, and where the round is ("Pool open
+· closes in 01:12:36", with a live dot). The title changes with the phase, so
+pressing the card always does what it says: "Promote your coin" while a pool
+takes SOL (it said "Commit SOL" until 2026-10-16, the mechanism rather than
+what a visitor comes for), "Watch the draw", "Watch the buys", "See how it
+ended" for the pool that has just ended (`/archive?pool=<id>`, which opens that
+round), "See the pool" otherwise. The card opens the pool page and nothing
+more: it opened the commit dialog at once (`/pool?commit=1`) for a day, and
+Georgiy asked for that to go; the pool page's own Commit SOL opens it. The
+words are the pure `pool-cta.ts`, checked by `e2e/scenes/pool-cta.test.mjs`.
+It never shows a count that is zero.
+
+History, so it is not tried again. On 2026-10-05 the card became a panel of
+steps, a coin field, a button, the last buy and See past pools, laid over the
+drawing; on 2026-10-16 Georgiy called that a nightmare: the drawing is the
+card's signal to press it (preview decision of 2026-09-16). A third line under
+the two was tried the same day and measured against the coins: the band holds
+two lines and no more anywhere from 320px to 2560px.
+
+The link is made the way Inclusive Components recommends for cards: the title
+is the `<a>`, and its `::after` is stretched over the card, so the whole drawing
+takes the press while a screen reader hears only the action, not the clock.
+The card is its own stacking context with the drawing at `z-index: -1`, and
+the words are not positioned, so the `::after` is positioned against the card.
+A halo in the card's fill colour under the words keeps them readable where a
+candle passes behind (NN/g, "Text Over Images").
+
+A short card (a short window, or any desktop with reduced motion, where the
+first screen is not pinned and the card is 220px) left no band at all: the
+coins have a floor size, and at 4.2rem they stopped shrinking under ~280px of
+card. The floor is 3rem now (`dex-card-animation.component.scss`), and on a
+card of about 270px and less a size container tightens the two lines, never
+making them larger than the ordinary size (the first version did, on phones).
+The narrowest cards (phones of 320 to 360px) take the title a little smaller
+still. A size container is safe here, unlike on content-driven boxes: the
+card's host is absolutely positioned over the card, so its height never comes
+from inside.
+
+The suite is `pool-cta`. It measures each line's text against each coin's disc
+(a third of the coin picture's shorter side: the SVGs are mostly margin) at
+four moments of the coins' wobble, at every window, with and without motion.
+
+The commit dialog checks a coin only for an account (`check-mint` answers 401
+signed out). A 401 comes back as `SignInRequiredError`: signed out, the field
+says "Sign in to check this coin. It stays here." with a Sign in button, and
+the coin is checked as soon as the sign-in is done.
+
+Funnel events go to GA4 through `shared/analytics` (production domains only):
+`home_promote_click`, `home_watch_click`, `home_bubble_click`,
+`coin_story_trade_click`,
+`header_how_click`, `how_promote_click`, `past_pools_click` (header, header
+menu, or pool page),
+`chat_open`, `commit_dialog_open` and `commit_sent` (from the pool page),
+`archive_round_open` (click or link). No wallet, address or amount in them.
+
+## The coins in the pools (bubbles)
+
+The right card on the first screen, `public/main-page/coin-bubbles`, since
+2026-10-16 (the chat stood there; it is in the header now). The ten coins
+committed to most lately with at least 1 SOL behind each, all pools together
+(`?limit=10&sort=recent`), as bubbles: the biggest twice the smallest across
+and no more, the ones between by the square root of their SOL, so size still
+follows the SOL. The first version had the area in proportion to the SOL
+(data-to-viz.com "Scaling to radius or area?"), and a 20 SOL coin dwarfed the
+rest; Georgiy asked for two to one. A card too short for two to one at a
+readable size gets a little less rather than losing a coin. Each is a button
+that opens the coin's window (below); until 2026-10-16 it was a link to where
+the coin trades, which is the window's first button now. Hover or focus says
+what it is in the line under the bubbles, where a tooltip could only fall off
+the card; the button's name says the same to a screen reader. A picture that
+fails turns into initials. The list is biggest first, so Tab and a screen
+reader meet them in the order the eye does.
+
+Positions are the pure `bubble-layout.ts` (scene test
+`bubble-layout.test.mjs`): biggest first, each next one in the free spot
+touching a placed one nearest the middle, the group free to lean and centred
+at the end, the largest scale that fits found by halving, the smallest coins
+left out ("+N more") when even the smallest scale cannot hold them all.
+Deterministic, so nothing jumps on a refresh; recomputed when the card resizes.
+Labels sit inside their bubble: hanging out, a small bubble's ticker lay on
+its neighbour. The suite is `coin-bubbles`.
+
+## A coin's window
+
+`public/main-page/coin-bubbles/coin-story-dialog`, opened from a bubble, since
+2026-10-16: what pumpling did to that coin, to see. The coin's ticker, name,
+picture and mint (Copy mint copies it whole), when it took part and in which
+pool, the SOL behind it, what the pool bought of it, and its price chart over
+its stay with the pool's buys marked under the candles they fell in, a dot on
+the candle it came in on. The ways on are Trade on pump.fun (or DexScreener,
+as the bubble was) and See pool #, the round in the archive.
+
+Which stay, and the chart, are the server's (`/lottery/coins/<mint>/story`,
+see the backend's "A coin's window"): for a coin in several pools, the one
+where the most SOL stood behind it. The candles are GeckoTerminal's, in SOL,
+fetched by the server on a schedule and kept, never on a visitor's request;
+their attribution guide asks for "Source: GeckoTerminal" next to the data,
+which is the line under the chart. A chart still being refreshed (its pool
+runs) says "updated 3 min ago" there; a final one says nothing more. A coin
+just in has no chart yet (`pending`): the window says it is on its way and
+asks again by itself, four times 20 s apart, and the same for a busy chart;
+neither answer is cached. With no chart (GeckoTerminal has none for that
+time) the window says so in words and keeps everything else. A buyer that
+did not answer is "Not known right now", never "Nothing". "Nothing: the draw
+gave it no share" only when the buyer says the share was zero: a share that
+was not bought is "None. Its 15.02 SOL share went back to its backers" (or
+"was not bought"). On the stand every coin read "no share" on 2026-10-18:
+the buyer, on devnet, cannot buy mainnet coins and sends the SOL back. The
+words are `boughtText` in `coin-story.ts`, and "In pumpling" ends at
+`left_at`, the last buy or the pool's close.
+
+The chart is TradingView Lightweight Charts (Apache-2.0), loaded by a dynamic
+import when the first window opens, not with the page; its attribution logo
+stays on, as its licence asks. Prices go through `formatTinyPrice`
+(`0.0₆155`), and the buy markers do not take part in the price scale: left
+in, they stretched it down to nearly zero. A vertical swipe and the wheel
+over the chart move the window, not the chart (`handleScroll`, `handleScale`):
+by default the chart keeps them, and on a phone a swipe begun on it, 300px of
+a 568px screen, did not move the sheet. A sideways drag still moves through
+time, two fingers and the axes still zoom. A finished pool's window is kept
+for the visit once its chart is final, any other for a minute
+(`coin-story.service.ts`). The
+words and marks are the pure `coin-story.ts` (scene test
+`coin-story.test.mjs`); the suite is `coin-story`. `coin_story_trade_click`
+counts the trade button.
+
+## The header: links and the chat
+
+Both headers (the main page's and `shared/site-header` on inner pages) carry
+`app-header-nav` and `app-chat-launcher` next to X, since 2026-10-16.
+
+## The story's order, and How it works
+
+Since 2026-10-16 the scroll goes from What is it straight to Quick start. How
+it works is a place of its own: reached from the header's button or `/#how`,
+and once there a scroll moves between its five phases and never out of them,
+by wheel, touch or keys; the section strip and the "Promote your coin" button
+on its last phase are the ways out. The timeline is unchanged (How it works
+still lies between What is it and Quick start on it), so the stops depend on
+where the story is (`storyStopLabels`), and a step that would cross How it
+works is taken the way the menu takes a jump between sections: the screen
+fades, the frame moves under cover, the next stop comes in. Up from Quick start
+lands on the last beat of What is it. As an ordinary page (a phone, reduced
+motion) How it works comes after Quick start in the markup, and
+`STORY_SECTION_SELECTORS` follows the markup's order. The suite is
+`story-flow`, which watches every frame of a step for How it works.
+
+The scale across the top of How it works is to time since 2026-10-18: 65
+minutes open, 20 of buying (`HOW_NODE_AT` in `story-how-scenes.ts`, which the
+dots and the animated fill both read). It was two equal hours, 0h / 1h / 2h,
+while the buying took fifty minutes. To time, Locked, Buying and Sent sit in
+the last quarter, and below about 880px of scale the captions of Locked and
+Buying end at their dots instead of centring on them (a container query on
+`.track`). The suite is `how-scale`.
+
+`header-nav`: How it works and Past pools (and My commits when signed in, on
+inner pages). From 1024px they stand in the bar; narrower they fold behind a
+menu button, a disclosure of links (WAI-ARIA APG "Disclosure Navigation
+Menu"), not an ARIA menu. On the main page How it works moves the story; on
+inner pages it is a plain link to `/#how`, a fresh load, for the reason the
+mark is. How it works left the section strip: the strip is pumpling (now with
+How it works' capped mark), What is it, Quick start, and its stroke fades out
+while the story is on How it works rather than standing under a wrong item.
+The header bar is put away inside the story, so How it works is pressed from
+the first screen. The marquee shows from md, not sm: between 640 and 768 there
+is no room for it beside the menu and the chat. The suite is `header-nav`; it
+checks both headers, signed in and out, keep every control on one line inside
+the bar from 320px to 2560px.
+
+`chat-launcher`: a 40px button like X. The panel lives in the CDK overlay,
+not in the header: the header bar has `will-change: transform` and leaves with
+a transform, which would carry a fixed panel with it. Wide, a non-modal
+popover under the button (Escape or a press outside closes it, focus goes
+back; a press in the sign-in dialog the chat opens does not count as outside).
+Under 640px, a modal sheet over the whole screen with focus kept inside and
+the page held still. The chat is created on open and destroyed on close, so
+no connection opens for a visitor who never opens it. The dot on the button
+is `ChatUnreadService`: the newest message id once a minute while the page is
+in front, against the last seen one kept in the browser. The suite is
+`chat-launcher`.
+
 ## The transactions feed
 
 Every purchase, delivery, burn and refund of a round, newest first, each

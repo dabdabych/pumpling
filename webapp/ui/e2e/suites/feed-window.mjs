@@ -1,6 +1,6 @@
 // The buys are shown in a window of their own, not as the tail of the page.
 //
-// A round buys for an hour in small batches, so the feed runs to a few hundred
+// A round buys in small batches over twenty minutes, so the feed runs to a few hundred
 // rows. Everything printed under it — the program id, the pool account, the
 // link that proves the draw — used to sit below all of them, and reaching it
 // meant scrolling past every buy.

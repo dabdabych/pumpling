@@ -20,7 +20,7 @@ import { CoinScreening, toCoinScreening } from '../shared/coin-screening/coin-sc
  *   locked   it takes no more SOL: the time ran out or the cap was reached.
  *            First it waits for the draw (draw = pending), then the draw runs
  *            (draw = running);
- *   buying   the draw is done and the hour of buying is running;
+ *   buying   the draw is done and the twenty minutes of buying are running;
  *   done     the buying window ended, the next pool opens by itself.
  *
  * The backend hands out program statuses (created, phase2started, vrf_binded,
@@ -222,6 +222,15 @@ export function buildPoolSnapshot(body: LotteryListResponse | null | undefined, 
 }
 
 /** Milliseconds until a moment, never below zero; null means there is no moment. */
+/** The length of a round's buying window, ms: the feed's poll rate is worked out from it. */
+export function buyWindowMs(snapshot: PoolSnapshot): number {
+  if (snapshot.buysStartedAtMs !== null && snapshot.buysEndAtMs !== null) {
+    return Math.max(60_000, snapshot.buysEndAtMs - snapshot.buysStartedAtMs);
+  }
+  // The buyer's main pass, the same figure as DEFAULT_BUY_WINDOW_SECONDS.
+  return DEFAULT_BUY_WINDOW_SECONDS * 1000;
+}
+
 export function msUntil(targetMs: number | null, nowMs: number): number | null {
   return targetMs === null ? null : Math.max(0, targetMs - nowMs);
 }

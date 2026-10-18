@@ -2599,7 +2599,8 @@ def _phase_reference(lottery: LotteryModel, now: datetime) -> tuple[datetime, in
         return started, _STUCK_AFTER_SECONDS["created"]
     if status == "proceeding_purchases":
         started = lottery.proceeding_purchases_started_at or lottery.created_at
-        # The buying window plus half an hour: the buyer honestly spends an hour, longer is worth a look.
+        # The buying window plus half an hour: the main pass, up to fifteen minutes of
+        # a second one, and room; longer is worth a look.
         return started, int(settings.execution_countdown_seconds) + 30 * 60
     if status in ("phase2started", "vrf_binded", "vrf_fulfilled"):
         started = lottery.second_phase_started_at or lottery.created_at

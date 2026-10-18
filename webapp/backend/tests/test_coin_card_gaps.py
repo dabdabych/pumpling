@@ -39,14 +39,14 @@ def clean_caches():
     with chart_module._lock:
         chart_module._cache.clear()
         chart_module._stale.clear()
-        chart_module._calls.clear()
         chart_module._inflight.clear()
+    chart_module.gecko_budget.BUDGET.reset()
     yield
     with chart_module._lock:
         chart_module._cache.clear()
         chart_module._stale.clear()
-        chart_module._calls.clear()
         chart_module._inflight.clear()
+    chart_module.gecko_budget.BUDGET.reset()
 
 
 def candles(price: float) -> list[list[float]]:
@@ -139,8 +139,9 @@ class TestTheChartIsNotLostToOneSlowAnswer:
     def test_our_own_ceiling_is_below_the_sources(self):
         from shared.coin_chart import MAX_CALLS_PER_MINUTE
 
-        # GeckoTerminal's free access is about thirty a minute per address.
-        assert MAX_CALLS_PER_MINUTE <= 25
+        # "GeckoTerminal endpoints: ~10 calls/min" for keyless calls, per address
+        # (it was thirty once, and this said 25 then).
+        assert MAX_CALLS_PER_MINUTE < 10
 
     def test_the_stale_window_is_minutes_not_hours(self):
         # The tooltip prints a price. Three minutes behind on minute candles is

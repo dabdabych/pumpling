@@ -309,10 +309,10 @@ PHASE 1: INIT
   calculateN(totalSol) → N purchases
   calculateFees(totalSol, N, hasAta) → fee reserve
   splitAmount(netAmount, N) → amounts[] (randomised ±10%)
-  createSchedule(N, startTime, 50min) → scheduledTimes[] (random inside equal slots)
+  createSchedule(N, startTime, 20min) → scheduledTimes[] (random inside equal slots)
   BatchStateManager.create() → JSON file
 
-PHASE 2: MAIN LOOP (50 min)
+PHASE 2: MAIN LOOP (20 min; 50 until 2026-10-18)
   for each purchase:
     sleepUntil(scheduledTime)
     buy(mint, amount, keeper, slippage=100bps)
@@ -580,7 +580,7 @@ load on the node:
 | 20 min | 20 | 20 | 28 | lots of headroom |
 
 Twenty minutes would load the node even less but would stretch a publicly
-announced round: delivery runs for 50 minutes in parallel, and the batch only
+announced round: delivery runs for the twenty minutes in parallel, and the batch only
 ends after the retries.
 
 The estimate assumes ~10 RPC calls and ~10 seconds per attempt. If confirmations
@@ -688,7 +688,7 @@ come slower, the duty cycle drops and RPS with it.
   minimum across all of them, and that is almost always zero (measured
   2026-09-19: 150 samples, all zeros). On the curve the market pays around
   158,000 lamports per transaction, but that is snipers competing for the first
-  slot; the buyer spends an hour in small portions and can retry, so the ceiling
+  slot; the buyer spends twenty minutes in small portions and can retry, so the ceiling
   stays at 0.0001 SOL and the priority is additionally capped at a percentage of
   the purchase itself.
 
@@ -791,7 +791,7 @@ come slower, the duty cycle drops and RPS with it.
 
 Layer 3 runs the whole round: every coin bought in parallel plus delivery. Buy
 and send run **at the same time**, so people receive tokens as the buying goes
-on instead of waiting 50 minutes.
+on instead of waiting for the end of the twenty minutes.
 
 ### Files
 
@@ -812,7 +812,32 @@ orchestrator/
 - At most 100 distinct coins in one round
 - `buyConcurrency` = 50 by default (every coin in parallel)
 - `sendConcurrency` = 20 by default
-- With 100 parallel batchBuy the average RPC load is ~3 RPC/sec (fine on the Developer plan at 50 RPS)
+- With 100 parallel batchBuy the average RPC load is ~3 RPC/sec at fifty minutes (fine on the Developer plan at 50 RPS)
+
+### The twenty-minute window (2026-10-18)
+
+The main pass went from fifty minutes to twenty: launchers asked for a faster
+buy. `BUY_WINDOW_MINUTES` defaults to 20, and `EXECUTION_COUNTDOWN_SECONDS` in
+the backend is the same number (`test_buying_window.py` reads both sources).
+Each purchase is the same size; they come two and a half times as often, and
+the delivery rounds every two minutes instead of five. The worst pool, 77 SOL
+over ~58 small coins, is ~600 purchases. With the model above (~10 RPC calls
+and ~10 s an attempt) that is ~5 purchases at once and ~5 RPC/s, ~13 with the
+deliveries, against the Developer plan's 50. Sends average ~0.5/s against
+`SEND_TX_RATE_LIMIT` = 4.
+
+**Jupiter is the one that binds.** A purchase of a coin off its curve is two
+Jupiter calls, a quote and a swap. Jupiter's keyless limit is 0.5 a second
+(30 a minute over a sliding sixty seconds), a free key gives 1 a second
+(developers.jup.ag, "API Rate Limit", read 2026-10-18). At twenty minutes a
+pool of many coins on a DEX needs about one call a second, and a 429 there is
+retried and then abandoned: the SOL is refunded instead of spent. So every
+call takes a slot from `jupiterLimiter` in `dex/buy.ts` first, one at a time,
+no burst: `JUPITER_RATE_LIMIT`, 0.45 keyless and 0.9 with `JUPITER_API_KEY`
+(sent as `x-api-key`; with a key the base URL defaults to api.jup.ag, but a
+`JUPITER_BASE_URL` in the `.env` wins, and production sets lite-api there). A
+purchase waits its turn instead of failing. A usual pool (a few coins, most
+on the pump.fun curve, which needs no Jupiter at all) never waits.
 
 ### The algorithm (3 phases)
 
@@ -861,13 +886,13 @@ executeLottery({
 ### The two streams
 
 ```
-Time:   0 min ──────── 25 min ──────── 50 min
+Time:   0 min ──────── 10 min ──────── 20 min
 
 buyLoop (Semaphore=100):
         ████████████████████████████████████
         up to 100 batchBuy() in parallel
 
-sendLoop (10 rounds x 5 min):
+sendLoop (10 rounds x 2 min):
         ·     ·     █     ·     █     ·     ·     █     ·     █   (8 SOL, sendN=4)
         ·     ·     ·     ·     ·     ·     ·     ·     ·     █   (0.05 SOL, sendN=1)
         █     █     █     █     █     █     █     █     █     █   (20+ SOL, sendN=10)

@@ -76,6 +76,93 @@ hashed, where the randomness came from, the algorithm fingerprint, and the
 result. It is the endpoint the "Verify this pool" button on the site uses, so
 its shape is a public contract.
 
+## The coins in the bubbles
+
+`GET /lottery/coins/backed?min_sol=1` (`application/lottery/backed_coins.py`),
+public, for the main page's bubbles: every coin whose counted commits
+(`active_bet_condition`) add up to `min_sol` or more across every pool, the
+most SOL first or, with `sort=recent`, the latest committed to first (the main
+page asks for `limit=10&sort=recent`), with its name and picture and where it
+trades. That is
+pump.fun for a coin made there and DexScreener for the rest: pump.fun keeps a
+page for its coins after they graduate, and DexScreener does not list a coin
+still on its curve (it knew two of the six mainnet coins over 1 SOL on
+2026-10-16). Made on pump.fun is read from the chain, the bonding-curve
+account owned by the pump program, all mints in one `getMultipleAccounts`;
+the answer never changes, so it is kept for the life of the process, and
+when the node does not answer the address decides (ends in "pump") without
+being kept. A devnet stand reads it from the public mainnet node: the coins
+are mainnet addresses there too. A plain `def`, so the node's wait is in the
+thread pool, and the node is asked after the session is closed. The answer is
+kept a minute.
+
+## A coin's window
+
+`GET /lottery/coins/<mint>/story` (`application/lottery/coin_story.py`),
+public, for the window a bubble opens on the main page: the coin's stay in
+pumpling and its chart over it. For a coin in several pools it is the pool
+where its counted commits add up to the most SOL, the later pool on a tie.
+The window runs from its first counted commit there to that pool's last buy
+of it (`left_at`), five minutes either side; a finished pool with no buys of
+it ends at its close (it ran to now until 2026-10-18, two weeks on the
+stand). A pool still open or still buying has no end yet and runs to now.
+404 for anything that is not a mint, or a coin never in a pool. A plain
+`def`, the session closed before the buyer is asked.
+
+**No visitor's request reaches GeckoTerminal** (Georgiy's design,
+2026-10-18). Its keyless API gives about ten calls a minute per address
+("GeckoTerminal endpoints: ~10 calls/min", CoinGecko's "Keyless Public API"
+page, read 2026-10-18; it was thirty once, and older pages of theirs still
+say so: the stand got 429s after seven calls in a minute), refreshes candles
+every sixty seconds, and keeps history for months, not for ever. So one
+thread in the API (`coin_story.start`, started with the picture thread)
+fetches charts once a minute for the coins in the bubbles, the only ones a
+window opens for (`limit=10&sort=recent`, 1 SOL and up), and keeps them in
+`coin_story_charts` (migration 045). The endpoint reads that table:
+
+- while the coin's pool takes SOL, its chart is fetched again every five
+  minutes; while the pool draws and buys, every three, which is when the
+  pool moves the price;
+- a quarter of an hour after the pool's last buy of it (or its close, when
+  it bought none) the chart is fetched one last time, with the buys, the
+  share and the refunds from the buyer's feed, and marked final. A final
+  chart is never asked again, and the endpoint answers it without asking
+  the buyer either. One with no candles is tried again an hour apart, three
+  times in all;
+- a chart that is not final is deleted once its coin leaves the bubbles. A
+  final one stays: it is small, GeckoTerminal's history runs out, and it is
+  the record of what the pool did;
+- a finished coin waits for the buyer's feed: its window ends at its last
+  buy, which only the buyer knows;
+- a coin with nothing kept yet is `chart_state: pending`, and the site waits
+  for it; `chart_updated_at` says how old a chart still being refreshed is.
+
+The candles are in SOL (`currency=token`), a candle a minute up to eight
+hours of window and five minutes beyond. GeckoTerminal tracks pump.fun
+bonding curves as well as DEX pools (checked on 2026-10-18 on four coins,
+three still on their curves). Of the first two pools it lists for the coin
+that were made before the window ends (a coin that graduated later still
+traded on its curve then), the one with the most volume over the window is
+taken. A coin that left its pump.fun curve inside the window traded on the
+curve and then on its new pool: those two are joined into one chart, as
+pump.fun draws it. Two pools trading side by side are never joined. A coin
+GeckoTerminal does not know answers 404, which is no chart, not a failure.
+Their attribution guide asks for a line such as "Source: GeckoTerminal" next
+to the data: `chart_source` and `chart_url` are what the site links under
+the chart.
+
+**One budget.** The hover chart on the pool page (`shared/coin_chart.py`)
+asks GeckoTerminal too, on demand. Each kept 20 a minute of its own until
+2026-10-18; now both spend one budget of 8 a minute (`shared/gecko_budget.py`;
+the API is one process, so it is the server's), and the charts thread leaves
+3 of each minute to the hover chart. Ten coins at three minutes is about 3.3
+calls a minute.
+
+**Bounds.** `/lottery/coins/` (the bubbles and the windows) is 60 a minute
+per client in `shared/rate_limit.RULES`. The bubbles' answer cache keeps 64
+keys at most: its key comes from the query, and a script walking `min_sol`
+through 1.0001, 1.0002… grew it for as long as it ran.
+
 ## Share links
 
 `presentation/share/share_router.py`, behind `/s/` on the site (nginx rewrites
@@ -149,10 +236,11 @@ at its first confirmed commit in a pool. The site shows what was read in a card
 behind a mark next to the ticker, the same mark on every coin, with the obvious
 cases in red inside. The pool still buys a flagged coin.
 
-**Off on mainnet since 2026-10-03** (`COIN_SCREENING_ENABLED=false` in the
-production `.env`, Georgiy's call: not tested enough, not liked yet). The worker
-asks no provider and queues nothing, and the API gives no check, so the site
-shows no mark. The stand keeps it on. Turning it back on is that one line.
+**On, on mainnet and on the stand.** It was off on mainnet from 2026-10-03
+to 2026-10-08 (`COIN_SCREENING_ENABLED=false` in the production `.env`,
+Georgiy's call: not tested enough, not liked yet), and is on again since.
+`false` turns it off on a server: the worker asks no provider and queues
+nothing, and the API gives no check, so the site shows no mark.
 
 `coin_screening_worker` queues the coins and runs the checks
 (`shared/coin_screening_store.py`); the rule is in `shared/coin_screening.py`,

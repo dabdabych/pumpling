@@ -52,7 +52,7 @@ export function buildPoolView(snapshot: PoolSnapshot, nowMs: number, feed?: Purc
         phase: 'launch',
         chip: { label: 'Soon', tone: 'soon' },
         title: { lead: 'The first pool', plate: 'opens soon' },
-        lede: 'When it opens, anyone can name a Solana memecoin and add SOL for an hour. Then that SOL goes into public buys of those coins.',
+        lede: 'When it opens, anyone can name a Solana memecoin and add SOL for 65 minutes. Then that SOL goes into 20 minutes of public buys of those coins.',
         timer: { label: 'Opens in', value: formatLongCountdown(msUntil(snapshot.launchAtMs, nowMs)), note: null, ticking: true },
         progress: null,
         step: null,
@@ -63,7 +63,7 @@ export function buildPoolView(snapshot: PoolSnapshot, nowMs: number, feed?: Purc
         phase: 'waiting',
         chip: { label: 'Soon', tone: 'soon' },
         title: { lead: 'The next pool', plate: 'opens soon' },
-        lede: 'A new pool opens about every two hours. It starts on its own, and this page switches over the moment it does.',
+        lede: 'A new pool opens about every hour and a half. It starts on its own, and this page switches over the moment it does.',
         timer: { label: 'Next pool', value: 'Opening', note: 'this page switches on its own', ticking: false },
         progress: null,
         step: null,
@@ -197,7 +197,7 @@ export function buildPoolView(snapshot: PoolSnapshot, nowMs: number, feed?: Purc
         phase: 'buying',
         chip: { label: 'Buying', tone: 'buying' },
         title: { lead: 'Buys are', plate: 'running' },
-        lede: 'The SOL goes into public on-chain buys, in small batches spread across the hour. What gets bought goes to the people who backed each coin.',
+        lede: 'The SOL goes into public on-chain buys, in small batches spread across 20 minutes. What gets bought goes to the people who backed each coin.',
         // Past the end of the window with the buyer still at it: the last
         // purchase is on its way, and the pool waits for it. A clock frozen at
         // 00:00:00 would say the buying is over while it is not.
@@ -241,57 +241,6 @@ export function buildPoolView(snapshot: PoolSnapshot, nowMs: number, feed?: Purc
       };
     }
   }
-}
-
-/** One line for the card on the main page: what the pool is doing right now. */
-export function poolCardLine(snapshot: PoolSnapshot, nowMs: number): string {
-  switch (snapshot.phase) {
-    case 'loading':
-      return '';
-    case 'launch':
-      return 'The first pool opens soon';
-    case 'opening':
-      return 'Pool opening';
-    case 'open': {
-      const left = formatClock(msUntil(snapshot.closesAtMs, nowMs));
-      return left ? `Pool open · closes in ${left}` : 'Pool open';
-    }
-    case 'locked':
-      return snapshot.draw === 'running' ? 'Pool locked · draw in progress' : 'Pool locked · draw starting';
-    case 'buying': {
-      // Zero left does not mean the buying is over: what the first pass could
-      // not buy is bought again afterwards, and that has its own clock, which
-      // this card does not follow. Better to drop the number than to show a
-      // countdown stuck at nothing.
-      const leftMs = msUntil(snapshot.buysEndAtMs, nowMs);
-      const left = leftMs !== null && leftMs > 0 ? formatClock(leftMs) : '';
-      return left ? `Buys running · ${left} left` : 'Buys running';
-    }
-    case 'waiting':
-    case 'done':
-      return 'Next pool opens soon';
-  }
-}
-
-/**
- * A second line for the card, while there is no pool to look at.
- *
- * "Next pool opens soon" says nothing about when, and a person who has come
- * between rounds has nothing to do with that. This is the one thing they can
- * do: the X account is where a pool is announced before it opens. It is not
- * shown while a pool is running — then the card has the round itself to talk
- * about, and a second line would only get in the way.
- *
- * Before the first pool the date is known, so the line is the time left to it.
- */
-export function poolCardNote(snapshot: PoolSnapshot, nowMs: number): string | null {
-  if (snapshot.phase === 'launch') {
-    const left = formatLongCountdown(msUntil(snapshot.launchAtMs, nowMs));
-    return left ? `Opens in ${left}` : null;
-  }
-  return snapshot.phase === 'waiting' || snapshot.phase === 'done'
-    ? 'We announce the next pool on our X'
-    : null;
 }
 
 /** A bar where the width equals the share: the window time, the bought fraction. */

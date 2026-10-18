@@ -53,6 +53,14 @@ def client():
     async def current():
         return {"ok": True}
 
+    @app.get("/lottery/coins/backed")
+    async def backed():
+        return {"ok": True}
+
+    @app.get("/lottery/coins/{mint}/story")
+    async def story(mint: str):
+        return {"ok": True}
+
     return TestClient(app)
 
 
@@ -96,6 +104,15 @@ def test_an_open_pool_page_never_hits_the_limit(client):
     # tab. Even ten tabs have to pass freely.
     for _ in range(200):
         assert client.get("/lottery/current", headers={"x-forwarded-for": "10.0.0.9"}).status_code == 200
+
+
+def test_the_bubbles_and_their_windows_share_sixty_a_minute(client):
+    headers = {"x-forwarded-for": "10.0.0.7"}
+    for attempt in range(30):
+        assert client.get("/lottery/coins/backed", headers=headers).status_code == 200, f"bubbles {attempt + 1}"
+        assert client.get(f"/lottery/coins/mint{attempt}/story", headers=headers).status_code == 200, f"window {attempt + 1}"
+    assert client.get("/lottery/coins/mint99/story", headers=headers).status_code == 429
+    assert client.get("/lottery/coins/backed", headers={"x-forwarded-for": "10.0.0.8"}).status_code == 200
 
 
 def test_health_check_is_never_limited(client):

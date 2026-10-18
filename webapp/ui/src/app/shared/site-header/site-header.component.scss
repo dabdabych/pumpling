@@ -107,10 +107,12 @@
 
 .site-header__auth {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: center;
   height: 40px;
   padding: 0 16px;
+  white-space: nowrap;
   border: 2px solid var(--qres-black);
   border-radius: 2px;
   background: var(--qres-black);
@@ -139,27 +141,18 @@
   opacity: 0.6;
 }
 
-/* The link to your own commits: visible only when signed in, so it stays calm. */
-.site-header__mine {
-  padding: 8px 12px;
-  border: 2px solid var(--qres-black);
-  background: var(--qres-white);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--qres-black);
-  text-decoration: none;
-}
+/* At 320px the mark, the menu, the chat, X and Sign out take the whole bar:
+   tighter gaps and a narrower button keep them on one line. */
+@media (max-width: 359.98px) {
+  .site-header__bar {
+    padding: 0 8px;
+  }
 
-.site-header__mine:hover,
-.site-header__mine:focus-visible {
-  background: var(--qres-purple);
-}
+  .site-header__actions {
+    gap: 6px;
+  }
 
-@media (max-width: 480px) {
-  .site-header__mine {
-    padding: 8px 10px;
-    font-size: 12px;
+  .site-header__auth {
+    padding: 0 8px;
   }
 }

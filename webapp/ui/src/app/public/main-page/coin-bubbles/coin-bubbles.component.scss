@@ -1,0 +1,230 @@
+// The coins' bubbles. The same language as the coins on the Commit SOL card
+// next to it: a black outline and a hard shadow, brand colours with no
+// transparency. The card itself has no shadow (preview decision of 2026-09-16).
+:host {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.bub {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--qres-white);
+  color: var(--qres-black);
+}
+
+.bub__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px 0;
+}
+
+.bub__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+// 70% black: 5.1:1 on white, over the 4.5:1 small text needs.
+.bub__meta {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.7);
+  white-space: nowrap;
+}
+
+// The field the bubbles float in, on a faint dot grid: the bubbles read as
+// placed on something, not hanging in a blank.
+.bub__field {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 6px 0 0;
+  background-image: radial-gradient(rgba(2, 2, 2, 0.12) 1px, transparent 1.2px);
+  background-size: 16px 16px;
+  background-position: center;
+}
+
+.bub__list {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bub__item {
+  position: absolute;
+  animation: bub-float var(--bub-float, 6s) ease-in-out var(--bub-delay, 0s) infinite alternate;
+
+  &.bub__item--active,
+  &:focus-within {
+    z-index: 2;
+    animation-play-state: paused;
+  }
+}
+
+@keyframes bub-float {
+  from {
+    transform: translate(0, 0);
+  }
+  to {
+    transform: translate(var(--bub-fx, 0), var(--bub-fy, 0));
+  }
+}
+
+.bub__link {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  color: var(--qres-black);
+  text-decoration: none;
+  transition: transform 0.18s ease;
+
+  &:hover,
+  &:focus-visible {
+    transform: scale(1.07);
+  }
+
+  &:focus-visible {
+    outline: none;
+
+    .bub__face {
+      outline: 3px solid var(--qres-purple);
+      outline-offset: 3px;
+    }
+  }
+}
+
+.bub__face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 2px solid var(--qres-black);
+  border-radius: 50%;
+  box-shadow: 3px 3px 0 var(--qres-black);
+}
+
+.bub__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--qres-white);
+}
+
+.bub__initials {
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+// The labels sit inside the bubble, the ticker near the bottom and a big
+// bubble's SOL near the top, as massive.gg has them. They hung out of the
+// bubble at first, so a small one's ticker could be read whole, and it lay on
+// the neighbouring bubble (seen at 390px to 2560px on 2026-10-16). Inside, a
+// long ticker in a small bubble ends in an ellipsis; the whole of it is in the
+// line under the bubbles on hover and in the link's name.
+.bub__ticker,
+.bub__sol {
+  position: absolute;
+  left: 50%;
+  max-width: 86%;
+  overflow: hidden;
+  padding: 1px 4px;
+  border: 1.5px solid var(--qres-black);
+  border-radius: 3px;
+  font-size: var(--bub-label, 10px);
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.bub__ticker {
+  bottom: 9%;
+  background: var(--qres-white);
+}
+
+.bub__sol {
+  top: 11%;
+  max-width: 76%;
+  background: var(--qres-green);
+}
+
+.bub__state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 24px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(2, 2, 2, 0.7);
+  text-align: center;
+}
+
+.bub__foot {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 6px 14px 8px;
+  border-top: 1px solid rgba(2, 2, 2, 0.15);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: rgba(2, 2, 2, 0.7);
+}
+
+.bub__detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--qres-black);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  b {
+    font-weight: 800;
+  }
+}
+
+.bub__name {
+  color: rgba(2, 2, 2, 0.7);
+}
+
+.bub__more {
+  margin-left: 6px;
+  font-weight: 700;
+  color: var(--qres-black);
+  white-space: nowrap;
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .bub__item {
+    animation: none;
+  }
+
+  .bub__link {
+    transition: none;
+  }
+}

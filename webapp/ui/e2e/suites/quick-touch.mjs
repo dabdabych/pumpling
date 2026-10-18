@@ -254,18 +254,22 @@ for (const [width, height] of [[375, 667], [320, 568]]) {
   const mark = await settledMark(p, from);
   ok(!!mark && mark.overlap === 0 && mark.cut === 0, `on its side: the Solana mark sits after the words, whole (${JSON.stringify(mark)})`);
 
-  // Off to How it works in the middle of the walk, then back.
-  await p.click('[data-nav-label="how"]');
+  // Off to What is it in the middle of the walk, then back. (It was How it
+  // works until that left the strip for the header on 2026-10-16; the header
+  // is put away inside the story, and any other section tests the same leaving.)
+  await p.click('[data-nav-label="what"]');
   await p.waitForTimeout(2500);
   await p.click('[data-nav-label="quick"]');
   await p.waitForTimeout(STEP + 800);
-  await p.click('[data-nav-label="how"]');
+  await p.click('[data-nav-label="what"]');
   await p.waitForTimeout(2500);
   const last = await p.evaluate(() => window.__quick.frames.at(-1).on);
   ok(last.every((on) => !on), `on its side: leaving Quick start mid-walk leaves no row on (${last})`);
   from = await now(p);
   await p.click('[data-nav-label="quick"]');
-  await p.waitForTimeout(STEP + 1500);
+  // From What is it the way to Quick start crosses the How it works scenes,
+  // about half a second longer than the jump from How it works used to be.
+  await p.waitForTimeout(STEP + 2200);
   r = await runs(p, from);
   ok(startedInOrder(r), `on its side: coming back starts over from 01 (${describe(r, from)})`);
   await page.ctx.close();

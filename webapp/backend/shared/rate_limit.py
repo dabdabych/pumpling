@@ -59,11 +59,18 @@ RULES: tuple[tuple[str, Rule], ...] = (
     ("/lottery/check-mint", Rule(limit=30, window_seconds=60, global_limit=600)),
     # The hover chart reaches DexScreener for the pool and GeckoTerminal for the
     # points, and it takes the coin straight from the path, so it is an outside
-    # call anyone can aim at any address. GeckoTerminal is behind a global
-    # twenty-a-minute budget already; DexScreener was behind nothing but the
+    # call anyone can aim at any address. GeckoTerminal is behind the API's one
+    # budget for it already (shared/gecko_budget.py); DexScreener was behind nothing but the
     # default ceiling of six hundred. The browser caches per coin, so a person
     # reading a full pool makes one request per row and no more.
     ("/lottery/coin/", Rule(limit=120, window_seconds=60)),
+    # The main page's bubbles and the window each one opens. The bubbles are
+    # asked once a page and then every five minutes, a window once per coin a
+    # visit: sixty a minute is far beyond a person. A script gets no more out
+    # of them than that. Neither reaches GeckoTerminal (the windows read charts
+    # kept by a thread on a schedule), so this keeps the database and the
+    # buyer's feed from being worked over.
+    ("/lottery/coins/", Rule(limit=60, window_seconds=60)),
     # A commit is bounded by the wallet and the network, but it should not be unlimited.
     # Each report reads the transaction from the chain on the paid plan.
     ("/lottery/bet", Rule(limit=20, window_seconds=60, global_limit=600)),

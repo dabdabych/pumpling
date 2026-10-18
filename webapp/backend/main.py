@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException
 from presentation.auth.auth_router import router as auth_router, get_current_user, get_user_repository
 from application.auth.schemas import ProfileResponse
 from domain.auth.repositories.user_repository import UserRepository
-from presentation.lottery.lottery_router import fetch_for_picture_fill, router as lottery_router
+from presentation.lottery.lottery_router import fetch_for_picture_fill, router as lottery_router, start_coin_story_charts
 from presentation.events.events_router import router as events_router
 from presentation.rpc.rpc_router import router as rpc_router
 from presentation.chat.chat_router import router as chat_router, ws_router as chat_ws_router
@@ -83,6 +83,7 @@ def ensure_tables_exist() -> None:
     run_migrations()
     # After the migrations: its schedule lives in token_metadata (044).
     coin_picture_fill.start(SessionLocal, fetch_for_picture_fill)
+    start_coin_story_charts(SessionLocal)
 
 
 @app.get("/profile", response_model=ProfileResponse)

@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, OnIn
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatDialog } from '@angular/material/dialog';
 import { DecimalPipe } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { environment } from '../../environments/environment';
 import { SiteHeaderComponent } from '../shared/site-header/site-header.component';
@@ -12,6 +12,7 @@ import { MyCommitsService } from '../me/my-commits.service';
 import { buildFeedRows, FeedRow } from '../pool/feed-rows';
 import { PurchaseFeed, PurchasesService } from '../pool/purchases.service';
 import { TxFeedComponent } from '../pool/tx-feed/tx-feed.component';
+import { AnalyticsService } from '../shared/analytics/analytics.service';
 
 /** A round's transactions, as the archive holds them once asked for. */
 interface TxPanel {
@@ -70,6 +71,8 @@ export class ArchivePageComponent implements OnInit {
     private readonly dialog: MatDialog,
     private readonly purchases: PurchasesService,
     private readonly myCommits: MyCommitsService,
+    private readonly route: ActivatedRoute,
+    private readonly analytics: AnalyticsService,
     destroyRef: DestroyRef
   ) {
     // My own commits mark the deliveries and refunds that reached me ("to you"),
@@ -81,6 +84,7 @@ export class ArchivePageComponent implements OnInit {
     void this.myCommits.load().catch(() => undefined);
     try {
       this.rounds = await this.archive.load();
+      this.openLinkedRound();
     } catch {
       // The network blinked or the server stayed silent: we show an honest error
       // rather than an empty page that reads as "there were no rounds".
@@ -123,15 +127,33 @@ export class ArchivePageComponent implements OnInit {
   }
 
   /** Open or close a round's transactions; the first opening asks for them. */
-  toggle(roundId: number): void {
+  toggle(roundId: number, from: 'click' | 'link' = 'click'): void {
     if (this.open.delete(roundId)) {
       return;
     }
     this.open.add(roundId);
+    this.analytics.event('archive_round_open', { from });
     const panel = this.panels.get(roundId);
     if (!panel || panel.state === 'failed') {
       void this.loadTransactions(roundId);
     }
+  }
+
+  /**
+   * `/archive?pool=<id>`: that round opened and brought into view. The main
+   * page's card links here for the pool that has just ended.
+   */
+  private openLinkedRound(): void {
+    const id = Number(this.route.snapshot.queryParamMap.get('pool'));
+    if (!Number.isFinite(id) || !this.rounds.some((round) => round.id === id)) {
+      return;
+    }
+    this.toggle(id, 'link');
+    this.cdr.markForCheck();
+    setTimeout(() => {
+      const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      document.getElementById(`pool-${id}`)?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+    });
   }
 
   retry(roundId: number): void {

@@ -11,7 +11,7 @@ import { AuthDialogService } from '../../auth/auth-dialog.service';
 import { LegalDialogComponent } from '../../shared/legal/legal-dialog.component';
 import { authSelector } from '../../store/selectors/auth';
 import { IAppState } from '../../store/state/app.state';
-import { CheckedCoin, CommitError, CommitService, SentCommit, walletWindowMissingText } from '../commit.service';
+import { CheckedCoin, CommitError, CommitService, SentCommit, SignInRequiredError, walletWindowMissingText } from '../commit.service';
 import { BURN_CHOICES, BurnPercent, burnKeepLabel, burnSentence, burnSummary } from '../burn';
 import { FlameComponent } from '../../shared/flame/flame.component';
 import { CoinScreeningBadgeComponent } from '../../shared/coin-screening/coin-screening-badge.component';
@@ -34,7 +34,9 @@ type CoinState =
   | { kind: 'empty' }
   | { kind: 'checking' }
   | { kind: 'ready'; coin: CheckedCoin }
-  | { kind: 'error'; message: string };
+  | { kind: 'error'; message: string }
+  /** Signed out: the server checks coins only for an account, so the dialog asks for one first. */
+  | { kind: 'signin' };
 
 type SendState = 'idle' | 'wallet' | 'sending';
 
@@ -180,17 +182,24 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
       }
       this.cdr.markForCheck();
     }));
+    // Known before the first check: a coin is checked only for an account.
+    this.subscriptions.add(this.store.select(authSelector).subscribe((signedIn) => {
+      const token = localStorage.getItem('jwt');
+      this.signedIn = signedIn && !!token && !this.jwtHelper.isTokenExpired(token);
+      // Signed in from inside the dialog: the coin waiting for it is checked now.
+      if (this.signedIn && this.coin.kind === 'signin' && this.mintInput.trim()) {
+        this.coin = { kind: 'checking' };
+        void this.checkCoin(this.mintInput.trim());
+      }
+      this.cdr.markForCheck();
+    }));
     if (this.data.mint) {
-      // The coin was chosen in the pool table: we check it at once, with no input pause.
+      // The coin was chosen in the pool table, or pasted on the main page: we
+      // check it at once, with no input pause.
       this.mintInput = this.data.mint;
       this.coin = { kind: 'checking' };
       void this.checkCoin(this.data.mint);
     }
-    this.subscriptions.add(this.store.select(authSelector).subscribe((signedIn) => {
-      const token = localStorage.getItem('jwt');
-      this.signedIn = signedIn && !!token && !this.jwtHelper.isTokenExpired(token);
-      this.cdr.markForCheck();
-    }));
     // Deliberately no distinctUntilChanged: a person can clear the field and
     // paste the same address again, and the pause would swallow the clearing —
     // the check would not start and the dialog would sit with a spinner. A
@@ -657,6 +666,11 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
     this.stalledRetryable = false;
   }
 
+  /** From the coin field: sign in, and the coin is checked when it is done. */
+  signInForCoin(): void {
+    this.authDialog.open({ mode: 'sign-in' });
+  }
+
   private async checkCoin(value: string): Promise<void> {
     const id = ++this.checkId;
     if (!value) {
@@ -682,7 +696,12 @@ export class CommitDialogComponent implements OnInit, OnDestroy {
       if (id !== this.checkId) {
         return;
       }
-      this.coin = { kind: 'error', message: error instanceof CommitError ? error.message : 'Could not check this coin. Try again in a moment.' };
+      // The server checks coins only for an account. To somebody who has never
+      // signed in, "Sign in again" said the wrong thing: ask for it, keep the
+      // coin, and check it when they are in. An expired session keeps the words.
+      this.coin = error instanceof SignInRequiredError && !this.signedIn
+        ? { kind: 'signin' }
+        : { kind: 'error', message: error instanceof CommitError ? error.message : 'Could not check this coin. Try again in a moment.' };
     } finally {
       if (id === this.checkId) {
         this.cdr.markForCheck();

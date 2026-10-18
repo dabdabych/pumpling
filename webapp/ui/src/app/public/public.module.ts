@@ -1,3 +1,7 @@
+import { PoolCtaComponent } from './main-page/pool-cta/pool-cta.component';
+import { CoinBubblesComponent } from './main-page/coin-bubbles/coin-bubbles.component';
+import { ChatLauncherComponent } from '../chat/chat-launcher/chat-launcher.component';
+import { HeaderNavComponent } from '../shared/site-header/header-nav.component';
 import { NgModule } from '@angular/core';
 import {CommonModule, NgOptimizedImage} from '@angular/common';
 import {RouterModule} from "@angular/router";
@@ -139,7 +143,11 @@ import { environment } from '../../environments/environment';
     AuthFlowComponent,
     StoryWhatComponent,
     StoryHowComponent,
-    MascotLogoComponent
+    MascotLogoComponent,
+    PoolCtaComponent,
+    CoinBubblesComponent,
+    ChatLauncherComponent,
+    HeaderNavComponent
   ]
 })
 export class PublicModule { }

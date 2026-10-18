@@ -36,7 +36,7 @@ import type { BuyResult } from "../buy";
 // CONSTANTS
 // =============================================================================
 
-const DEFAULT_WINDOW_MINUTES = 50;
+const DEFAULT_WINDOW_MINUTES = 20;
 
 /**
  * The minimum retry window. This used to be 10 minutes and served as the base

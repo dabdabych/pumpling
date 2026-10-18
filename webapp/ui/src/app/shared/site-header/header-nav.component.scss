@@ -1,0 +1,162 @@
+// The header's links. The same 40px controls with a black border as X and the
+// chat next to them, so the bar reads as one row of things to press.
+:host {
+  display: block;
+}
+
+.hnav {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.hnav__bar {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hnav__fold {
+  position: relative;
+  display: block;
+}
+
+// From 1024px the links fit in the bar beside the marquee; below, they fold.
+@media (min-width: 1024px) {
+  .hnav__bar {
+    display: flex;
+  }
+
+  .hnav__fold {
+    display: none;
+  }
+}
+
+.hnav__link {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 12px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+
+  &:hover,
+  &.hnav__link--current {
+    background: var(--qres-purple);
+    color: var(--qres-black);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--qres-purple);
+    outline-offset: 2px;
+  }
+}
+
+.hnav__toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  cursor: pointer;
+
+  &:hover,
+  &.hnav__toggle--open {
+    background: var(--qres-purple);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--qres-purple);
+    outline-offset: 2px;
+  }
+
+  svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+  }
+}
+
+.hnav__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+// The folded list hangs under the button, its left edge on the button's: the
+// button is the first of the bar's controls, so the list has the bar's width to
+// its right and never runs off the left of a phone. The site's card: black
+// border and hard shadow.
+.hnav__list {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 0;
+  z-index: 5;
+  min-width: 200px;
+  margin: 0;
+  padding: 6px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 4px 4px 0 var(--qres-black);
+  list-style: none;
+}
+
+.hnav__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--qres-black);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover,
+  &.hnav__item--current {
+    background: var(--qres-purple);
+    color: var(--qres-black);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--qres-purple);
+    outline-offset: -3px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hnav__link {
+    transition: none;
+  }
+}

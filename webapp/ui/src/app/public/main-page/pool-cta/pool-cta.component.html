@@ -1,0 +1,25 @@
+<div class="cta">
+  <!-- Candles behind, coins over them: Gleb's drawing, the whole card. Brand
+       colours with no transparency and a dark outline: semi-transparent green
+       on white is almost invisible. -->
+  <span class="cta__art cta__art--pump" aria-hidden="true"><app-pump-card-animation></app-pump-card-animation></span>
+  <span class="cta__art" aria-hidden="true"><app-dex-card-animation></app-dex-card-animation></span>
+
+  @if (view$ | async; as view) {
+    <div class="cta__body" [attr.data-phase]="view.phase">
+      <h2 class="cta__title">
+        <!-- The link is the title; its ::after covers the card, so the whole
+             drawing takes the press and a screen reader hears only this. -->
+        <a class="cta__link" [routerLink]="route(view.link)" [queryParams]="query(view.link)" (click)="opened(view)">
+          {{ view.title }}<svg class="cta__arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        </a>
+      </h2>
+      @if (view.status) {
+        <p class="cta__status">
+          <i class="cta__dot" [class.cta__dot--live]="view.live" aria-hidden="true"></i>
+          <span>{{ view.status }}</span>
+        </p>
+      }
+    </div>
+  }
+</div>

@@ -178,6 +178,72 @@ class LotteryArchiveListResponse(BaseModel):
     items: List[LotteryArchiveItemResponse] = Field(default_factory=list)
 
 
+class BackedCoinResponse(BaseModel):
+    """A coin people have backed with SOL, across every pool, and where it trades."""
+    mint: str
+    name: str
+    symbol: str
+    logo_url: OptionalImageUrl = None
+    #: Confirmed commits behind the coin, in every pool together.
+    sol: float
+    #: How many pools it has been in.
+    pools: int
+    last_at: Optional[datetime] = None
+    trade_url: str
+    #: "pump.fun" or "DexScreener": the place `trade_url` opens.
+    venue: str
+
+
+class BackedCoinsResponse(BaseModel):
+    min_sol: float
+    items: List[BackedCoinResponse] = Field(default_factory=list)
+
+
+class CoinStoryBuyResponse(BaseModel):
+    at: datetime
+    sol: float
+    signature: str
+
+
+class CoinStoryResponse(BaseModel):
+    """A coin's stay in pumpling: the pool where the most SOL stood behind it, and its chart over that window."""
+    mint: str
+    name: str
+    symbol: str
+    logo_url: OptionalImageUrl = None
+    trade_url: str
+    venue: str
+    lottery_id: int
+    committed_sol: float
+    entered_at: datetime
+    #: When its stay ended: the pool's last buy of it, or the pool's close; none while the pool runs.
+    left_at: Optional[datetime] = None
+    #: The pool has finished: the window ends at its last buy of the coin, or at its close.
+    finished: bool
+    window_start: datetime
+    window_end: datetime
+    buys: List[CoinStoryBuyResponse] = Field(default_factory=list)
+    #: False when the buyer did not answer: no buys then means "not known", not "none".
+    buys_known: bool = True
+    #: The SOL the draw gave the coin; none when not known (no feed, or a feed with no coins).
+    share_sol: Optional[float] = None
+    #: The SOL of its share that went back to its backers.
+    refunded_sol: float = 0.0
+    #: [unix seconds, open, high, low, close, volume], price in SOL, oldest first.
+    candles: Optional[List[List[float]]] = None
+    candle_minutes: Optional[int] = None
+    chart_source: str = "GeckoTerminal"
+    #: The pool's page on GeckoTerminal, for the attribution link.
+    chart_url: Optional[str] = None
+    #: ready, none (GeckoTerminal has no candles for the window), pending (not fetched yet),
+    #: busy or failed (kept for the site: this endpoint no longer asks GeckoTerminal).
+    chart_state: str = "none"
+    #: The chart is fetched for the last time and will not change.
+    chart_final: bool = False
+    #: When the chart was fetched; a running pool's is refreshed every few minutes.
+    chart_updated_at: Optional[datetime] = None
+
+
 class MyCommitCoinResponse(BaseModel):
     """One coin in my round: how much I put in and what became of it."""
     mint: str

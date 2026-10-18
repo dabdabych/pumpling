@@ -18,7 +18,7 @@
     <div class="relative mx-auto w-full max-w-7xl">
       <div class="qres-header-bar absolute inset-0 translate-x-1 translate-y-1 rounded-sm bg-[var(--qres-black)]"
            [class.qres-header-bar--hidden]="headerHidden"></div>
-      <div class="qres-header-bar relative flex h-16 items-center justify-between rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)] px-3 sm:px-5"
+      <div class="qres-header-bar relative flex h-16 items-center justify-between rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)] px-2 min-[360px]:px-3 sm:px-5"
            [class.qres-header-bar--hidden]="headerHidden">
         <a routerLink="/" aria-label="pumpling home" (mouseenter)="logoMascot.onHover()"
            class="flex shrink-0 items-center gap-3 text-[var(--qres-black)] transition-colors hover:text-[var(--qres-purple)]">
@@ -35,7 +35,9 @@
              keeps the bootstrap margin-bottom: 1rem. Flexbox centres the box
              together with that margin, and the line sits 8px above the middle of
              the header while the logo on the left is exactly centred. -->
-        <p class="my-0 hidden shrink-0 items-center whitespace-nowrap text-lg font-bold leading-none text-[var(--qres-black)] sm:flex lg:text-2xl">
+        <!-- From md, not sm: with the menu and the chat in the bar there is no
+             room for the line between 640 and 768. -->
+        <p class="my-0 hidden shrink-0 items-center whitespace-nowrap text-lg font-bold leading-none text-[var(--qres-black)] md:flex lg:text-2xl">
           <!-- An invisible twin reserves the width of the longest phrase, so the
                line does not twitch left and right while the characters change. -->
           <span class="relative inline-block">
@@ -47,7 +49,13 @@
           </span>
         </p>
 
-        <div class="flex items-center gap-2 text-sm font-semibold">
+        <!-- 6px apart under 360px: at 320 the mark, the menu, the chat, X and
+             Sign in take the whole bar, and 8px gaps broke Sign in in two. -->
+        <div class="flex items-center gap-1.5 text-sm font-semibold min-[360px]:gap-2">
+          <!-- How it works moves the story; Past pools leaves for the archive. -->
+          <app-header-nav [howInPage]="true" (how)="goToSection('how')"></app-header-nav>
+          <!-- The chat, next to X: it stood in the second card until 2026-10-16. -->
+          <app-chat-launcher></app-chat-launcher>
           <nav aria-label="Social links" class="flex items-center gap-2">
             <a href="https://x.com/pumplingxyz" target="_blank" rel="noreferrer"
                class="qres-social-link qres-x-link relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-sm border-2 border-[var(--qres-black)] leading-none transition-colors duration-200">
@@ -60,7 +68,7 @@
             </a>
           </nav>
           <button type="button" (click)="handleAuthButtonClick()"
-                  class="flex h-10 items-center justify-center rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-black)] px-3 leading-none text-[var(--qres-white)] sm:px-4 transition-colors duration-200 hover:border-[var(--qres-purple)] hover:bg-[var(--qres-purple)]">
+                  class="flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-black)] px-2 leading-none text-[var(--qres-white)] min-[360px]:px-3 sm:px-4 transition-colors duration-200 hover:border-[var(--qres-purple)] hover:bg-[var(--qres-purple)]">
             {{ walletButtonLabel() }}
           </button>
         </div>
@@ -96,13 +104,16 @@
                   ? 'cursor-default text-[var(--qres-black)]'
                   : 'text-[rgba(2,2,2,0.6)] hover:text-[var(--qres-black)]'">
           <span class="qres-nav-icon" aria-hidden="true">
-            <img ngSrc="assets/images/nav-pumpling.png" width="34" height="34" alt="" class="qres-nav-icon__img">
-            <img ngSrc="assets/images/nav-pumpling-active.png" width="34" height="34" alt="" class="qres-nav-icon__img qres-nav-icon__img--active">
+            <!-- The capped mark How it works had in this strip, given to the first
+                 item when How it works moved to the header (2026-10-16). -->
+            <img ngSrc="assets/images/nav-how.png" width="34" height="34" alt="" class="qres-nav-icon__img">
+            <img ngSrc="assets/images/nav-how-active.png" width="34" height="34" alt="" class="qres-nav-icon__img qres-nav-icon__img--active">
           </span>
           pumpling
         </button>
 
-        <button *ngFor="let section of storySections"
+        <!-- How it works is not here: it is a button in the header. -->
+        <button *ngFor="let section of stripSections"
                 #navItem type="button" [attr.data-nav-label]="section.label"
                 (click)="goToSection(section.label)"
                 [disabled]="activeSection === section.label"
@@ -133,7 +144,7 @@
               [class.qres-nav-marker--animated]="navMarkerAnimated"
               [style.width.px]="navMarkerBox.width"
               [style.transform]="'translateX(' + navMarkerBox.x + 'px)'"
-              [style.opacity]="navMarkerBox.width ? 1 : 0"
+              [style.opacity]="navMarkerShown ? 1 : 0"
               aria-hidden="true"></span>
       </div>
     </nav>
@@ -164,54 +175,25 @@
         </h1>
         <p class="qres-hero-lede">
           Name any Solana memecoin and add SOL. When the pool closes, the SOL goes
-          into public on-chain buys of the participating coins over the next hour.
+          into public on-chain buys of the participating coins over the next 20 minutes.
         </p>
       </div>
     </div>
 
     <div class="qres-hero-cards grid w-full max-w-7xl grid-cols-1 gap-10 md:grid-cols-2 lg:gap-20">
-      <a #firstCard routerLink="/pool"
-         class="qres-hero-card group relative flex flex-col items-center justify-center overflow-hidden rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)] font-semibold leading-none text-[var(--qres-black)] transition-colors duration-300 hover:border-[var(--qres-purple)] hover:bg-[var(--qres-purple)]">
-        <!-- Candles in the background, coins over them. Brand colours with no
-             transparency and a dark outline on the body: semi-transparent green
-             on white is almost invisible (1.2:1). On hover the card turns purple
-             and purple candles on it would disappear, so they go white. -->
-        <span class="pointer-events-none absolute inset-0 z-0
-                     [--pump-line:rgba(2,2,2,0.3)]
-                     [--pump-bull:#8FFFAF]
-                     [--pump-bear:#AF8FFF]
-                     [--pump-outline:rgba(2,2,2,0.5)]
-                     group-hover:[--pump-bear:#FCFCFC]">
-          <app-pump-card-animation></app-pump-card-animation>
-        </span>
-        <span class="pointer-events-none absolute inset-0 z-10"><app-dex-card-animation></app-dex-card-animation></span>
-        <!-- Smaller than the page title: a card is an action, not a statement.
-             The text stays black on hover too: white on purple gives 2.5:1. -->
-        <span class="relative z-20 text-center text-[clamp(1.5rem,2.9vw,2.5rem)]">Commit SOL</span>
-        <!-- What the pool is doing right now — the same phase as on the pool page (PoolService). -->
-        @if (poolCard$ | async; as card) {
-          @if (card.line) {
-            <span class="relative z-20 mt-4 text-sm font-semibold uppercase tracking-wide opacity-70"
-                  [@lineSwap]="card.phase">{{ card.line }}</span>
-          }
-          <!-- Between rounds: where the next pool is announced. Smaller than the
-               line above it and in ordinary case, and allowed to wrap, so a
-               narrow card keeps it whole instead of hiding half of it under
-               `overflow-hidden`. The X link itself is under the headline; this
-               card is a link of its own and cannot hold another one.
+      <!-- The Commit SOL card: the coins and candles, and over them what the
+           pool is doing and where the card takes you (`pool-cta`). The frame
+           keeps the class and the reference the first screen's entrance and
+           pinning move. -->
+      <div #firstCard class="qres-hero-card qres-cta-card relative overflow-hidden rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)]">
+        <app-pool-cta></app-pool-cta>
+      </div>
 
-               The same 70% as the line above, not less: the card turns purple
-               on hover, and black at 60% on that purple gives 3.9:1, under the
-               4.5:1 small text needs. At 70% it is 5.1:1. -->
-          @if (card.note) {
-            <span class="qres-card-note relative z-20 mt-2 max-w-[90%] text-center text-xs font-medium leading-snug opacity-70"
-                  [@lineSwap]="card.phase">{{ card.note }}</span>
-          }
-        }
-      </a>
-
-      <div #secondCard class="qres-hero-card qres-chat-card relative flex overflow-hidden rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)]">
-        <app-chat class="block h-full w-full" [embedded]="true"></app-chat>
+      <!-- The coins people have backed with 1 SOL and up, as bubbles that open
+           where each coin trades (`coin-bubbles`). The chat that stood here is
+           a button in the header now. -->
+      <div #secondCard class="qres-hero-card qres-bubbles-card relative overflow-hidden rounded-sm border-2 border-[var(--qres-black)] bg-[var(--qres-white)]">
+        <app-coin-bubbles></app-coin-bubbles>
       </div>
     </div>
 
@@ -265,23 +247,7 @@
       </div>
     </section>
 
-    <!-- overlay 2: HOW IT WORKS -->
-    <section data-qres-copy-section class="pointer-events-none absolute bottom-0 left-0 right-0 top-[-6rem] mx-auto flex w-full max-w-7xl flex-col qres-story-section px-[20px] pb-10 pt-[20px] sm:px-8 sm:pt-6" aria-label="how it works">
-      <div class="flex items-center gap-4">
-        <span data-qres-copy-section-dot class="h-3 w-3 shrink-0 rounded-full bg-[var(--qres-black)] sm:h-4 sm:w-4" aria-hidden="true"></span>
-        <span class="block overflow-hidden">
-          <h2 data-qres-copy-section-title class="shrink-0 text-2xl font-semibold leading-none sm:text-4xl">HOW IT WORKS</h2>
-        </span>
-        <div data-qres-copy-section-line class="h-[2px] flex-1 bg-[var(--qres-black)]" aria-hidden="true"></div>
-      </div>
-
-      <!-- One round through five phases: the scale on top, the phase under it. -->
-      <div class="qres-story-body">
-        <app-story-how [activeStep]="howStep"></app-story-how>
-      </div>
-    </section>
-
-    <!-- overlay 3: QUICK START -->
+    <!-- overlay 2: QUICK START -->
     <section data-qres-quick-start class="qres-quick-section pointer-events-none absolute bottom-0 left-0 right-0 top-[-6rem] mx-auto flex w-full max-w-7xl flex-col qres-story-section px-[20px] pb-10 pt-[20px] sm:px-8 sm:pt-6" aria-label="quick start">
       <div class="flex items-center gap-4">
         <span data-qres-quick-dot class="h-3 w-3 shrink-0 rounded-full bg-[var(--qres-black)] sm:h-4 sm:w-4" aria-hidden="true"></span>
@@ -371,7 +337,7 @@
               </span>
             </span>
           </h3>
-          <p class="qres-quick-desc relative z-10">One hour of public buys, every one of them on-chain.</p>
+          <p class="qres-quick-desc relative z-10">20 minutes of public buys, every one of them on-chain.</p>
         </article>
 
         <!-- 05 get tokens (the Let's go cursor): a click leads to the first screen -->
@@ -393,6 +359,26 @@
           </h3>
           <p class="qres-quick-desc qres-quick-desc--last relative z-10">Tokens bought for your coin land in your wallet.</p>
         </article>
+      </div>
+    </section>
+
+    <!-- overlay: HOW IT WORKS. After Quick start in the markup since 2026-10-16:
+         as an ordinary page (a phone, reduced motion) the story reads What is
+         it, then Quick start, and How it works is the part you go to on purpose.
+         Pinned, the overlays are shown one at a time and their order here only
+         decides which lies on top. -->
+    <section data-qres-copy-section class="pointer-events-none absolute bottom-0 left-0 right-0 top-[-6rem] mx-auto flex w-full max-w-7xl flex-col qres-story-section px-[20px] pb-10 pt-[20px] sm:px-8 sm:pt-6" aria-label="how it works">
+      <div class="flex items-center gap-4">
+        <span data-qres-copy-section-dot class="h-3 w-3 shrink-0 rounded-full bg-[var(--qres-black)] sm:h-4 sm:w-4" aria-hidden="true"></span>
+        <span class="block overflow-hidden">
+          <h2 data-qres-copy-section-title class="shrink-0 text-2xl font-semibold leading-none sm:text-4xl">HOW IT WORKS</h2>
+        </span>
+        <div data-qres-copy-section-line class="h-[2px] flex-1 bg-[var(--qres-black)]" aria-hidden="true"></div>
+      </div>
+
+      <!-- One round through five phases: the scale on top, the phase under it. -->
+      <div class="qres-story-body">
+        <app-story-how [activeStep]="howStep"></app-story-how>
       </div>
     </section>
   </section>

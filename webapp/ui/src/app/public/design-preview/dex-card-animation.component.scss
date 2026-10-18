@@ -4,6 +4,12 @@
 // text. `32cqh - 22px` on a 440px card gives the old ~119px, and below that it
 // shrinks the coin faster than the height: the text does not shrink with the card,
 // and with a simple proportion the gap to "hype" fell to 8px at 1280×720, here it is 15.
+//
+// The floor was 4.2rem and is 3rem since 2026-10-16: at 4.2rem a card under
+// about 280px tall (1024×600, a short laptop window, any desktop with reduced
+// motion, where the card is 220px) kept full-size coins, and they met the two
+// lines in the middle. Measured by e2e/suites/pool-cta.mjs; every taller card
+// is untouched, since there the coin is above the floor anyway.
 :host {
   position: absolute;
   inset: 0;
@@ -20,7 +26,7 @@
 
 .dex-card-animation__token {
   position: absolute;
-  width: calc(clamp(4.2rem, min(20cqw, 32cqh - 22px), 7.5rem) * var(--dex-scale));
+  width: calc(clamp(3rem, min(20cqw, 32cqh - 22px), 7.5rem) * var(--dex-scale));
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
   // A hard shadow in the page's style instead of a blurred glow. It hangs here

@@ -764,3 +764,25 @@
     padding: 10px 2px;
   }
 }
+
+/* "Sign in" beside the line that asks for it: a link in look, a button in
+   behaviour, it opens the sign-in dialog over this one. */
+.field__signin {
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 700;
+  color: var(--qres-black);
+  text-decoration: underline;
+  text-decoration-color: var(--qres-purple);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.field__signin:focus-visible {
+  outline: 2px solid var(--qres-purple);
+  outline-offset: 2px;
+}

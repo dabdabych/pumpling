@@ -103,13 +103,14 @@ ok(await p.locator('.pool-card__clock').count() <= 1, `no leftover rows after th
   p3.on('pageerror', (e) => errors.push(e.message));
   for (let a = 0; a < 3; a++) { try { await p3.goto(BASE + '/', { waitUntil: 'domcontentloaded', timeout: 45000 }); break; } catch (e) { if (a === 2) throw e; } }
   await p3.waitForFunction(() => !document.getElementById('qres-app-loader'), null, { timeout: 40000 });
-  const line = () => p3.locator('.qres-hero-card span', { hasText: /Pool|Buys|opens/ }).first().innerText();
+  // The card's status line (`pool-cta`).
+  const line = () => p3.locator('.cta__status').first().innerText();
   ok(/POOL OPEN/i.test(await line()), `home card shows the open pool (${await line()})`);
   scenario3 = SCENARIOS.buying();
   const started = Date.now();
   let changed = false;
   while (Date.now() - started < 25000) {
-    if (/BUYS RUNNING/i.test(await line())) { changed = true; break; }
+    if (/BUYING NOW/i.test(await line())) { changed = true; break; }
     await p3.waitForTimeout(300);
   }
   ok(changed, `home card follows the phase (${await line()})`);

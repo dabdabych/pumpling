@@ -55,6 +55,10 @@
       <div class="field__message" id="commit-mint-status" aria-live="polite">
         @if (coinError) {
           {{ coinError }}
+        } @else if (coin.kind === 'signin') {
+          <span class="field__hint">Sign in to check this coin. It stays here.
+            <button type="button" class="field__signin" (click)="signInForCoin()">Sign in</button>
+          </span>
         } @else if (coin.kind === 'checking') {
           <span class="field__hint">Checking the coin…</span>
         } @else if (coin.kind === 'empty') {
@@ -221,7 +225,7 @@
       }
       <!-- First what will happen, then what the risk is. The other way round, the
            last thing somebody reads before the button is the scariest sentence. -->
-      <p class="commit__next">When the pool closes, a draw sets each coin's share. The SOL then goes into public buys over the next hour, and the tokens bought go to the people behind those coins.</p>
+      <p class="commit__next">When the pool closes, a draw sets each coin's share. The SOL then goes into public buys over the next 20 minutes, and the tokens bought go to the people behind those coins.</p>
       <p class="commit__risk">SOL can't be taken back once it's in. Small stakes swing the most in the draw, sometimes down to zero.</p>
     </div>
 

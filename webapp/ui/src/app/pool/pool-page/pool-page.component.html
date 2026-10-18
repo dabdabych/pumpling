@@ -35,6 +35,8 @@
                network. The main page can land on the right section without a
                reload: it waits for the layout to stop moving and only then jumps. -->
           <a class="pool-link" routerLink="/" fragment="how">How it works</a>
+          <!-- In every phase: what earlier pools bought, transaction by transaction. -->
+          <a class="pool-link" routerLink="/archive" (click)="trackPastPools(model.view.phase)">Past pools</a>
           <!-- An empty pool is nothing to boast about: the card appears once it has SOL. -->
           @if (model.snapshot.poolId !== null && model.snapshot.totalSol > 0) {
             <button type="button" class="pool-link pool-link--button" (click)="openShare('pool')">Share the pool</button>
@@ -378,7 +380,7 @@
 
         @if (model.feedRows.length > 0) {
           <!-- A window with its own scrollbar, not the tail of the page: an
-               hour of buying is a few hundred rows, and everything under them
+               round's buying is a few hundred rows, and everything under them
                would be a page of scrolling away. The counter above counts
                purchases only. -->
           <app-tx-feed [rows]="model.feedRows" [nowMs]="model.now" labelledBy="pool-buys-title" />

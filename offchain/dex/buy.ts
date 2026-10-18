@@ -6,12 +6,15 @@ import { connection, sendTxLimiter } from "../solana/connection";
 import { BuyHooks, getSignedTransactionSignature, PostSendError } from "../solana/transaction";
 import { sendAndConfirmWithRebroadcast } from "../solana/rebroadcast";
 import {
+    JUPITER_API_KEY,
     JUPITER_QUOTE_URL,
+    JUPITER_RATE_LIMIT,
     JUPITER_SWAP_URL,
     PRIORITIZATION_FEE_LAMPORTS,
     JUPITER_MAX_ACCOUNTS,
     JUPITER_ONLY_DIRECT_ROUTES,
 } from "../solana/config";
+import { RateLimiter } from "../solana/rateLimiter";
 import { logger as rootLogger, Logger } from "../logger";
 import { priceFor, priorityLamports, buyPriceEstimate } from "../solana/priorityFee";
 
@@ -145,6 +148,26 @@ export async function fetchWithTimeout(
 }
 
 /**
+ * Every call to Jupiter takes a slot here first, process-wide, one at a time
+ * (`JUPITER_RATE_LIMIT`). No burst: Jupiter counts over a sliding minute, and
+ * a volley after a quiet spell is exactly what it refuses.
+ */
+export const jupiterLimiter = new RateLimiter(JUPITER_RATE_LIMIT, 1);
+
+/**
+ * A call to Jupiter: its turn from `jupiterLimiter`, and the key when there is one.
+ * Exported for testing.
+ */
+export async function jupiterFetch(url: string | URL, options: RequestInit = {}, apiKey: string = JUPITER_API_KEY): Promise<Response> {
+    await jupiterLimiter.acquire();
+    const headers: Record<string, string> = { ...(options.headers as Record<string, string> | undefined) };
+    if (apiKey) {
+        headers["x-api-key"] = apiKey;
+    }
+    return fetchWithTimeout(url, { ...options, headers });
+}
+
+/**
  * Gets a quote from Jupiter
  *
  * @param outputMint - the address of the token to buy
@@ -168,7 +191,7 @@ async function getQuote(
         url.searchParams.set("onlyDirectRoutes", "true");
     }
 
-    const response = await fetchWithTimeout(url);
+    const response = await jupiterFetch(url);
 
     if (!response.ok) {
         const text = await response.text();
@@ -219,7 +242,7 @@ async function buildSwapTransaction(
     // position. There used to be a hard five thousand lamports here: an
     // overpayment in a quiet hour, and missing the block in a storm.
     const priority = await jupiterPriorityLamports(userPublicKey);
-    const response = await fetchWithTimeout(JUPITER_SWAP_URL, {
+    const response = await jupiterFetch(JUPITER_SWAP_URL, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

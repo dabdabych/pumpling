@@ -90,8 +90,8 @@ class AppSettings:
     #: day can cost is known in advance: lookups x 10 credits.
     helius_das_daily_limit: int
     #: How long to wait for the Solana RPC in the proxy. Separate from the
-    #: buyer's timeout: the buyer works for an hour, while a wallet request must
-    #: either go through or fail.
+    #: buyer's timeout: the buyer works for twenty minutes and more, while a
+    #: wallet request must either go through or fail.
     rpc_proxy_timeout_seconds: float
     #: The last upstream the proxy tries, after every paid one has refused.
     #: A public node is rate limited and cannot carry a round, but it keeps the
@@ -230,7 +230,7 @@ def _resolve_network() -> str:
 
 
 def _default_execution_countdown_seconds(network: str) -> int:
-    """The main buying window: the fifty minutes the buyer spends on its first pass.
+    """The main buying window: the twenty minutes the buyer spends on its first pass.
 
     Exactly `BUY_WINDOW_MINUTES` in the buyer, and the page counts down to the
     same moment. It was 65 first and then 55, both of them guesses with a
@@ -241,13 +241,19 @@ def _default_execution_countdown_seconds(network: str) -> int:
     its own countdown: `fallback_countdown_seconds`.
 
     After the buying comes the `lottery_autostart_gap_seconds` pause, measured
-    from the moment the round actually closed. A full cycle on mainnet is 111
-    minutes of commits, a couple of minutes of the draw, 50 of buying, up to 15
-    more if something has to be bought again, and 5 of pause.
+    from the moment the round actually closed. A full cycle on mainnet is 65
+    minutes of commits, a couple of minutes of the draw, 20 of buying, up to 15
+    more if something has to be bought again, and 5 of pause: a new pool about
+    every hour and a half.
+
+    Twenty minutes since 2026-10-18 (fifty before): launchers asked for a
+    faster buy. Each purchase is the same size, they come two and a half times
+    as often; the buyer's own limiters keep its sends and its Jupiter calls
+    under the providers' ceilings (`offchain/CLAUDE.md`).
     """
     if network == "devnet":
         return 15 * 60
-    return 50 * 60
+    return 20 * 60
 
 
 def _default_fallback_countdown_seconds(network: str) -> int:
@@ -287,18 +293,19 @@ def _default_autostart_prediction_seconds(network: str) -> int:
     It goes straight into the program: the autostart worker computes
     `end_ts = start_ts + this value` and passes both marks to `initialize`.
 
-    70 minutes on mainnet and devnet alike (it was 111, before that 125, 170,
-    105 and 30). The demo rounds of 2026-09-29 showed that two hours of waiting
-    is longer than people stay: an hour is what the site promises (the 0h / 1h /
-    2h scale in How it works), and with the draw, fifty minutes of buying and
-    the five minute pause a new pool opens about every two hours.
+    65 minutes on mainnet and devnet alike (70 until 2026-10-18; before that
+    111, 125, 170, 105 and 30). The demo rounds of 2026-09-29 showed that two
+    hours of waiting is longer than people stay. 65 is what the site says (the
+    scale in How it works: 65 minutes open, 20 of buying), and with the draw,
+    twenty minutes of buying and the five minute pause a new pool opens about
+    every hour and a half.
     The same value on both networks means a devnet run reproduces a real round
     in time rather than a shortened version of it.
 
     This is an upper bound, not a fixed length: the phase closes early as soon as
     the vault reaches max_total.
     """
-    return 70 * 60
+    return 65 * 60
 
 
 def _default_solana_http_endpoint(network: str) -> str:

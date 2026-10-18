@@ -1,0 +1,154 @@
+:host {
+  display: inline-flex;
+}
+
+.chat-launch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+
+  &:hover,
+  &.chat-launch--open {
+    background: var(--qres-purple);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--qres-purple);
+    outline-offset: 2px;
+  }
+}
+
+.chat-launch__icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.chat-launch__lines {
+  stroke-linecap: round;
+}
+
+// New messages: a green dot with a black ring on the corner, the colour the
+// site uses for "live".
+.chat-launch__dot {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--qres-black);
+  border-radius: 50%;
+  background: var(--qres-green);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+// The panel: the site's card with a black border and the hard shadow, the size
+// of a chat, never taller than the window leaves under the header.
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(380px, calc(100vw - 24px));
+  height: min(560px, calc(100vh - 120px));
+  min-height: 320px;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  box-shadow: 5px 5px 0 var(--qres-black);
+  color: var(--qres-black);
+
+  &:focus {
+    outline: none;
+  }
+}
+
+// On a phone, the whole screen: no border or shadow to draw against.
+.chat-panel--sheet {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+.chat-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 10px 16px;
+  border-bottom: 2px solid var(--qres-black);
+}
+
+.chat-panel__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.chat-panel__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 2px solid var(--qres-black);
+  border-radius: 2px;
+  background: var(--qres-white);
+  color: var(--qres-black);
+  cursor: pointer;
+
+  &:hover {
+    background: var(--qres-purple);
+  }
+
+  &:focus-visible {
+    outline: 3px solid var(--qres-purple);
+    outline-offset: 2px;
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+  }
+}
+
+// The chat lays itself out absolutely inside whatever holds it.
+.chat-panel__body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-launch {
+    transition: none;
+  }
+}

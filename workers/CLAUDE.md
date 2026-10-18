@@ -102,8 +102,9 @@ struct and change that constant in the same commit;
 
 ## The buying window, and the second pass
 
-A round is `proceeding_purchases` for `EXECUTION_COUNTDOWN_SECONDS`: fifty
-minutes, which is exactly the buyer's own main pass (`BUY_WINDOW_MINUTES`).
+A round is `proceeding_purchases` for `EXECUTION_COUNTDOWN_SECONDS`: twenty
+minutes (fifty until 2026-10-18, when launchers asked for a faster buy), which
+is exactly the buyer's own main pass (`BUY_WINDOW_MINUTES`).
 Whatever the buyer could not buy in that time it buys again afterwards, in a
 window it sizes itself from the number of purchases that have to be repeated —
 three minutes at the least, fifteen at the most, and none at all when

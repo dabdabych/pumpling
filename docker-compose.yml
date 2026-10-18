@@ -2,6 +2,10 @@ services:
   postgres:
     image: postgres:16.1
     container_name: lottery-db
+    # Every other service had this and the database did not: when the stand's
+    # machine was stopped and started again on 2026-10-08, everything came back
+    # but the database, and the API failed its start for eight days.
+    restart: unless-stopped
     shm_size: 256mb
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-crypto_lottery}
@@ -189,7 +193,7 @@ services:
       - PHASE2_POLL_INTERVAL_SECONDS=${PHASE2_POLL_INTERVAL_SECONDS:-1.0}
       # How often a round that is already buying is looked at. Separate from the
       # line above because the two wait for different things: the draw wants a
-      # second, a buying window that runs the best part of an hour does not.
+      # second, a buying window of twenty minutes and more does not.
       - POST_VRF_POLL_INTERVAL_SECONDS=${POST_VRF_POLL_INTERVAL_SECONDS:-15}
       - PHASE2_CAP_THRESHOLD_SOL=${PHASE2_CAP_THRESHOLD_SOL:-76.95}
       - PHASE2_WORKER_LOG_LEVEL=${PHASE2_WORKER_LOG_LEVEL:-INFO}
@@ -343,14 +347,18 @@ services:
       - NETWORK=${NETWORK:-mainnet}
       - RPC_DEVNET=${RPC_DEVNET:-https://api.devnet.solana.com}
       - RPC_MAINNET=${RPC_MAINNET:-https://api.mainnet-beta.solana.com}
-      - JUPITER_BASE_URL=${JUPITER_BASE_URL:-https://lite-api.jup.ag}
+      # Empty: the buyer picks api.jup.ag with a key and lite-api.jup.ag without.
+      - JUPITER_BASE_URL=${JUPITER_BASE_URL:-}
+      # A free key from portal.jup.ag doubles the calls a second (offchain/CLAUDE.md, "The twenty-minute window").
+      - JUPITER_API_KEY=${JUPITER_API_KEY:-}
+      - JUPITER_RATE_LIMIT=${JUPITER_RATE_LIMIT:-}
       - SLIPPAGE_BPS=${SLIPPAGE_BPS:-300}
       - PRIORITIZATION_FEE_LAMPORTS=${PRIORITIZATION_FEE_LAMPORTS:-5000}
       - JUPITER_MAX_ACCOUNTS=${JUPITER_MAX_ACCOUNTS:-64}
       - JUPITER_ONLY_DIRECT_ROUTES=${JUPITER_ONLY_DIRECT_ROUTES:-0}
       - SEND_TX_RATE_LIMIT=${SEND_TX_RATE_LIMIT:-4}
       # Below are the knobs for devnet runs. In production they are unset and the
-      # buyer works with the original numbers: an hour of buying, ten delivery passes.
+      # buyer works with the original numbers: twenty minutes of buying, ten delivery passes.
       - BUY_WINDOW_MINUTES=${BUY_WINDOW_MINUTES:-}
       - SEND_ROUNDS=${SEND_ROUNDS:-}
       - OVERRIDE_N=${OVERRIDE_N:-}

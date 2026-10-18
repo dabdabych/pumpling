@@ -1,4 +1,7 @@
-<main class="chat-page" [class.chat-page--embedded]="embedded" aria-label="General chat">
+<!-- On its own page the chat is the page's main content; put inside another
+     page (the header's chat panel) it is a region of it, and a second <main>
+     would be a second "main content" landmark. -->
+<section class="chat-page" [class.chat-page--embedded]="embedded" [attr.role]="embedded ? null : 'main'" aria-label="General chat">
   <section class="chat-card">
     <header class="chat-header">
       <div>
@@ -106,4 +109,4 @@
       </footer>
     </ng-template>
   </section>
-</main>
+</section>
