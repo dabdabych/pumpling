@@ -88,9 +88,9 @@ const text = (p, sel) => p.locator(sel).first().evaluate((el) => el.textContent.
     return { canvases: el.querySelectorAll('canvas').length, w: Math.round(r.width), h: Math.round(r.height), label: el.getAttribute('aria-label') };
   });
   ok(canvas.canvases > 0 && canvas.w > 500 && canvas.h >= 280, `the chart is drawn (${canvas.w}x${canvas.h})`);
-  ok(/^Price of \$PUMPLING in SOL over its stay, from 0\.0₇\d+ to 0\.0₆\d+, with 46 buys by the pool marked\.$/.test(canvas.label ?? ''), `and a screen reader is told what it shows ("${canvas.label}")`);
+  ok(/^Market cap of \$PUMPLING in SOL over its stay, from 30\.1 to 155 SOL, with 46 buys by the pool marked\.$/.test(canvas.label ?? ''), `and a screen reader is told what it shows ("${canvas.label}")`);
   const caption = await text(p, '.story__caption span:last-child');
-  ok(/^Price in SOL, a candle a minute · Source: GeckoTerminal$/.test(caption ?? ''), `a final chart says no "updated" (${caption})`);
+  ok(/^Market cap in SOL, a candle a minute · Source: GeckoTerminal$/.test(caption ?? ''), `the market cap, and a final chart says no "updated" (${caption})`);
   const source = await p.locator('.story__caption a');
   const key = await text(p, '.story__caption span');
   ok(key === 'a buy by the pool came into the pool', `the key names the buys and the dot, both on this chart (${key})`);
@@ -166,6 +166,16 @@ for (const [mode, want] of [
   ok(await p.locator('.story__archive').count() === 0, 'and has no archive link yet');
   const caption = await text(p, '.story__caption span:last-child');
   ok(/a candle a minute, updated 3 min ago · Source: GeckoTerminal/.test(caption ?? ''), `a chart still being refreshed says how old it is (${caption})`);
+  await ctx.close();
+}
+{
+  // The supply not known: the price is drawn, and the line under the chart says so.
+  const { ctx, p } = await open(undefined, 'nosupply');
+  await pressBubble(p);
+  await p.waitForSelector('.story__canvas canvas', { timeout: 15000 });
+  const caption = await text(p, '.story__caption span:last-child');
+  const label = await p.locator('.story__canvas').getAttribute('aria-label');
+  ok(/^Price in SOL, a candle a minute/.test(caption ?? '') && /^Price of \$PUMPLING in SOL over its stay, from 0\.0₇\d+ to 0\.0₆\d+/.test(label ?? ''), `without the supply, the price, said as the price (${caption})`);
   await ctx.close();
 }
 {

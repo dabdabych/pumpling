@@ -60,7 +60,7 @@
                   @if (marked.in) {<i class="story__key story__key--in" aria-hidden="true"></i> came into the pool}
                 </span>
               }
-              <span>Price in SOL, {{ story.candleMinutes === 1 ? 'a candle a minute' : 'a candle every ' + story.candleMinutes + ' minutes' }}{{ updated }} ·
+              <span>{{ marketCap ? 'Market cap' : 'Price' }} in SOL, {{ story.candleMinutes === 1 ? 'a candle a minute' : 'a candle every ' + story.candleMinutes + ' minutes' }}{{ updated }} ·
                 Source: <a [href]="story.chartUrl ?? 'https://www.geckoterminal.com'" target="_blank" rel="noopener noreferrer">GeckoTerminal</a></span>
             </figcaption>
           } @else {

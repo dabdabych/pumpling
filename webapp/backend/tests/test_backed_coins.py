@@ -271,3 +271,20 @@ def test_the_timed_cache_cannot_be_grown_by_made_up_keys():
     now[0] = 1_000.0
     cache.put("fresh", "v")
     assert cache.get("fresh") == "v"
+
+
+def test_the_supply_is_read_from_the_chain_in_whole_tokens():
+    import httpx
+
+    def answer(request):
+        body = request.read().decode()
+        assert '"getTokenSupply"' in body
+        return httpx.Response(200, json={"jsonrpc": "2.0", "id": 1, "result": {"value": {
+            "amount": "999998766113451", "decimals": 6, "uiAmount": 999998766.113451, "uiAmountString": "999998766.113451"}}})
+    client = httpx.Client(transport=httpx.MockTransport(answer))
+    assert bc.read_supply("https://node.test", "M", client=client) == 999998766.113451
+
+    def down(request):
+        return httpx.Response(503)
+    assert bc.read_supply("https://node.test", "M", client=httpx.Client(transport=httpx.MockTransport(down))) is None
+

@@ -216,6 +216,25 @@ def refunded_of(feed: Optional[dict], mint: str) -> float:
     return total
 
 
+def supply_from_feed(feed: Optional[dict], mint: str) -> Optional[float]:
+    """The coin's supply before the pool burned any of it, in whole tokens; None when the feed does not say.
+
+    The buyer records it for a coin it burns (`burn.supplyAtStart`, raw, with
+    the coin's `decimals`). Read from the chain after the burn, the supply is
+    smaller, and every candle from before the burn would show a market cap
+    smaller than it was.
+    """
+    for token in (feed or {}).get("tokens") or []:
+        if not isinstance(token, dict) or str(token.get("mint") or "") != mint:
+            continue
+        raw = (token.get("burn") or {}).get("supplyAtStart") if isinstance(token.get("burn"), dict) else None
+        decimals = token.get("decimals")
+        if isinstance(raw, str) and raw.isdigit() and isinstance(decimals, int) and not isinstance(decimals, bool) and 0 <= decimals <= 18:
+            supply = int(raw) / 10 ** decimals
+            return supply if supply > 0 else None
+    return None
+
+
 def left_at(stay: Stay, buys: list[Buy]) -> Optional[datetime]:
     """When the coin's stay ended: the pool's last buy of it, or the pool's close; None while it runs."""
     if not stay.finished:
@@ -371,6 +390,7 @@ class Target:
     stay: Stay
     final: Optional[bool] = None
     has_candles: bool = False
+    has_supply: bool = False
     tries: int = 0
     fetched_at: Optional[datetime] = None
     window_start: Optional[datetime] = None
@@ -396,7 +416,8 @@ def targets(db: Session) -> list[Target]:
             found.append(Target(coin.mint, stay))
         else:
             found.append(Target(
-                coin.mint, stay, final=bool(row.final), has_candles=row.candles is not None, tries=int(row.tries or 0),
+                coin.mint, stay, final=bool(row.final), has_candles=row.candles is not None,
+                has_supply=row.supply is not None, tries=int(row.tries or 0),
                 fetched_at=_utc(row.fetched_at), window_start=_utc(row.window_start), window_end=_utc(row.window_end),
             ))
     keep = {(target.mint, target.stay.lottery_id) for target in found}
@@ -424,6 +445,7 @@ def _save(
     feed: Optional[dict] = None,
     buys: Optional[list[Buy]] = None,
     tries: int = 0,
+    supply: Optional[float] = None,
 ) -> None:
     session = session_factory()
     try:
@@ -436,6 +458,7 @@ def _save(
         row.candle_minutes = candles.minutes if candles else None
         row.candles = candles.rows if candles else None
         row.final, row.tries, row.fetched_at = final, tries, now
+        row.supply = supply
         if final and feed is not None:
             row.buys = [{"at": buy.at.isoformat(), "sol": buy.sol, "signature": buy.signature} for buy in buys or []]
             row.share_sol = share_of(feed, target.mint)
@@ -455,11 +478,40 @@ def run_once(
     feed_of: Callable[[int], Optional[dict]],
     session_factory: Callable[[], Session],
     now: datetime,
+    supply_of: Callable[[str], Optional[float]] = lambda mint: None,
 ) -> int:
-    """Fetches what is due, within the budget less `LEAVES`; returns how many charts were saved."""
+    """Fetches what is due, within the budget less `LEAVES`; returns how many charts were saved.
+
+    `supply_of` reads a coin's supply from the chain, for its market cap.
+    """
+    def supply_for(mint: str, feed: Optional[dict]) -> Optional[float]:
+        try:
+            return supply_from_feed(feed, mint) or supply_of(mint)
+        except Exception:
+            logger.warning("coin story: supply not read (mint=%s)", mint, exc_info=True)
+            return None
+
     saved = 0
     for target in sorted(found, key=_order):
         stay = target.stay
+        if target.final and target.has_candles and not target.has_supply:
+            # A final chart kept before its supply was: only the supply is asked
+            # for, from the buyer's feed or the chain; GeckoTerminal is not.
+            try:
+                feed = feed_of(stay.lottery_id)
+            except Exception:
+                feed = None
+            supply = supply_for(target.mint, feed)
+            if supply is not None:
+                session = session_factory()
+                try:
+                    row = session.get(CoinStoryChartModel, (target.mint, stay.lottery_id))
+                    if row is not None:
+                        row.supply = supply
+                        session.commit()
+                finally:
+                    session.close()
+            continue
         if target.final:
             # Final. Asked again only when GeckoTerminal had nothing, an hour apart, three times.
             if target.has_candles or target.tries >= NOTHING_TRIES or (target.fetched_at and now - target.fetched_at < NOTHING_AGAIN_AFTER):
@@ -512,7 +564,8 @@ def run_once(
         except Exception:
             logger.warning("coin story: candles not read (mint=%s)", target.mint, exc_info=True)
             continue
-        _save(session_factory, target, start, end, candles, now, make_final, feed, buys, tries=0 if candles or not make_final else 1)
+        _save(session_factory, target, start, end, candles, now, make_final, feed, buys,
+              tries=0 if candles or not make_final else 1, supply=supply_for(target.mint, feed) if candles else None)
         saved += 1
     return saved
 
@@ -526,6 +579,7 @@ def start(
     gecko: GeckoTerminal,
     feed_of: Callable[[int], Optional[dict]],
     budget: gecko_budget.Budget = gecko_budget.BUDGET,
+    supply_of: Callable[[str], Optional[float]] = lambda mint: None,
 ) -> None:
     """The thread in the API that keeps the bubbles' charts, once a minute."""
     global _thread
@@ -546,7 +600,7 @@ def start(
                 # The network is waited on with the connection handed back.
                 session.close()
             try:
-                run_once(found, gecko, budget, feed_of, session_factory, datetime.now(timezone.utc))
+                run_once(found, gecko, budget, feed_of, session_factory, datetime.now(timezone.utc), supply_of)
             except Exception:
                 logger.warning("coin story pass failed", exc_info=True)
 

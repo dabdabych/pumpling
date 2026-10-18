@@ -84,7 +84,8 @@ export async function mockChat(ctx, { count = 6, newestId = 42, pictureEvery = 0
  * asked coin's mint and ticker. `mode`: 'ok' (a final chart), 'busy', 'none',
  * 'failed' or 'pending' (no candles; pending: not fetched yet),
  * 'running' (the pool still taking SOL), 'unknown' (the buyer silent), 'nobuys'
- * (finished, its share zero: the stay ends at the close), 'refunded' (a share,
+ * (finished, its share zero: the stay ends at the close), 'nosupply' (the price
+ * drawn, not the market cap), 'refunded' (a share,
  * not bought, sent back: LETTER on the stand), 'fail' (a 500).
  */
 export async function mockStory(ctx, mode = 'ok') {
@@ -96,11 +97,12 @@ export async function mockStory(ctx, mode = 'ok') {
     const coin = BACKED.find((c) => c.mint === mint) ?? BACKED[0];
     const body = { ...fixture, mint, name: coin.name, symbol: coin.symbol, logo_url: coin.logo ? `https://img.test/${coin.logo}/${mint}.svg` : null,
       trade_url: coin.venue === 'pump.fun' ? `https://pump.fun/coin/${mint}` : `https://dexscreener.com/solana/${mint}`, venue: coin.venue,
-      chart_final: true, chart_updated_at: '2026-10-04T20:50:00Z' };
+      chart_final: true, chart_updated_at: '2026-10-04T20:50:00Z', supply: 1e9 };
     if (mode === 'busy' || mode === 'none' || mode === 'failed' || mode === 'pending') Object.assign(body, { candles: null, candle_minutes: null, chart_url: null, chart_state: mode });
     if (mode === 'pending') Object.assign(body, { chart_final: false, chart_updated_at: null });
     if (mode === 'running') Object.assign(body, { finished: false, left_at: null, buys: [], chart_final: false, chart_updated_at: iso(-3 * 60_000 - 10_000) });
     if (mode === 'unknown') Object.assign(body, { buys: [], buys_known: false });
+    if (mode === 'nosupply') Object.assign(body, { supply: null });
     if (mode === 'nobuys') Object.assign(body, { buys: [], left_at: '2026-10-04T20:40:00Z', share_sol: 0, refunded_sol: 0 });
     if (mode === 'refunded') Object.assign(body, { buys: [], left_at: '2026-10-04T20:40:00Z', share_sol: 15.019, refunded_sol: 15.019 });
     return route.fulfill({ status: 200, contentType: 'application/json', headers: cors, body: JSON.stringify(body) });

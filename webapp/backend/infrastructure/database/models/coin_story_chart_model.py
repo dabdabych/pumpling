@@ -25,6 +25,8 @@ class CoinStoryChartModel(Base):
     #: Final rows only: [{"at": iso, "sol": float, "signature": str}], from the buyer's feed.
     buys = Column(JSON, nullable=True)
     share_sol = Column(Float, nullable=True)
+    #: Tokens in whole units (migration 046): market cap is a candle's price times this.
+    supply = Column(Float, nullable=True)
     refunded_sol = Column(Float, nullable=True)
     final = Column(Boolean, nullable=False, default=False, server_default="false")
     #: Final fetches that found no candles; asked again an hour apart, three times at most.

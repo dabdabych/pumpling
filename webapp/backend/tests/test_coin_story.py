@@ -120,6 +120,13 @@ class TestTheBuysAndTheWindow:
         assert [b.signature for b in cs.buys_of(self.FEED, MINT)] == ["b1", "b2"]
         assert cs.buys_of(None, MINT) == []
 
+    def test_the_supply_before_the_burn_from_the_feed(self):
+        feed = {"tokens": [{"mint": MINT, "decimals": 6, "burn": {"supplyAtStart": "999123456789000"}},
+                           {"mint": OTHER, "decimals": 6, "burn": {"supplyAtStart": None}}]}
+        assert cs.supply_from_feed(feed, MINT) == 999_123_456.789
+        assert cs.supply_from_feed(feed, OTHER) is None and cs.supply_from_feed(None, MINT) is None
+        assert cs.supply_from_feed({"tokens": [{"mint": MINT, "decimals": True, "burn": {"supplyAtStart": "1"}}]}, MINT) is None
+
     def test_the_share_and_what_went_back(self):
         feed = {
             "tokens": [{"mint": MINT, "targetSol": 15.019}, {"mint": OTHER, "targetSol": 0}],
@@ -418,6 +425,37 @@ class TestTheSchedule:
         assert cs.run_once(found, self.gecko, self.budget, self.feeds.get, self.sessions, NOW) == 0
         assert self.fake.asked == [] and self.budget.left() == cs.LEAVES
 
+    def test_a_chart_keeps_the_coins_supply_for_its_market_cap(self, world):
+        found = cs.targets(self.sessions())
+        cs.run_once(found, self.gecko, self.budget, self.feeds.get, self.sessions, LAST_BUY + cs.FINAL_AFTER,
+                    supply_of=lambda mint: 999_999_000.5)
+        assert self.row(MINT, 1).final is True and self.row(MINT, 1).supply == 999_999_000.5
+        self.budget.reset()
+        cs.run_once(cs.targets(self.sessions()), self.gecko, self.budget, self.feeds.get, self.sessions, NOW,
+                    supply_of=lambda mint: 123.0)
+        assert self.row(OTHER, 2).final is False and self.row(OTHER, 2).supply == 123.0, "a running pool's chart has it too"
+
+    def test_the_supply_before_the_pools_burn_wins_over_the_chains(self, world):
+        """Read after the burn, the supply is smaller and the market cap before it would be too."""
+        self.feeds[1] = {**self.FEED, "tokens": [{"mint": MINT, "targetSol": 1.94, "decimals": 6,
+                                                   "burn": {"supplyAtStart": "1000000000000000"}}]}
+        found = cs.targets(self.sessions())
+        cs.run_once(found, self.gecko, self.budget, self.feeds.get, self.sessions, LAST_BUY + cs.FINAL_AFTER,
+                    supply_of=lambda mint: 850_000_000.0)
+        assert self.row(MINT, 1).supply == 1_000_000_000.0
+
+    def test_a_final_chart_kept_without_its_supply_gets_it_and_spends_no_call(self, world):
+        found = cs.targets(self.sessions())
+        cs.run_once(found, self.gecko, self.budget, self.feeds.get, self.sessions, LAST_BUY + cs.FINAL_AFTER)
+        assert self.row(MINT, 1).final is True and self.row(MINT, 1).supply is None
+        asked = len(self.fake.asked)
+        self.budget.reset()
+        found = cs.targets(self.sessions())
+        cs.run_once(found, self.gecko, self.budget, self.feeds.get, self.sessions, LAST_BUY + cs.FINAL_AFTER + timedelta(minutes=1),
+                    supply_of=lambda mint: 1e9)
+        assert self.row(MINT, 1).supply == 1e9
+        assert not any(MINT in url for url in self.fake.asked[asked:]), "only the supply, never GeckoTerminal again"
+
     def test_finished_coins_go_first(self, world):
         found = cs.targets(self.sessions())
         assert [target.mint for target in sorted(found, key=cs._order)] == [MINT, OTHER]
@@ -490,6 +528,16 @@ class TestTheEndpoint:
         assert body["chart_url"] == "https://www.geckoterminal.com/solana/pools/CURVE"
         assert [b["signature"] for b in body["buys"]] == ["kept1"] and body["share_sol"] == 0.52 and body["buys_known"] is True
         assert body["window_end"].startswith("2026-10-17T12:00")
+
+    def test_the_supply_comes_with_the_chart(self, client):
+        from infrastructure.database.models.coin_story_chart_model import CoinStoryChartModel
+
+        self.keep(final=True, buys=[], share=0.5)
+        db = self.sessions()
+        db.get(CoinStoryChartModel, (MINT, 2)).supply = 1e9
+        db.commit()
+        db.close()
+        assert client.get(f"/lottery/coins/{MINT}/story").json()["supply"] == 1e9
 
     def test_a_chart_still_being_refreshed_comes_with_when_it_was_fetched(self, client):
         self.keep(final=False)

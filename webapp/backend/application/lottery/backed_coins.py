@@ -116,6 +116,25 @@ def _curve_address(mint: str) -> Optional[str]:
     return str(address)
 
 
+def read_supply(rpc_url: str, mint: str, *, client: Optional[httpx.Client] = None) -> Optional[float]:
+    """The coin's supply in whole tokens (`getTokenSupply`, one call, SPL and Token-2022 alike); None when unknown."""
+    own_client = client is None
+    http = client or httpx.Client(timeout=RPC_TIMEOUT_SECONDS)
+    try:
+        response = http.post(rpc_url, json={"jsonrpc": "2.0", "id": 1, "method": "getTokenSupply", "params": [mint]})
+        response.raise_for_status()
+        value = response.json()["result"]["value"]
+        supply = float(value.get("uiAmountString") or value.get("uiAmount"))
+        return supply if supply > 0 else None
+    except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+        # The URL can carry an API key; the exception type is enough.
+        logger.warning("coin supply not read (%s)", type(exc).__name__)
+        return None
+    finally:
+        if own_client:
+            http.close()
+
+
 def read_made_on_pump(rpc_url: str, mints: list[str], *, client: Optional[httpx.Client] = None) -> dict[str, Optional[bool]]:
     """For each mint, whether it has a pump.fun bonding curve; None where the node did not answer."""
     answers: dict[str, Optional[bool]] = {mint: None for mint in mints}

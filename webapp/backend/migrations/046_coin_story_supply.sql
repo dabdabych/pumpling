@@ -1,0 +1,11 @@
+-- How many tokens a coin has, kept with its chart, so the site can draw the
+-- coin's market cap rather than its price (Georgiy, 2026-10-18: a market cap
+-- of 96 SOL reads at a glance, a price of 0.0₇96 does not). The candles stay
+-- prices; market cap is price times this.
+--
+-- From the buyer's feed when the pool burned some of the coin (`supplyAtStart`,
+-- the supply before the pool's burn, so the burn does not lower the market cap
+-- the window shows from before it), otherwise read from the chain
+-- (`getTokenSupply`) when the chart is fetched. Null when neither answered:
+-- the site then shows the price, and says so.
+ALTER TABLE coin_story_charts ADD COLUMN IF NOT EXISTS supply DOUBLE PRECISION;

@@ -57,6 +57,8 @@ export interface CoinStory {
   chartFinal: boolean;
   /** When the server fetched it; a running pool's is a few minutes old at most. */
   chartUpdatedAtMs: number | null;
+  /** The coin's supply in whole tokens; the chart draws market cap (price times it) when it is known. */
+  supply: number | null;
 }
 
 /** Where to mark on the chart: a buy, or the coin coming into the pool. */
@@ -97,6 +99,44 @@ export function formatTinyPrice(value: number): string {
   }
   const tail = String(digits).replace(/0+$/, '') || '0';
   return `0.0${String(zeros).split('').map((d) => SUBSCRIPT[Number(d)]).join('')}${tail}`;
+}
+
+/**
+ * A market cap in SOL, three figures at most: "96.4", "162", "1.23K", "4.5M".
+ * Georgiy, 2026-10-18: market cap rather than price, the number people trade
+ * memecoins by; 162 SOL reads at a glance where 0.0₆162 does not.
+ */
+export function formatCap(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0';
+  }
+  if (value < 1) {
+    return formatTinyPrice(value);
+  }
+  // Rounded first, so 999.7 is 1K rather than "1.00e+3".
+  const rounded = Number(value.toPrecision(3));
+  for (const [size, suffix] of [[1e9, 'B'], [1e6, 'M'], [1e3, 'K']] as const) {
+    if (rounded >= size) {
+      return `${trimZeros((rounded / size).toPrecision(3))}${suffix}`;
+    }
+  }
+  return trimZeros(rounded.toPrecision(3));
+}
+
+/**
+ * What the chart draws: the market cap in SOL, each candle's price times the
+ * coin's supply, when the supply is known; the price otherwise (and the
+ * caption says which).
+ */
+export function chartCandles(story: Pick<CoinStory, 'candles' | 'supply'>): { candles: StoryCandle[]; marketCap: boolean } {
+  const supply = story.supply;
+  if (supply === null || !(supply > 0)) {
+    return { candles: story.candles, marketCap: false };
+  }
+  return {
+    candles: story.candles.map((candle) => ({ ...candle, o: candle.o * supply, h: candle.h * supply, l: candle.l * supply, c: candle.c * supply })),
+    marketCap: true
+  };
 }
 
 function trimZeros(text: string): string {
@@ -236,7 +276,8 @@ export function toStory(raw: unknown): CoinStory | null {
     chartUrl: https(item['chart_url']),
     chartState: (states.includes(state) ? state : 'none') as CoinStory['chartState'],
     chartFinal: item['chart_final'] === true,
-    chartUpdatedAtMs: time(item['chart_updated_at']) || null
+    chartUpdatedAtMs: time(item['chart_updated_at']) || null,
+    supply: Number.isFinite(Number(item['supply'])) && Number(item['supply']) > 0 && item['supply'] !== null ? Number(item['supply']) : null
   };
 }
 

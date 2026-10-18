@@ -6,7 +6,7 @@ import type { IChartApi, UTCTimestamp } from 'lightweight-charts';
 import { formatSol } from '../../../pool/pool-state';
 import { AnalyticsService } from '../../../shared/analytics/analytics.service';
 import { BackedCoin } from './backed-coins.service';
-import { boughtText, CoinStory, formatTinyPrice, storyMarks, updatedText, windowText } from './coin-story';
+import { boughtText, chartCandles, CoinStory, formatCap, formatTinyPrice, storyMarks, updatedText, windowText } from './coin-story';
 import { CoinStoryService } from './coin-story.service';
 
 /**
@@ -179,16 +179,24 @@ export class CoinStoryDialogComponent implements OnInit, OnDestroy {
     return formatSol(this.story?.committedSol ?? 0);
   }
 
+  /** Whether the chart is the market cap (the supply is known) or, failing that, the price. */
+  get marketCap(): boolean {
+    return this.story ? chartCandles(this.story).marketCap : false;
+  }
+
   /** What the chart shows, for a screen reader: the canvas says nothing itself. */
   get chartLabel(): string {
     const story = this.story;
     if (!story || story.candles.length === 0) {
       return '';
     }
-    const first = story.candles[0];
-    const last = story.candles[story.candles.length - 1];
-    return `Price of $${story.symbol} in SOL over its stay, from ${formatTinyPrice(first.c)} to ${formatTinyPrice(last.c)}, `
-      + `with ${story.buys.length} ${story.buys.length === 1 ? 'buy' : 'buys'} by the pool marked.`;
+    const { candles, marketCap } = chartCandles(story);
+    const first = candles[0].c;
+    const last = candles[candles.length - 1].c;
+    const range = marketCap
+      ? `Market cap of $${story.symbol} in SOL over its stay, from ${formatCap(first)} to ${formatCap(last)} SOL, `
+      : `Price of $${story.symbol} in SOL over its stay, from ${formatTinyPrice(first)} to ${formatTinyPrice(last)}, `;
+    return range + `with ${story.buys.length} ${story.buys.length === 1 ? 'buy' : 'buys'} by the pool marked.`;
   }
 
   private async load(): Promise<void> {
@@ -226,6 +234,9 @@ export class CoinStoryDialogComponent implements OnInit, OnDestroy {
     if (this.destroyed) {
       return;
     }
+    // Market cap in SOL when the supply is known, the price otherwise.
+    const shown = chartCandles(story);
+    const format = shown.marketCap ? formatCap : formatTinyPrice;
     this.zone.runOutsideAngular(() => {
       this.chart?.remove();
       const chart = lw.createChart(host, {
@@ -245,7 +256,7 @@ export class CoinStoryDialogComponent implements OnInit, OnDestroy {
         // names the dot now, so it carries no text).
         rightPriceScale: { borderColor: '#020202', scaleMargins: { top: 0.16, bottom: 0.15 } },
         timeScale: { borderColor: '#020202', timeVisible: true, secondsVisible: false },
-        localization: { priceFormatter: formatTinyPrice },
+        localization: { priceFormatter: format },
         crosshair: { mode: lw.CrosshairMode.Magnet },
         // The window scrolls, on a phone it is a sheet, and by default the
         // chart keeps a vertical swipe and the wheel for itself: a swipe begun
@@ -263,9 +274,9 @@ export class CoinStoryDialogComponent implements OnInit, OnDestroy {
         borderDownColor: '#020202',
         wickUpColor: '#020202',
         wickDownColor: '#020202',
-        priceFormat: { type: 'custom', formatter: formatTinyPrice, minMove: 1e-12 }
+        priceFormat: { type: 'custom', formatter: format, minMove: shown.marketCap ? 0.001 : 1e-12 }
       });
-      series.setData(story.candles.map((candle) => ({
+      series.setData(shown.candles.map((candle) => ({
         time: candle.t as UTCTimestamp,
         open: candle.o,
         high: candle.h,

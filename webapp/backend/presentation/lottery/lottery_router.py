@@ -2027,7 +2027,10 @@ _gecko = coin_story_module.GeckoTerminal(
 
 def start_coin_story_charts(session_factory) -> None:
     """The thread that keeps the bubbles' charts in `coin_story_charts` (`coin_story.start`); called at startup."""
-    coin_story_module.start(session_factory, _gecko, _cached_purchase_feed)
+    coin_story_module.start(
+        session_factory, _gecko, _cached_purchase_feed,
+        supply_of=lambda mint: backed_coins_module.read_supply(_mainnet_rpc_url(), mint),
+    )
 
 
 @router.get("/coins/{mint}/story", response_model=CoinStoryResponse)
@@ -2061,6 +2064,7 @@ def get_coin_story(mint: str, db: Session = Depends(get_db)):
             "buys": coin_story_module.stored_buys(row) if row.final else None,
             "share": row.share_sol,
             "refunded": row.refunded_sol or 0.0,
+            "supply": row.supply,
         }
     name, symbol, logo = _get_coin_metadata(db, mint)
     db.close()
@@ -2112,6 +2116,7 @@ def get_coin_story(mint: str, db: Session = Depends(get_db)):
         chart_url=coin_story_module.GECKO_POOL_PAGE.format(pool=kept["pool"]) if ready and kept["pool"] else None,
         chart_state=state,
         chart_final=bool(kept and kept["final"]),
+        supply=kept["supply"] if ready else None,
         chart_updated_at=kept["fetched_at"] if kept else None,
     )
 

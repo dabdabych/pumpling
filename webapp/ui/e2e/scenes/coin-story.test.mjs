@@ -3,7 +3,7 @@
 // the candles they fall in, the window said in words, and the server's answer
 // made safe before it reaches a link or a chart.
 import assert from 'node:assert/strict';
-import { boughtText, formatTinyPrice, storyMarks, toStory, updatedText, windowText } from './coin-story.mjs';
+import { boughtText, chartCandles, formatCap, formatTinyPrice, storyMarks, toStory, updatedText, windowText } from './coin-story.mjs';
 
 let n = 0;
 const t = (name, fn) => { fn(); n++; console.log('ok', name); };
@@ -97,6 +97,30 @@ t('what the pool bought, and "no share" only when the share was zero', () => {
   assert.equal(boughtText(base, sol), 'Nothing: the draw gave it no share');
   assert.equal(toStory({ ...raw, share_sol: null }).shareSol, null);
   assert.equal(toStory({ ...raw, share_sol: 15.02, refunded_sol: 'x' }).refundedSol, 0);
+});
+
+t('market cap in SOL, three figures at most', () => {
+  assert.equal(formatCap(96.4123), '96.4');
+  assert.equal(formatCap(162.2), '162');
+  assert.equal(formatCap(30.06), '30.1');
+  assert.equal(formatCap(1234.5), '1.23K');
+  assert.equal(formatCap(999.7), '1K', 'rounded first, never "1.00e+3"');
+  assert.equal(formatCap(4_500_000), '4.5M');
+  assert.equal(formatCap(2.5e9), '2.5B');
+  assert.equal(formatCap(0), '0');
+});
+
+t('the chart is the market cap when the supply is known, the price otherwise', () => {
+  const candles = [{ t: 1, o: 1e-7, h: 2e-7, l: 0.5e-7, c: 1.5e-7, v: 3 }];
+  const cap = chartCandles({ candles, supply: 1e9 });
+  assert.equal(cap.marketCap, true);
+  assert.deepEqual([cap.candles[0].o, cap.candles[0].h, cap.candles[0].l, cap.candles[0].c].map((x) => Math.round(x * 100) / 100), [100, 200, 50, 150]);
+  assert.equal(cap.candles[0].v, 3, 'the volume is left as it is');
+  assert.equal(chartCandles({ candles, supply: null }).marketCap, false);
+  assert.equal(chartCandles({ candles, supply: null }).candles, candles);
+  assert.equal(toStory({ ...raw, supply: 919617853.13 }).supply, 919617853.13);
+  assert.equal(toStory({ ...raw, supply: 0 }).supply, null);
+  assert.equal(toStory({ ...raw, supply: null }).supply, null);
 });
 
 t('a chart still being refreshed says how old it is; on its way is a state of its own', () => {

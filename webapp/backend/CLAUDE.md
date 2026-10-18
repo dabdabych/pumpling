@@ -151,6 +151,19 @@ Their attribution guide asks for a line such as "Source: GeckoTerminal" next
 to the data: `chart_source` and `chart_url` are what the site links under
 the chart.
 
+**Market cap.** The site draws the coin's market cap in SOL, not its price
+(Georgiy, 2026-10-18): GeckoTerminal gives prices only, and market cap is a
+candle's price times the coin's supply, which is kept with the chart (`supply`,
+migration 046) and sent as `supply`. It is the supply before the pool burned
+any of the coin when the buyer's feed has it (`burn.supplyAtStart`), so the
+pool's own burn does not lower the market cap of the minutes before it;
+otherwise `getTokenSupply` from the chain when the chart is fetched, which
+for a final chart is a quarter of an hour after the last buy. Charts made
+final before 2026-10-18 got theirs on that day the same way. PUMPLING is the
+case the feed is there for: its launch pool of 2026-10-04 burned 79.9M of it,
+the chain says 919.6M now, and the chart draws the billion it had before the
+burn (`supplyAtStart`). With no supply the site shows the price and says so.
+
 **One budget.** The hover chart on the pool page (`shared/coin_chart.py`)
 asks GeckoTerminal too, on demand. Each kept 20 a minute of its own until
 2026-10-18; now both spend one budget of 8 a minute (`shared/gecko_budget.py`;

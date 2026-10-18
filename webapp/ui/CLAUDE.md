@@ -268,6 +268,12 @@ the buyer, on devnet, cannot buy mainnet coins and sends the SOL back. The
 words are `boughtText` in `coin-story.ts`, and "In pumpling" ends at
 `left_at`, the last buy or the pool's close.
 
+The chart is the coin's market cap in SOL, not its price, since 2026-10-18
+(Georgiy: the number memecoins are traded by; 162 SOL reads at a glance,
+0.0₆162 does not). It is each candle's price times `supply` from the server
+(`chartCandles` and `formatCap` in `coin-story.ts`: "96.4", "162", "1.23K");
+with no supply it is the price, and the line under the chart says which.
+
 The chart is TradingView Lightweight Charts (Apache-2.0), loaded by a dynamic
 import when the first window opens, not with the page; its attribution logo
 stays on, as its licence asks. Prices go through `formatTinyPrice`

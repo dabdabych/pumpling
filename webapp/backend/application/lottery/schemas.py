@@ -240,6 +240,9 @@ class CoinStoryResponse(BaseModel):
     chart_state: str = "none"
     #: The chart is fetched for the last time and will not change.
     chart_final: bool = False
+    #: The coin's supply in whole tokens: a candle's price times this is its
+    #: market cap, which the site draws. None when not known: the site shows the price.
+    supply: Optional[float] = None
     #: When the chart was fetched; a running pool's is refreshed every few minutes.
     chart_updated_at: Optional[datetime] = None
 
